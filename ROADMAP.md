@@ -12,12 +12,13 @@
 - Standalone assist and block-dice rules engine
 - Why explanation bottom-sheet
 - Mobile UI stabilization and local-only persistence
+- Final MVP cleanup and Codex handoff
 
 ## Current Priorities
 
-- Run MVP stabilization and cleanup
-- Polish accessibility and UX copy
 - Prepare branch set for merge or PR review
+- Decide integration path to `main`
+- Optional post-MVP audit and polish
 
 ## Deferred Features
 

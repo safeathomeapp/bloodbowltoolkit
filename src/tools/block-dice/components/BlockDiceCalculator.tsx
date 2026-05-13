@@ -109,6 +109,7 @@ export function BlockDiceCalculator() {
   const [isWhyPanelOpen, setIsWhyPanelOpen] = useState(false)
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null)
   const [installStatus, setInstallStatus] = useState('PWA ready for install and offline use.')
+  const [hasRestoredState] = useState(Boolean(persistedState))
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -150,6 +151,21 @@ export function BlockDiceCalculator() {
       window.removeEventListener('appinstalled', handleAppInstalled)
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isWhyPanelOpen) {
+      return
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsWhyPanelOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isWhyPanelOpen])
 
   const placePlayer = (position: Position) => {
     const existingPlayer = boardState.placedPlayers.find((player) => isSamePosition(player.position, position))
@@ -332,6 +348,7 @@ export function BlockDiceCalculator() {
                 type="button"
                 className={teamSide === draft.teamSide ? styles.toggleActive : styles.toggle}
                 onClick={() => setDraft((currentDraft) => ({ ...currentDraft, teamSide }))}
+                aria-pressed={teamSide === draft.teamSide}
               >
                 Team {teamSide}
               </button>
@@ -376,6 +393,7 @@ export function BlockDiceCalculator() {
                     skills: toggleSkill(currentDraft.skills, skill),
                   }))
                 }
+                aria-pressed={draft.skills.includes(skill)}
               >
                 {skill}
               </button>
@@ -421,16 +439,25 @@ export function BlockDiceCalculator() {
           <p className={styles.eyebrow}>Local Toolkit</p>
           <ul className={styles.summaryList}>
             <li>Board setup is saved locally on this device.</li>
+            <li>{hasRestoredState ? 'Previous local board state was restored for this session.' : 'No previous saved board state was restored.'}</li>
             <li>{installStatus}</li>
           </ul>
-          <div className={styles.actionGrid}>
-            <button type="button" className={styles.actionButtonPrimary} onClick={() => void promptInstall()}>
+          <div className={styles.actionGrid} aria-label="Local toolkit actions">
+            <button
+              type="button"
+              className={styles.actionButtonPrimary}
+              onClick={() => void promptInstall()}
+              aria-describedby="install-status"
+            >
               Install app
             </button>
             <button type="button" className={styles.actionButtonSecondary} onClick={resetBoard}>
               Reset board
             </button>
           </div>
+          <p id="install-status" className={styles.statusNote} aria-live="polite">
+            {installStatus}
+          </p>
         </div>
 
         <div className={styles.summaryCard}>
@@ -452,6 +479,7 @@ export function BlockDiceCalculator() {
                 type="button"
                 className={interactionMode === mode ? styles.toggleActive : styles.toggle}
                 onClick={() => setInteractionMode(mode)}
+                aria-pressed={interactionMode === mode}
               >
                 {mode === 'PLACE' ? 'Place / Remove' : 'Select Block'}
               </button>
@@ -553,6 +581,8 @@ export function BlockDiceCalculator() {
                   type="button"
                   className={styles.whyButton}
                   onClick={() => setIsWhyPanelOpen(true)}
+                  aria-expanded={isWhyPanelOpen}
+                  aria-controls="why-panel-title"
                 >
                   Why?
                 </button>

@@ -152,6 +152,12 @@
   gap: 0.7rem;
 }
 
+.statusNote {
+  margin: 0.85rem 0 0;
+  color: rgba(246, 239, 228, 0.74);
+  font-size: 0.82rem;
+}
+
 .summaryList {
   margin: 0.75rem 0 0;
   padding-left: 1.1rem;
