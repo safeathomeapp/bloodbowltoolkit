@@ -4,7 +4,8 @@
 }
 
 .controls,
-.boardPanel {
+.boardPanel,
+.resultsPanel {
   padding: 1rem;
   border-radius: 1.2rem;
   border: 1px solid rgba(246, 239, 228, 0.12);
@@ -95,6 +96,29 @@
   background: rgba(128, 19, 54, 0.28);
 }
 
+.resultStack {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.resultCard {
+  padding: 1rem;
+  border-radius: 1rem;
+  background: rgba(246, 239, 228, 0.06);
+}
+
+.resultHeadline {
+  margin: 0;
+  font-weight: 700;
+  color: rgba(246, 239, 228, 0.94);
+}
+
+.resultCopy {
+  margin: 0.65rem 0 0;
+  color: rgba(246, 239, 228, 0.82);
+}
+
 .summaryList {
   margin: 0.75rem 0 0;
   padding-left: 1.1rem;
@@ -175,6 +199,18 @@
   box-shadow: 0 0 0 2px rgba(101, 23, 23, 0.72);
 }
 
+.assistVALID {
+  color: #8ce38c;
+}
+
+.assistCANCELLED {
+  color: #ffb260;
+}
+
+.assistINELIGIBLE {
+  color: #beb8c3;
+}
+
 @media (min-width: 64rem) {
   .layout {
     grid-template-columns: minmax(19rem, 24rem) minmax(0, 1fr);
@@ -183,6 +219,10 @@
 
   .checkRow {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .resultsPanel {
+    grid-column: 1 / -1;
   }
 
   .cell,

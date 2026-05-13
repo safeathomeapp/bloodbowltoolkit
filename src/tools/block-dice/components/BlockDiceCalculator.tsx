@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import styles from './BlockDiceCalculator.module.css'
 import type { BoardState, PlayerProfile, PlacedPlayer, Position, Skill, TeamSide } from '../../../shared/types/game'
+import { calculateBlockDice } from '../rules/calculateBlockDice'
 
 const GRID_SIZE = 7
 const STRENGTH_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -199,6 +200,7 @@ export function BlockDiceCalculator() {
         : !target
           ? 'Tap an adjacent opposing player to choose the target. Tapping another friendly player switches the blocker.'
           : 'Blocker and target are selected. Tapping the blocker clears both selections, and tapping the target clears only the target.'
+  const calculation = blocker && target ? calculateBlockDice(boardState, playerProfiles) : null
 
   return (
     <div className={styles.layout}>
@@ -402,6 +404,80 @@ export function BlockDiceCalculator() {
             }),
           )}
         </div>
+      </section>
+
+      <section className={styles.resultsPanel} aria-labelledby="result-title">
+        <div className={styles.sectionHeading}>
+          <p className={styles.eyebrow}>Result</p>
+          <h3 id="result-title" className={styles.title}>
+            Block Dice Summary
+          </h3>
+        </div>
+
+        {calculation ? (
+          <div className={styles.resultStack}>
+            <div className={styles.resultCard}>
+              <p className={styles.resultHeadline}>
+                {calculation.blocker.label} into {calculation.target.label}
+              </p>
+              <p className={styles.resultCopy}>{calculation.finalDice.summary}</p>
+              <ul className={styles.summaryList}>
+                <li>
+                  Attacker ST {calculation.attackerStrength.base}
+                  {calculation.attackerStrength.assistModifier > 0
+                    ? ` + ${calculation.attackerStrength.assistModifier}`
+                    : ''}{' '}
+                  = {calculation.attackerStrength.total}
+                </li>
+                <li>
+                  Defender ST {calculation.defenderStrength.base}
+                  {calculation.defenderStrength.assistModifier > 0
+                    ? ` + ${calculation.defenderStrength.assistModifier}`
+                    : ''}{' '}
+                  = {calculation.defenderStrength.total}
+                </li>
+              </ul>
+            </div>
+
+            <div className={styles.resultCard}>
+              <p className={styles.resultHeadline}>Offensive assists</p>
+              <ul className={styles.summaryList}>
+                {calculation.offensiveAssists.length > 0 ? (
+                  calculation.offensiveAssists.map((assist) => (
+                    <li key={assist.playerId} className={styles[`assist${assist.status}`]}>
+                      {assist.reason}
+                    </li>
+                  ))
+                ) : (
+                  <li>No offensive assist candidates.</li>
+                )}
+              </ul>
+            </div>
+
+            <div className={styles.resultCard}>
+              <p className={styles.resultHeadline}>Defensive assists</p>
+              <ul className={styles.summaryList}>
+                {calculation.defensiveAssists.length > 0 ? (
+                  calculation.defensiveAssists.map((assist) => (
+                    <li key={assist.playerId} className={styles[`assist${assist.status}`]}>
+                      {assist.reason}
+                    </li>
+                  ))
+                ) : (
+                  <li>No defensive assist candidates.</li>
+                )}
+              </ul>
+            </div>
+          </div>
+        ) : (
+          <div className={styles.resultCard}>
+            <p className={styles.resultHeadline}>Selection required</p>
+            <p className={styles.resultCopy}>
+              Place tokens, switch to selection mode, choose a blocker, then choose an adjacent
+              opposing target to calculate block dice.
+            </p>
+          </div>
+        )}
       </section>
     </div>
   )
