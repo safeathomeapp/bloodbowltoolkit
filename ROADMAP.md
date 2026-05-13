@@ -11,12 +11,13 @@
 - Blocker and target selection flow
 - Standalone assist and block-dice rules engine
 - Why explanation bottom-sheet
+- Mobile UI stabilization and local-only persistence
 
 ## Current Priorities
 
-- Refine mobile UX and presentation
-- Confirm PWA installability details
 - Run MVP stabilization and cleanup
+- Polish accessibility and UX copy
+- Prepare branch set for merge or PR review
 
 ## Deferred Features
 

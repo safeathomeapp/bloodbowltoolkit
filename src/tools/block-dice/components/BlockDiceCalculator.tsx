@@ -1,11 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import styles from './BlockDiceCalculator.module.css'
 import type { BoardState, PlayerProfile, PlacedPlayer, Position, Skill, TeamSide } from '../../../shared/types/game'
 import { calculateBlockDice } from '../rules/calculateBlockDice'
 
 const GRID_SIZE = 7
 const STRENGTH_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8]
+const STORAGE_KEY = 'blood-bowl-toolkit:block-dice'
 type InteractionMode = 'PLACE' | 'SELECT'
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
+}
 
 interface PlacementDraft {
   teamSide: TeamSide
@@ -27,6 +33,33 @@ const emptyBoardState: BoardState = {
   placedPlayers: [],
   blockerId: null,
   targetId: null,
+}
+
+interface PersistedCalculatorState {
+  draft: PlacementDraft
+  playerProfiles: PlayerProfile[]
+  boardState: BoardState
+  nextNumbers: Record<TeamSide, number>
+  interactionMode: InteractionMode
+}
+
+function loadPersistedState(): PersistedCalculatorState | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  const storedValue = window.localStorage.getItem(STORAGE_KEY)
+
+  if (!storedValue) {
+    return null
+  }
+
+  try {
+    const parsedValue = JSON.parse(storedValue) as PersistedCalculatorState
+    return parsedValue
+  } catch {
+    return null
+  }
 }
 
 function buildTokenId(teamSide: TeamSide, nextNumber: number) {
@@ -63,12 +96,60 @@ function getProfileSkills(player: PlacedPlayer, profiles: PlayerProfile[]) {
 }
 
 export function BlockDiceCalculator() {
-  const [draft, setDraft] = useState<PlacementDraft>(defaultDraft)
-  const [playerProfiles, setPlayerProfiles] = useState<PlayerProfile[]>([])
-  const [boardState, setBoardState] = useState<BoardState>(emptyBoardState)
-  const [nextNumbers, setNextNumbers] = useState<Record<TeamSide, number>>({ A: 1, B: 1 })
-  const [interactionMode, setInteractionMode] = useState<InteractionMode>('PLACE')
+  const persistedState = loadPersistedState()
+  const [draft, setDraft] = useState<PlacementDraft>(persistedState?.draft ?? defaultDraft)
+  const [playerProfiles, setPlayerProfiles] = useState<PlayerProfile[]>(persistedState?.playerProfiles ?? [])
+  const [boardState, setBoardState] = useState<BoardState>(persistedState?.boardState ?? emptyBoardState)
+  const [nextNumbers, setNextNumbers] = useState<Record<TeamSide, number>>(
+    persistedState?.nextNumbers ?? { A: 1, B: 1 },
+  )
+  const [interactionMode, setInteractionMode] = useState<InteractionMode>(
+    persistedState?.interactionMode ?? 'PLACE',
+  )
   const [isWhyPanelOpen, setIsWhyPanelOpen] = useState(false)
+  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null)
+  const [installStatus, setInstallStatus] = useState('PWA ready for install and offline use.')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const payload: PersistedCalculatorState = {
+      draft,
+      playerProfiles,
+      boardState,
+      nextNumbers,
+      interactionMode,
+    }
+
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+  }, [boardState, draft, interactionMode, nextNumbers, playerProfiles])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault()
+      setInstallPromptEvent(event as BeforeInstallPromptEvent)
+      setInstallStatus('Install prompt is available on this device.')
+    }
+
+    const handleAppInstalled = () => {
+      setInstallPromptEvent(null)
+      setInstallStatus('App installed. This toolkit is available offline.')
+    }
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+    window.addEventListener('appinstalled', handleAppInstalled)
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+      window.removeEventListener('appinstalled', handleAppInstalled)
+    }
+  }, [])
 
   const placePlayer = (position: Position) => {
     const existingPlayer = boardState.placedPlayers.find((player) => isSamePosition(player.position, position))
@@ -178,6 +259,35 @@ export function BlockDiceCalculator() {
     if (existingPlayer) {
       selectPlayer(existingPlayer)
     }
+  }
+
+  const resetBoard = () => {
+    setDraft(defaultDraft)
+    setPlayerProfiles([])
+    setBoardState(emptyBoardState)
+    setNextNumbers({ A: 1, B: 1 })
+    setInteractionMode('PLACE')
+    setIsWhyPanelOpen(false)
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(STORAGE_KEY)
+    }
+  }
+
+  const promptInstall = async () => {
+    if (!installPromptEvent) {
+      setInstallStatus('Use your browser menu to install the app on this device.')
+      return
+    }
+
+    await installPromptEvent.prompt()
+    const outcome = await installPromptEvent.userChoice
+    setInstallStatus(
+      outcome.outcome === 'accepted'
+        ? 'Install accepted. The PWA should now be added to your device.'
+        : 'Install prompt dismissed. You can open it again later if the browser still offers it.',
+    )
+    setInstallPromptEvent(null)
   }
 
   const teamACount = boardState.placedPlayers.filter((player) => player.teamSide === 'A').length
@@ -304,6 +414,22 @@ export function BlockDiceCalculator() {
               />
               Tackle zone
             </label>
+          </div>
+        </div>
+
+        <div className={styles.summaryCard}>
+          <p className={styles.eyebrow}>Local Toolkit</p>
+          <ul className={styles.summaryList}>
+            <li>Board setup is saved locally on this device.</li>
+            <li>{installStatus}</li>
+          </ul>
+          <div className={styles.actionGrid}>
+            <button type="button" className={styles.actionButtonPrimary} onClick={() => void promptInstall()}>
+              Install app
+            </button>
+            <button type="button" className={styles.actionButtonSecondary} onClick={resetBoard}>
+              Reset board
+            </button>
           </div>
         </div>
 
@@ -477,6 +603,14 @@ export function BlockDiceCalculator() {
                   <li>No defensive assist candidates.</li>
                 )}
               </ul>
+            </div>
+
+            <div className={styles.resultCard}>
+              <p className={styles.resultHeadline}>Next step</p>
+              <p className={styles.resultCopy}>
+                Use the bottom-sheet explanation for the full reasoning, or switch back to placement
+                mode to adjust the board without losing your saved local setup.
+              </p>
             </div>
           </div>
         ) : (
