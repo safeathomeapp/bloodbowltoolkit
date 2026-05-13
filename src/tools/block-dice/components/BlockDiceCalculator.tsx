@@ -4,6 +4,7 @@ import type { BoardState, PlayerProfile, PlacedPlayer, Position, Skill, TeamSide
 
 const GRID_SIZE = 7
 const STRENGTH_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8]
+type InteractionMode = 'PLACE' | 'SELECT'
 
 interface PlacementDraft {
   teamSide: TeamSide
@@ -35,6 +36,12 @@ function isSamePosition(left: Position, right: Position) {
   return left.row === right.row && left.col === right.col
 }
 
+function isAdjacent(left: Position, right: Position) {
+  const rowDelta = Math.abs(left.row - right.row)
+  const colDelta = Math.abs(left.col - right.col)
+  return (rowDelta > 0 || colDelta > 0) && rowDelta <= 1 && colDelta <= 1
+}
+
 function toggleSkill(skills: Skill[], skill: Skill) {
   return skills.includes(skill) ? skills.filter((entry) => entry !== skill) : [...skills, skill]
 }
@@ -59,6 +66,7 @@ export function BlockDiceCalculator() {
   const [playerProfiles, setPlayerProfiles] = useState<PlayerProfile[]>([])
   const [boardState, setBoardState] = useState<BoardState>(emptyBoardState)
   const [nextNumbers, setNextNumbers] = useState<Record<TeamSide, number>>({ A: 1, B: 1 })
+  const [interactionMode, setInteractionMode] = useState<InteractionMode>('PLACE')
 
   const placePlayer = (position: Position) => {
     const existingPlayer = boardState.placedPlayers.find((player) => isSamePosition(player.position, position))
@@ -108,8 +116,89 @@ export function BlockDiceCalculator() {
     }))
   }
 
+  const selectPlayer = (player: PlacedPlayer) => {
+    setBoardState((currentState) => {
+      const currentBlocker = currentState.placedPlayers.find(
+        (entry) => entry.id === currentState.blockerId,
+      )
+      const currentTarget = currentState.placedPlayers.find((entry) => entry.id === currentState.targetId)
+
+      if (!currentBlocker) {
+        return {
+          ...currentState,
+          blockerId: player.id,
+          targetId: null,
+        }
+      }
+
+      if (currentBlocker.id === player.id) {
+        return {
+          ...currentState,
+          blockerId: null,
+          targetId: null,
+        }
+      }
+
+      if (currentTarget?.id === player.id) {
+        return {
+          ...currentState,
+          targetId: null,
+        }
+      }
+
+      if (currentBlocker.teamSide === player.teamSide) {
+        return {
+          ...currentState,
+          blockerId: player.id,
+          targetId: null,
+        }
+      }
+
+      if (!isAdjacent(currentBlocker.position, player.position)) {
+        return currentState
+      }
+
+      return {
+        ...currentState,
+        targetId: player.id,
+      }
+    })
+  }
+
+  const handleGridCellPress = (position: Position) => {
+    const existingPlayer = boardState.placedPlayers.find((player) => isSamePosition(player.position, position))
+
+    if (interactionMode === 'PLACE') {
+      placePlayer(position)
+      return
+    }
+
+    if (existingPlayer) {
+      selectPlayer(existingPlayer)
+    }
+  }
+
   const teamACount = boardState.placedPlayers.filter((player) => player.teamSide === 'A').length
   const teamBCount = boardState.placedPlayers.filter((player) => player.teamSide === 'B').length
+  const blocker = boardState.placedPlayers.find((player) => player.id === boardState.blockerId) ?? null
+  const target = boardState.placedPlayers.find((player) => player.id === boardState.targetId) ?? null
+  const eligibleTargetIds = blocker
+    ? boardState.placedPlayers
+        .filter(
+          (player) => player.teamSide !== blocker.teamSide && isAdjacent(blocker.position, player.position),
+        )
+        .map((player) => player.id)
+    : []
+  const blockerLabel = blocker ? getProfileLabel(blocker, playerProfiles) : 'none'
+  const targetLabel = target ? getProfileLabel(target, playerProfiles) : 'none'
+  const selectionHint =
+    interactionMode === 'PLACE'
+      ? 'Placement mode is active. Tap an empty square to place the configured player or an occupied square to remove one.'
+      : !blocker
+        ? 'Selection mode is active. Tap any player to choose the blocker.'
+        : !target
+          ? 'Tap an adjacent opposing player to choose the target. Tapping another friendly player switches the blocker.'
+          : 'Blocker and target are selected. Tapping the blocker clears both selections, and tapping the target clears only the target.'
 
   return (
     <div className={styles.layout}>
@@ -220,8 +309,33 @@ export function BlockDiceCalculator() {
           <ul className={styles.summaryList}>
             <li>{teamACount} players placed for Team A</li>
             <li>{teamBCount} players placed for Team B</li>
-            <li>Tap an empty square to place the configured player.</li>
-            <li>Tap an occupied square to remove that token.</li>
+            <li>Blocker: {blockerLabel}</li>
+            <li>Target: {targetLabel}</li>
+          </ul>
+        </div>
+
+        <div className={styles.controlGroup}>
+          <span className={styles.label}>Interaction mode</span>
+          <div className={styles.toggleRow}>
+            {(['PLACE', 'SELECT'] as InteractionMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={interactionMode === mode ? styles.toggleActive : styles.toggle}
+                onClick={() => setInteractionMode(mode)}
+              >
+                {mode === 'PLACE' ? 'Place / Remove' : 'Select Block'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className={styles.summaryCard}>
+          <p className={styles.eyebrow}>Selection Flow</p>
+          <ul className={styles.summaryList}>
+            <li>{selectionHint}</li>
+            <li>Only adjacent opposing players can become valid targets.</li>
+            <li>Selection state remains reusable while the board layout stays in place.</li>
           </ul>
         </div>
       </section>
@@ -241,21 +355,35 @@ export function BlockDiceCalculator() {
                 (entry) => entry.position.row === row && entry.position.col === col,
               )
               const skills = player ? getProfileSkills(player, playerProfiles) : []
+              const isBlocker = player?.id === boardState.blockerId
+              const isTarget = player?.id === boardState.targetId
+              const isEligibleTarget = player ? eligibleTargetIds.includes(player.id) : false
+              const cellClassName = [
+                player ? styles.cellOccupied : styles.cell,
+                isEligibleTarget && !isTarget ? styles.cellEligibleTarget : '',
+              ]
+                .filter(Boolean)
+                .join(' ')
+              const tokenClassName = player
+                ? [
+                    player.teamSide === 'A' ? styles.tokenTeamA : styles.tokenTeamB,
+                    isBlocker ? styles.tokenBlocker : '',
+                    isTarget ? styles.tokenTarget : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
+                : ''
 
               return (
                 <button
                   key={`${row}-${col}`}
                   type="button"
                   role="gridcell"
-                  className={player ? styles.cellOccupied : styles.cell}
-                  onClick={() => placePlayer({ row, col })}
+                  className={cellClassName}
+                  onClick={() => handleGridCellPress({ row, col })}
                 >
                   {player ? (
-                    <span
-                      className={
-                        player.teamSide === 'A' ? styles.tokenTeamA : styles.tokenTeamB
-                      }
-                    >
+                    <span className={tokenClassName}>
                       <strong>{getProfileLabel(player, playerProfiles)}</strong>
                       <span className={styles.tokenMeta}>ST {getProfileStrength(player, playerProfiles)}</span>
                       <span className={styles.tokenMeta}>
@@ -263,6 +391,8 @@ export function BlockDiceCalculator() {
                         {player.hasTackleZone ? ' · TZ' : ' · No TZ'}
                       </span>
                       {skills.length > 0 ? <span className={styles.tokenMeta}>{skills.join(', ')}</span> : null}
+                      {isBlocker ? <span className={styles.tokenRole}>Blocker</span> : null}
+                      {isTarget ? <span className={styles.tokenRole}>Target</span> : null}
                     </span>
                   ) : (
                     <span className={styles.cellHint}>{row + 1},{col + 1}</span>

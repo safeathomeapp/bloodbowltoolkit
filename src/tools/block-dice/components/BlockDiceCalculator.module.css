@@ -121,6 +121,11 @@
   background: rgba(246, 239, 228, 0.1);
 }
 
+.cellEligibleTarget {
+  border-color: rgba(123, 197, 96, 0.88);
+  box-shadow: inset 0 0 0 2px rgba(123, 197, 96, 0.32);
+}
+
 .cellHint {
   font-size: 0.72rem;
   color: rgba(246, 239, 228, 0.42);
@@ -150,6 +155,24 @@
 .tokenMeta {
   font-size: 0.67rem;
   color: rgba(246, 239, 228, 0.86);
+}
+
+.tokenRole {
+  margin-top: 0.1rem;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tokenBlocker {
+  outline: 3px solid rgba(187, 120, 255, 0.92);
+  box-shadow: 0 0 0 2px rgba(77, 35, 109, 0.75);
+}
+
+.tokenTarget {
+  outline: 3px solid rgba(244, 90, 90, 0.95);
+  box-shadow: 0 0 0 2px rgba(101, 23, 23, 0.72);
 }
 
 @media (min-width: 64rem) {

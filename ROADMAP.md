@@ -8,12 +8,13 @@
 - Documentation foundation
 - 7x7 tactical grid foundation
 - Token placement flow
+- Blocker and target selection flow
 
 ## Current Priorities
 
-- Add blocker and target selection
 - Implement standalone block dice rules engine
 - Add assist visualization and explanation flow
+- Add result panel and recalculation output
 
 ## Deferred Features
 
