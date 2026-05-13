@@ -1,0 +1,126 @@
+.shell {
+  min-height: 100vh;
+  padding: 1.25rem;
+  color: #f6efe4;
+}
+
+.hero,
+.card,
+.panel {
+  border: 1px solid rgba(246, 239, 228, 0.14);
+  background:
+    linear-gradient(180deg, rgba(128, 19, 54, 0.82), rgba(43, 17, 28, 0.9)),
+    rgba(25, 15, 20, 0.95);
+  box-shadow: 0 18px 48px rgba(10, 6, 7, 0.28);
+}
+
+.hero {
+  padding: 1.5rem;
+  border-radius: 1.5rem;
+}
+
+.kicker,
+.eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.74rem;
+  color: #f1b24a;
+}
+
+.title,
+.cardTitle,
+.panelTitle {
+  margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1.05;
+}
+
+.title {
+  margin-top: 0.75rem;
+  font-size: clamp(2.3rem, 9vw, 4.8rem);
+  max-width: 10ch;
+}
+
+.summary {
+  margin: 1rem 0 0;
+  max-width: 42rem;
+  color: rgba(246, 239, 228, 0.88);
+  font-size: 1rem;
+}
+
+.card {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  border-radius: 1.35rem;
+}
+
+.cardHeader {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.cardTitle {
+  font-size: clamp(1.7rem, 6vw, 2.6rem);
+}
+
+.cardText,
+.panelText {
+  margin: 0.85rem 0 0;
+  color: rgba(246, 239, 228, 0.84);
+}
+
+.scopeList {
+  margin: 1rem 0 0;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.grid {
+  margin-top: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.panel {
+  padding: 1.25rem;
+  border-radius: 1.25rem;
+}
+
+.workspace {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(246, 239, 228, 0.14);
+  background: rgba(15, 10, 12, 0.78);
+  backdrop-filter: blur(10px);
+}
+
+.workspaceHeader {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+}
+
+.panelTitle {
+  margin-top: 0.55rem;
+  font-size: 1.5rem;
+}
+
+@media (min-width: 48rem) {
+  .shell {
+    padding: 2rem;
+  }
+
+  .hero,
+  .card,
+  .panel,
+  .workspace {
+    border-radius: 1.75rem;
+  }
+
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
