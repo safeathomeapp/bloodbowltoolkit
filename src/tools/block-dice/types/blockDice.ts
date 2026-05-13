@@ -36,6 +36,11 @@ export interface FinalDiceSummary {
   summary: string
 }
 
+export interface ExplanationSection {
+  title: string
+  entries: string[]
+}
+
 export interface BlockDiceCalculation {
   blocker: BlockParticipant
   target: BlockParticipant
@@ -44,4 +49,5 @@ export interface BlockDiceCalculation {
   offensiveAssists: AssistDetail[]
   defensiveAssists: AssistDetail[]
   finalDice: FinalDiceSummary
+  explanation: ExplanationSection[]
 }

@@ -68,6 +68,7 @@ export function BlockDiceCalculator() {
   const [boardState, setBoardState] = useState<BoardState>(emptyBoardState)
   const [nextNumbers, setNextNumbers] = useState<Record<TeamSide, number>>({ A: 1, B: 1 })
   const [interactionMode, setInteractionMode] = useState<InteractionMode>('PLACE')
+  const [isWhyPanelOpen, setIsWhyPanelOpen] = useState(false)
 
   const placePlayer = (position: Position) => {
     const existingPlayer = boardState.placedPlayers.find((player) => isSamePosition(player.position, position))
@@ -421,6 +422,15 @@ export function BlockDiceCalculator() {
                 {calculation.blocker.label} into {calculation.target.label}
               </p>
               <p className={styles.resultCopy}>{calculation.finalDice.summary}</p>
+              <div className={styles.resultActions}>
+                <button
+                  type="button"
+                  className={styles.whyButton}
+                  onClick={() => setIsWhyPanelOpen(true)}
+                >
+                  Why?
+                </button>
+              </div>
               <ul className={styles.summaryList}>
                 <li>
                   Attacker ST {calculation.attackerStrength.base}
@@ -479,6 +489,51 @@ export function BlockDiceCalculator() {
           </div>
         )}
       </section>
+
+      {isWhyPanelOpen && calculation ? (
+        <div
+          className={styles.bottomSheetBackdrop}
+          role="presentation"
+          onClick={() => setIsWhyPanelOpen(false)}
+        >
+          <section
+            className={styles.bottomSheet}
+            aria-labelledby="why-panel-title"
+            aria-modal="true"
+            role="dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.bottomSheetHeader}>
+              <div className={styles.sectionHeading}>
+                <p className={styles.eyebrow}>Why</p>
+                <h3 id="why-panel-title" className={styles.title}>
+                  Why this block result happened
+                </h3>
+              </div>
+              <button
+                type="button"
+                className={styles.closeButton}
+                onClick={() => setIsWhyPanelOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className={styles.explanationStack}>
+              {calculation.explanation.map((section) => (
+                <div key={section.title} className={styles.explanationCard}>
+                  <p className={styles.resultHeadline}>{section.title}</p>
+                  <ul className={styles.summaryList}>
+                    {section.entries.map((entry) => (
+                      <li key={entry}>{entry}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   )
 }

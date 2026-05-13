@@ -10,12 +10,13 @@
 - Token placement flow
 - Blocker and target selection flow
 - Standalone assist and block-dice rules engine
+- Why explanation bottom-sheet
 
 ## Current Priorities
 
-- Add result panel and recalculation output
-- Add assist visualization and explanation flow
-- Build the dedicated Why panel
+- Refine mobile UX and presentation
+- Confirm PWA installability details
+- Run MVP stabilization and cleanup
 
 ## Deferred Features
 

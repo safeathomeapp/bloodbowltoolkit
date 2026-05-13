@@ -119,6 +119,20 @@
   color: rgba(246, 239, 228, 0.82);
 }
 
+.resultActions {
+  margin-top: 0.9rem;
+}
+
+.whyButton,
+.closeButton {
+  border: 1px solid rgba(241, 178, 74, 0.5);
+  border-radius: 999px;
+  background: rgba(241, 178, 74, 0.12);
+  color: #f8d38c;
+  padding: 0.7rem 1rem;
+  font-weight: 700;
+}
+
 .summaryList {
   margin: 0.75rem 0 0;
   padding-left: 1.1rem;
@@ -211,6 +225,46 @@
   color: #beb8c3;
 }
 
+.bottomSheetBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 5, 6, 0.72);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 1rem 0 0;
+}
+
+.bottomSheet {
+  width: min(100%, 48rem);
+  max-height: 88vh;
+  overflow: auto;
+  border-radius: 1.35rem 1.35rem 0 0;
+  border: 1px solid rgba(246, 239, 228, 0.14);
+  background: linear-gradient(180deg, rgba(55, 16, 29, 0.98), rgba(19, 10, 14, 0.99));
+  padding: 1rem 1rem 1.4rem;
+  box-shadow: 0 -18px 44px rgba(0, 0, 0, 0.34);
+}
+
+.bottomSheetHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.explanationStack {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.explanationCard {
+  padding: 1rem;
+  border-radius: 1rem;
+  background: rgba(246, 239, 228, 0.06);
+}
+
 @media (min-width: 64rem) {
   .layout {
     grid-template-columns: minmax(19rem, 24rem) minmax(0, 1fr);
@@ -223,6 +277,11 @@
 
   .resultsPanel {
     grid-column: 1 / -1;
+  }
+
+  .bottomSheet {
+    border-radius: 1.5rem 1.5rem 0 0;
+    padding: 1.25rem 1.25rem 1.6rem;
   }
 
   .cell,

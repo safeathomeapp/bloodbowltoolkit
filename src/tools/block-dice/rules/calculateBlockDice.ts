@@ -1,5 +1,12 @@
 import type { BoardState, PlacedPlayer, PlayerProfile, Position, Skill, TeamSide } from '../../../shared/types/game'
-import type { AssistDetail, AssistStatus, AssistType, BlockDiceCalculation, DiceChooser } from '../types/blockDice'
+import type {
+  AssistDetail,
+  AssistStatus,
+  AssistType,
+  BlockDiceCalculation,
+  DiceChooser,
+  ExplanationSection,
+} from '../types/blockDice'
 
 interface EvaluatedPlayer {
   placedPlayer: PlacedPlayer
@@ -219,6 +226,52 @@ function buildFinalDiceSummary(attackerStrength: number, defenderStrength: numbe
   }
 }
 
+function buildExplanation(
+  blockerLabel: string,
+  targetLabel: string,
+  attackerStrength: number,
+  defenderStrength: number,
+  offensiveAssists: AssistDetail[],
+  defensiveAssists: AssistDetail[],
+  finalSummary: string,
+): ExplanationSection[] {
+  const cancelledAssists = [...offensiveAssists, ...defensiveAssists]
+    .filter((assist) => assist.status !== 'VALID')
+    .map((assist) => assist.reason)
+
+  return [
+    {
+      title: 'Base',
+      entries: [
+        `${blockerLabel} blocks ${targetLabel}.`,
+        `Base Strength comparison: ST ${attackerStrength} vs ST ${defenderStrength}.`,
+      ],
+    },
+    {
+      title: 'Offensive Assists',
+      entries:
+        offensiveAssists.length > 0
+          ? offensiveAssists.map((assist) => assist.reason)
+          : ['No offensive assist candidates.'],
+    },
+    {
+      title: 'Defensive Assists',
+      entries:
+        defensiveAssists.length > 0
+          ? defensiveAssists.map((assist) => assist.reason)
+          : ['No defensive assist candidates.'],
+    },
+    {
+      title: 'Cancelled / Ignored',
+      entries: cancelledAssists.length > 0 ? cancelledAssists : ['No cancelled or ignored assists.'],
+    },
+    {
+      title: 'Final',
+      entries: [finalSummary],
+    },
+  ]
+}
+
 export function calculateBlockDice(boardState: BoardState, profiles: PlayerProfile[]): BlockDiceCalculation {
   const blocker = requirePlayer(boardState.blockerId, boardState, profiles)
   const target = requirePlayer(boardState.targetId, boardState, profiles)
@@ -264,18 +317,21 @@ export function calculateBlockDice(boardState: BoardState, profiles: PlayerProfi
     .reduce((total, assist) => total + assist.strengthModifier, 0)
   const attackerStrength = blocker.profile.strength + offensiveModifier
   const defenderStrength = target.profile.strength + defensiveModifier
+  const finalDice = buildFinalDiceSummary(attackerStrength, defenderStrength)
+  const blockerLabel = blocker.profile.name ?? blocker.placedPlayer.id
+  const targetLabel = target.profile.name ?? target.placedPlayer.id
 
   return {
     blocker: {
       id: blocker.placedPlayer.id,
-      label: blocker.profile.name ?? blocker.placedPlayer.id,
+      label: blockerLabel,
       teamSide: blocker.placedPlayer.teamSide,
       strength: blocker.profile.strength,
       position: blocker.placedPlayer.position,
     },
     target: {
       id: target.placedPlayer.id,
-      label: target.profile.name ?? target.placedPlayer.id,
+      label: targetLabel,
       teamSide: target.placedPlayer.teamSide,
       strength: target.profile.strength,
       position: target.placedPlayer.position,
@@ -292,6 +348,15 @@ export function calculateBlockDice(boardState: BoardState, profiles: PlayerProfi
     },
     offensiveAssists,
     defensiveAssists,
-    finalDice: buildFinalDiceSummary(attackerStrength, defenderStrength),
+    finalDice,
+    explanation: buildExplanation(
+      blockerLabel,
+      targetLabel,
+      attackerStrength,
+      defenderStrength,
+      offensiveAssists,
+      defensiveAssists,
+      finalDice.summary,
+    ),
   }
 }

@@ -59,6 +59,8 @@ describe('calculateBlockDice', () => {
     expect(result.defenderStrength.total).toBe(3)
     expect(result.finalDice.count).toBe(1)
     expect(result.finalDice.chooser).toBe('NONE')
+    expect(result.explanation[0]?.title).toBe('Base')
+    expect(result.explanation.at(-1)?.title).toBe('Final')
   })
 
   it('adds an offensive assist', () => {
