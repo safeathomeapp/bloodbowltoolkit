@@ -344,6 +344,8 @@
   text-align: left;
   user-select: none;
   -webkit-user-select: none;
+  position: relative;
+  overflow: hidden;
 }
 
 .tokenTeamA {
@@ -354,6 +356,30 @@
 .tokenTeamB {
   background: rgba(223, 72, 89, 0.28);
   outline: 2px solid rgba(248, 108, 115, 0.72);
+}
+
+.tokenCompact {
+  display: block;
+}
+
+.tokenName,
+.tokenNameCompact {
+  display: block;
+  font-weight: 800;
+}
+
+.tokenNameCompact {
+  position: absolute;
+  top: 0.22rem;
+  right: 0.28rem;
+  max-width: calc(100% - 2rem);
+  text-align: right;
+  font-size: clamp(0.52rem, 2.2vw, 0.78rem);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tokenMeta {
@@ -367,6 +393,25 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.tokenRoleCorner {
+  position: absolute;
+  top: 0.22rem;
+  left: 0.24rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1rem;
+  min-height: 1.1rem;
+  padding: 0.08rem 0.24rem;
+  border-radius: 999px;
+  background: rgba(22, 12, 17, 0.56);
+  border: 1px solid rgba(246, 239, 228, 0.18);
+  font-size: clamp(0.48rem, 2vw, 0.7rem);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1;
 }
 
 .candidateTokenBadge {
@@ -388,6 +433,26 @@
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.04em;
+}
+
+.previewBadgeCompact {
+  position: absolute;
+  left: 50%;
+  bottom: 0.22rem;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  padding: 0.12rem 0.34rem;
+  border-radius: 999px;
+  background: rgba(248, 214, 114, 0.2);
+  border: 1px solid rgba(248, 214, 114, 0.58);
+  color: #ffe8a1;
+  font-size: clamp(0.5rem, 2vw, 0.74rem);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  line-height: 1;
 }
 
 .tokenBlocker {
@@ -499,8 +564,27 @@
     padding: 0.12rem 0.28rem;
   }
 
+  .previewBadgeCompact {
+    min-width: 1.75rem;
+    bottom: 0.16rem;
+    padding: 0.1rem 0.24rem;
+  }
+
   .tokenRole {
     letter-spacing: 0.05em;
+  }
+
+  .tokenRoleCorner {
+    top: 0.16rem;
+    left: 0.16rem;
+    min-width: 0.95rem;
+    min-height: 0.95rem;
+  }
+
+  .tokenNameCompact {
+    top: 0.16rem;
+    right: 0.18rem;
+    max-width: calc(100% - 1.7rem);
   }
 
   .title {

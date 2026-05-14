@@ -752,6 +752,7 @@ export function BlockDiceCalculator() {
               const tokenClassName = player
                 ? [
                     player.teamSide === 'A' ? styles.tokenTeamA : styles.tokenTeamB,
+                    showCalculateAnnotations ? styles.tokenCompact : '',
                     isBlocker ? styles.tokenBlocker : '',
                     isTarget ? styles.tokenTarget : '',
                   ]
@@ -783,7 +784,9 @@ export function BlockDiceCalculator() {
                 >
                   {player ? (
                     <span className={tokenClassName}>
-                      <strong>{getProfileLabel(player, playerProfiles)}</strong>
+                      <strong className={showCalculateAnnotations ? styles.tokenNameCompact : styles.tokenName}>
+                        {getProfileLabel(player, playerProfiles)}
+                      </strong>
                       {showEditTokenMeta ? <span className={styles.tokenMeta}>ST {getProfileStrength(player, playerProfiles)}</span> : null}
                       {showEditTokenMeta ? (
                         <span className={styles.tokenMeta}>
@@ -792,8 +795,14 @@ export function BlockDiceCalculator() {
                         </span>
                       ) : null}
                       {showEditTokenMeta && skills.length > 0 ? <span className={styles.tokenMeta}>{skills.join(', ')}</span> : null}
-                      {preview ? <span className={styles.previewBadge}>{preview.diceLabel}</span> : null}
-                      {showCalculateAnnotations && tokenRoleLabel ? <span className={styles.tokenRole}>{tokenRoleLabel}</span> : null}
+                      {preview ? (
+                        <span className={showCalculateAnnotations ? styles.previewBadgeCompact : styles.previewBadge}>
+                          {preview.diceLabel}
+                        </span>
+                      ) : null}
+                      {showCalculateAnnotations && tokenRoleLabel ? (
+                        <span className={styles.tokenRoleCorner}>{tokenRoleLabel}</span>
+                      ) : null}
                     </span>
                   ) : (
                     appMode === 'EDIT' ? (
