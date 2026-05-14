@@ -13,12 +13,14 @@
 - Why explanation bottom-sheet
 - Mobile UI stabilization and local-only persistence
 - Final MVP cleanup and Codex handoff
+- UX revision review and roadmap reset
 
 ## Current Priorities
 
-- Prepare branch set for merge or PR review
-- Decide integration path to `main`
-- Optional post-MVP audit and polish
+- Introduce `EDIT` / `CALCULATE` mode architecture
+- Replace explicit target selection with adjacent block previews
+- Extend the rules engine for tactical preview generation
+- Defer merge planning until the revised UX rewrite is underway
 
 ## Deferred Features
 
@@ -26,6 +28,7 @@
 - Saved rosters
 - Probability helpers
 - Additional toolkit modules
+- Merge/integration branch strategy until post-rewrite stabilization
 
 ## Rejected Features
 
@@ -39,3 +42,7 @@
 ## Scope Boundary
 
 The MVP succeeds only if it quickly determines and explains Blood Bowl block dice. Any feature that does not directly support that flow stays out of scope.
+
+## Revision Note
+
+The original blocker-target interaction flow has been superseded by the revised tactical UX direction documented in `/c/Users/kevth/Downloads/blood_bowl_toolkit_final_mvp_revision.md`. Existing implementation remains useful foundation work, but the roadmap now prioritizes the interaction rewrite over merge preparation.
