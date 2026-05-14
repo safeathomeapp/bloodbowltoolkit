@@ -329,19 +329,20 @@ export function BlockDiceCalculator() {
       return
     }
 
+    const existingPlayer = boardState.placedPlayers.find((player) => isSamePosition(player.position, position))
     const positionKey = buildPositionKey(position)
     const candidate = candidateMap.get(positionKey)
 
     if (appMode === 'CALCULATE' && previewMode === 'BLITZ' && target && candidate) {
-      if (candidate.status === 'VALID') {
+      if (candidate.status === 'OCCUPIED' && existingPlayer) {
+        selectPlayer(existingPlayer)
+      } else if (candidate.status === 'VALID') {
         setSelectedBlitzCandidateKey(candidate.key)
       } else if (candidate.status === 'INVALIDATED') {
         toggleCandidateInvalidation(candidate.key, { selectAfterRestore: true })
       }
       return
     }
-
-    const existingPlayer = boardState.placedPlayers.find((player) => isSamePosition(player.position, position))
 
     if (appMode === 'EDIT') {
       placePlayer(position)
