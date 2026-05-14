@@ -872,6 +872,8 @@ export function BlockDiceCalculator() {
                 const isSelectedCandidate = candidate?.key === selectedBlitzCandidateKey
                 const isTopTierCandidate = candidate ? topTierCandidateKeys.has(candidate.key) : false
                 const showBlitzMarker = isBlocker && appMode === 'CALCULATE' && previewMode === 'BLITZ'
+                const attackerCurrentSquareDiceLabel =
+                  isBlocker && showBlitzMarker && currentSquareBlitzLabel ? currentSquareBlitzLabel : null
                 const showCalculateAnnotations = appMode === 'CALCULATE'
                 const showEditTokenMeta = appMode === 'EDIT'
                 const tokenRoleLabel = getTokenRoleLabel({
@@ -939,6 +941,11 @@ export function BlockDiceCalculator() {
                         {preview ? (
                           <span className={showCalculateAnnotations ? styles.previewBadgeCompact : styles.previewBadge}>
                             {preview.diceLabel}
+                          </span>
+                        ) : null}
+                        {!preview && attackerCurrentSquareDiceLabel ? (
+                          <span className={showCalculateAnnotations ? styles.previewBadgeCompact : styles.previewBadge}>
+                            {attackerCurrentSquareDiceLabel}
                           </span>
                         ) : null}
                         {showCalculateAnnotations && tokenRoleLabel ? (
