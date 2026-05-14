@@ -781,15 +781,6 @@ export function BlockDiceCalculator() {
                     >
                       Help
                     </button>
-                    <button type="button" className={styles.menuItem} disabled>
-                      Load teams
-                    </button>
-                    <button type="button" className={styles.menuItem} disabled>
-                      Save pitch
-                    </button>
-                    <button type="button" className={styles.menuItem} disabled>
-                      More soon
-                    </button>
                   </div>
                 ) : null}
               </div>
