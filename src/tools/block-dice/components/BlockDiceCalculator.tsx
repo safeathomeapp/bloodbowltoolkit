@@ -987,9 +987,6 @@ export function BlockDiceCalculator() {
             <p className={styles.playerCardMeta}>
               Skills: {blockerSkills.length > 0 ? blockerSkills.join(', ') : 'None'}
             </p>
-            {currentSquareBlitzLabel ? (
-              <p className={styles.playerCardMeta}>Current square blitz: {currentSquareBlitzLabel}</p>
-            ) : null}
             <div className={styles.playerCardToggleRow}>
               {PLAYER_SKILL_OPTIONS.map((skill) => (
                 <button
