@@ -222,21 +222,6 @@ export function BlockDiceCalculator() {
     }
   }, [])
 
-  useEffect(() => {
-    if (typeof window === 'undefined' || !isWhyPanelOpen) {
-      return
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsWhyPanelOpen(false)
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isWhyPanelOpen])
-
   const placePlayer = (position: Position) => {
     const existingPlayer = boardState.placedPlayers.find((player) => isSamePosition(player.position, position))
 
@@ -1018,17 +1003,17 @@ export function BlockDiceCalculator() {
         <div className={styles.sectionHeading}>
           <p className={styles.eyebrow}>Result</p>
           <h3 id="result-title" className={styles.title}>
-            Block Dice Summary
+            Block Result
           </h3>
         </div>
 
         {calculation ? (
           <div className={styles.resultStack}>
             <div className={styles.resultCard}>
-              <p className={styles.resultHeadline}>
-                {calculation.blocker.label} into {calculation.target.label}
+              <p className={styles.resultHeadline}>{calculation.finalDice.summary}</p>
+              <p className={styles.resultCopy}>
+                Attacker ST {calculation.attackerStrength.total} vs Defender ST {calculation.defenderStrength.total}
               </p>
-              <p className={styles.resultCopy}>{calculation.finalDice.summary}</p>
               {previewMode === 'BLITZ' && target ? (
                 <p className={styles.resultCopy}>
                   {currentCandidatePositionLabel
@@ -1040,11 +1025,11 @@ export function BlockDiceCalculator() {
                 <button
                   type="button"
                   className={styles.whyButton}
-                  onClick={() => setIsWhyPanelOpen(true)}
+                  onClick={() => setIsWhyPanelOpen((current) => !current)}
                   aria-expanded={isWhyPanelOpen}
-                  aria-controls="why-panel-title"
+                  aria-controls="why-panel-inline"
                 >
-                  Why?
+                  {isWhyPanelOpen ? 'Hide Why' : 'Why?'}
                 </button>
                 {previewMode === 'BLITZ' && currentCandidate ? (
                   <button
@@ -1056,60 +1041,40 @@ export function BlockDiceCalculator() {
                   </button>
                 ) : null}
               </div>
-              <ul className={styles.summaryList}>
-                <li>
-                  Attacker ST {calculation.attackerStrength.base}
-                  {calculation.attackerStrength.assistModifier > 0
-                    ? ` + ${calculation.attackerStrength.assistModifier}`
-                    : ''}{' '}
-                  = {calculation.attackerStrength.total}
-                </li>
-                <li>
-                  Defender ST {calculation.defenderStrength.base}
-                  {calculation.defenderStrength.assistModifier > 0
-                    ? ` + ${calculation.defenderStrength.assistModifier}`
-                    : ''}{' '}
-                  = {calculation.defenderStrength.total}
-                </li>
-              </ul>
-            </div>
 
-            <div className={styles.resultCard}>
-              <p className={styles.resultHeadline}>Offensive assists</p>
-              <ul className={styles.summaryList}>
-                {calculation.offensiveAssists.length > 0 ? (
-                  calculation.offensiveAssists.map((assist) => (
-                    <li key={assist.playerId} className={styles[`assist${assist.status}`]}>
-                      {assist.reason}
-                    </li>
-                  ))
-                ) : (
-                  <li>No offensive assist candidates.</li>
-                )}
-              </ul>
-            </div>
+              {isWhyPanelOpen ? (
+                <div id="why-panel-inline">
+                  <div className={styles.whyRoleRow} aria-label="Attacker and defender summary">
+                    <span
+                      className={`${styles.whyRoleChip} ${
+                        calculation.blocker.teamSide === 'A' ? styles.whyRoleTeamA : styles.whyRoleTeamB
+                      }`}
+                    >
+                      A {blockerNumberLabel !== 'none' ? blockerNumberLabel : calculation.blocker.label}
+                    </span>
+                    <span
+                      className={`${styles.whyRoleChip} ${
+                        calculation.target.teamSide === 'A' ? styles.whyRoleTeamA : styles.whyRoleTeamB
+                      }`}
+                    >
+                      D {targetNumberLabel !== 'none' ? targetNumberLabel : calculation.target.label}
+                    </span>
+                  </div>
 
-            <div className={styles.resultCard}>
-              <p className={styles.resultHeadline}>Defensive assists</p>
-              <ul className={styles.summaryList}>
-                {calculation.defensiveAssists.length > 0 ? (
-                  calculation.defensiveAssists.map((assist) => (
-                    <li key={assist.playerId} className={styles[`assist${assist.status}`]}>
-                      {assist.reason}
-                    </li>
-                  ))
-                ) : (
-                  <li>No defensive assist candidates.</li>
-                )}
-              </ul>
-            </div>
-
-            <div className={styles.resultCard}>
-              <p className={styles.resultHeadline}>Next step</p>
-              <p className={styles.resultCopy}>
-                Use the bottom-sheet explanation for the full reasoning, or switch back to edit
-                mode to adjust the board without losing your saved local setup.
-              </p>
+                  <div className={styles.explanationStack}>
+                    {calculation.explanation.map((section) => (
+                      <div key={section.title} className={styles.explanationCard}>
+                        <p className={styles.resultHeadline}>{section.title}</p>
+                        <ul className={styles.summaryList}>
+                          {section.entries.map((entry) => (
+                            <li key={entry}>{entry}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         ) : (
@@ -1123,67 +1088,6 @@ export function BlockDiceCalculator() {
         )}
       </section>
 
-      {isWhyPanelOpen && calculation ? (
-        <div
-          className={styles.bottomSheetBackdrop}
-          role="presentation"
-          onClick={() => setIsWhyPanelOpen(false)}
-        >
-          <section
-            className={styles.bottomSheet}
-            aria-labelledby="why-panel-title"
-            aria-modal="true"
-            role="dialog"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className={styles.bottomSheetHeader}>
-              <div className={styles.sectionHeading}>
-                <p className={styles.eyebrow}>Why</p>
-                <h3 id="why-panel-title" className={styles.title}>
-                  Why this block result happened
-                </h3>
-              </div>
-              <button
-                type="button"
-                className={styles.closeButton}
-                onClick={() => setIsWhyPanelOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-
-            <div className={styles.whyRoleRow} aria-label="Attacker and defender summary">
-              <span
-                className={`${styles.whyRoleChip} ${
-                  calculation.blocker.teamSide === 'A' ? styles.whyRoleTeamA : styles.whyRoleTeamB
-                }`}
-              >
-                A {blockerNumberLabel !== 'none' ? blockerNumberLabel : calculation.blocker.label}
-              </span>
-              <span
-                className={`${styles.whyRoleChip} ${
-                  calculation.target.teamSide === 'A' ? styles.whyRoleTeamA : styles.whyRoleTeamB
-                }`}
-              >
-                D {targetNumberLabel !== 'none' ? targetNumberLabel : calculation.target.label}
-              </span>
-            </div>
-
-            <div className={styles.explanationStack}>
-              {calculation.explanation.map((section) => (
-                <div key={section.title} className={styles.explanationCard}>
-                  <p className={styles.resultHeadline}>{section.title}</p>
-                  <ul className={styles.summaryList}>
-                    {section.entries.map((entry) => (
-                      <li key={entry}>{entry}</li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
-      ) : null}
     </div>
   )
 }
