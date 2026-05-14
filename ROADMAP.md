@@ -24,9 +24,9 @@
 
 ## Current Priorities
 
-- Simplify candidate visuals and remove misleading `BEST` / `ALT` language where no mathematical distinction exists
-- Re-test the candidate-square flow on a phone after the tie-aware update
-- Perform a broader calculator UI cleanup pass after candidate semantics are corrected
+- Finish active-side and role-marker cleanup around the revised board-header team toggle
+- Re-test the active-team calculate flow on a phone after the explicit side-selection update
+- Implement the next formula-changing skill pass for `Guard`
 - Expand functional rules coverage and scenario utility on top of the new player-card control surface
 - Defer merge planning until the revised UX rewrite is stable
 

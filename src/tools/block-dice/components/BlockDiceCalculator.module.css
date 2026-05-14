@@ -20,6 +20,13 @@
   gap: 0.4rem;
 }
 
+.titleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.9rem;
+}
+
 .eyebrow {
   margin: 0;
   text-transform: uppercase;
@@ -49,6 +56,32 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem;
+}
+
+.teamToggleRow {
+  display: inline-flex;
+  gap: 0.4rem;
+}
+
+.teamToggle {
+  border: 1px solid rgba(246, 239, 228, 0.18);
+  border-radius: 999px;
+  padding: 0.55rem 0.8rem;
+  background: rgba(246, 239, 228, 0.06);
+  color: rgba(246, 239, 228, 0.86);
+  font-weight: 800;
+}
+
+.teamToggleAActive {
+  background: rgba(63, 140, 255, 0.22);
+  border-color: rgba(96, 169, 255, 0.68);
+  color: #d8e9ff;
+}
+
+.teamToggleBActive {
+  background: rgba(223, 72, 89, 0.22);
+  border-color: rgba(248, 108, 115, 0.68);
+  color: #ffd7db;
 }
 
 .toggle,
@@ -616,6 +649,37 @@
   gap: 0.85rem;
 }
 
+.whyRoleRow {
+  margin-top: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.whyRoleChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  border: 1px solid transparent;
+}
+
+.whyRoleTeamA {
+  background: rgba(63, 140, 255, 0.2);
+  border-color: rgba(96, 169, 255, 0.68);
+  color: #d8e9ff;
+}
+
+.whyRoleTeamB {
+  background: rgba(223, 72, 89, 0.2);
+  border-color: rgba(248, 108, 115, 0.68);
+  color: #ffd7db;
+}
+
 .explanationCard {
   padding: 1rem;
   border-radius: 1rem;
@@ -701,6 +765,15 @@
 
   .title {
     font-size: 1.3rem;
+  }
+
+  .titleRow {
+    align-items: center;
+  }
+
+  .teamToggle {
+    padding: 0.42rem 0.62rem;
+    font-size: 0.62rem;
   }
 
   .playerCardGrid {

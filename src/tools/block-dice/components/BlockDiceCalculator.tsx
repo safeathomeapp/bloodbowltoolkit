@@ -43,6 +43,7 @@ interface PersistedCalculatorState {
   playerProfiles: PlayerProfile[]
   boardState: BoardState
   nextNumbers: Record<TeamSide, number>
+  activeTeam: TeamSide
   appMode: AppMode
   previewMode: PreviewMode
   invalidatedBlitzCandidates: Record<string, string[]>
@@ -91,6 +92,17 @@ function getProfileLabel(player: PlacedPlayer, profiles: PlayerProfile[]) {
   return profile?.name ?? player.id
 }
 
+function getProfileTokenNumber(player: PlacedPlayer, profiles: PlayerProfile[]) {
+  const profile = profiles.find((entry) => entry.id === player.profileId)
+
+  if (typeof profile?.number === 'number') {
+    return String(profile.number)
+  }
+
+  const numericId = (profile?.name ?? player.id).match(/(\d+)$/)?.[1]
+  return numericId ?? player.id
+}
+
 function getProfileStrength(player: PlacedPlayer, profiles: PlayerProfile[]) {
   const profile = profiles.find((entry) => entry.id === player.profileId)
   return profile?.strength ?? 0
@@ -129,6 +141,17 @@ export function BlockDiceCalculator() {
   const [nextNumbers, setNextNumbers] = useState<Record<TeamSide, number>>(
     persistedState?.nextNumbers ?? { A: 1, B: 1 },
   )
+  const [activeTeam, setActiveTeam] = useState<TeamSide>(() => {
+    if (persistedState?.activeTeam) {
+      return persistedState.activeTeam
+    }
+
+    const persistedBlocker = persistedState?.boardState.blockerId
+      ? persistedState.boardState.placedPlayers.find((player) => player.id === persistedState.boardState.blockerId) ?? null
+      : null
+
+    return persistedBlocker?.teamSide ?? 'A'
+  })
   const [appMode, setAppMode] = useState<AppMode>(persistedState?.appMode ?? 'EDIT')
   const [previewMode, setPreviewMode] = useState<PreviewMode>(persistedState?.previewMode ?? 'STANDARD')
   const [invalidatedBlitzCandidates, setInvalidatedBlitzCandidates] = useState<Record<string, string[]>>(
@@ -154,6 +177,7 @@ export function BlockDiceCalculator() {
       playerProfiles,
       boardState,
       nextNumbers,
+      activeTeam,
       appMode,
       previewMode,
       invalidatedBlitzCandidates,
@@ -163,6 +187,7 @@ export function BlockDiceCalculator() {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
   }, [
     appMode,
+    activeTeam,
     boardState,
     draft,
     invalidatedBlitzCandidates,
@@ -301,11 +326,50 @@ export function BlockDiceCalculator() {
     )
   }
 
+  const setActiveTeamSelection = (nextTeam: TeamSide) => {
+    setActiveTeam(nextTeam)
+    setSelectedBlitzCandidateKey(null)
+    setIsWhyPanelOpen(false)
+
+    setBoardState((currentState) => {
+      const currentAttacker =
+        currentState.placedPlayers.find((entry) => entry.id === currentState.blockerId) ?? null
+      const currentDefender =
+        currentState.placedPlayers.find((entry) => entry.id === currentState.targetId) ?? null
+
+      if (currentAttacker?.teamSide === nextTeam) {
+        return {
+          ...currentState,
+          targetId: currentDefender?.teamSide === nextTeam ? null : currentState.targetId,
+        }
+      }
+
+      if (
+        currentAttacker &&
+        currentDefender &&
+        currentDefender.teamSide === nextTeam &&
+        currentAttacker.teamSide !== nextTeam
+      ) {
+        return {
+          ...currentState,
+          blockerId: currentDefender.id,
+          targetId: currentAttacker.id,
+        }
+      }
+
+      return {
+        ...currentState,
+        blockerId: null,
+        targetId: null,
+      }
+    })
+  }
+
   const selectPlayer = (player: PlacedPlayer) => {
     setBoardState((currentState) => {
       const currentBlocker = currentState.placedPlayers.find((entry) => entry.id === currentState.blockerId)
 
-      if (player.id === currentState.targetId) {
+      if (player.teamSide === activeTeam) {
         return {
           ...currentState,
           blockerId: player.id,
@@ -313,12 +377,8 @@ export function BlockDiceCalculator() {
         }
       }
 
-      if (player.teamSide === currentBlocker?.teamSide || !currentBlocker) {
-        return {
-          ...currentState,
-          blockerId: player.id,
-          targetId: null,
-        }
+      if (!currentBlocker || currentBlocker.teamSide !== activeTeam) {
+        return currentState
       }
 
       const previewIsAdjacent = isAdjacent(currentBlocker.position, player.position)
@@ -399,6 +459,7 @@ export function BlockDiceCalculator() {
 
   const teamACount = boardState.placedPlayers.filter((player) => player.teamSide === 'A').length
   const teamBCount = boardState.placedPlayers.filter((player) => player.teamSide === 'B').length
+  const defendingTeam: TeamSide = activeTeam === 'A' ? 'B' : 'A'
   const blocker = boardState.placedPlayers.find((player) => player.id === boardState.blockerId) ?? null
   const target = boardState.placedPlayers.find((player) => player.id === boardState.targetId) ?? null
   const invalidationSetKey = blocker && target ? `${blocker.id}:${target.id}` : null
@@ -440,6 +501,8 @@ export function BlockDiceCalculator() {
       : null
   const blockerLabel = blocker ? getProfileLabel(blocker, playerProfiles) : 'none'
   const targetLabel = target ? getProfileLabel(target, playerProfiles) : 'none'
+  const blockerNumberLabel = blocker ? getProfileTokenNumber(blocker, playerProfiles) : 'none'
+  const targetNumberLabel = target ? getProfileTokenNumber(target, playerProfiles) : 'none'
   const blockerProfile = getProfileForPlayer(blocker, playerProfiles)
   const targetProfile = getProfileForPlayer(target, playerProfiles)
   const blockerSkills = blockerProfile?.skills ?? []
@@ -461,14 +524,14 @@ export function BlockDiceCalculator() {
     appMode === 'EDIT'
       ? 'Edit mode is active. Tap an empty square to place the configured player or an occupied square to remove one.'
       : !blocker
-        ? 'Calculate mode is active. Tap any player to choose the active attacker.'
+        ? `Calculate mode is active. Team ${activeTeam} is the attacker. Tap one of that team's players to choose the active attacker.`
         : !target
           ? previewMode === 'STANDARD'
             ? 'Adjacent opposing players now show dice overlays. Tap one of those defenders to inspect the detailed result.'
             : 'Blitz Preview is active. Potential block dice show on opposing players without checking movement legality.'
           : previewMode === 'STANDARD'
-            ? 'Preview defender selected. Tap that defender again to make them the attacker, tap another adjacent opposing player to switch the preview, or tap a friendly player to change attacker.'
-            : 'Blitz defender selected. Tap that defender again to make them the attacker, tap a candidate square to inspect it, long press it for Why, or use the result action to mark it unreachable.'
+            ? 'Preview defender selected. Tap another adjacent opposing player to switch the preview, or tap a friendly player to change attacker.'
+            : 'Blitz defender selected. Tap a candidate square to inspect it, long press it for Why, or use the result action to mark it unreachable.'
   const calculation =
     previewMode === 'BLITZ' && target
       ? selectedCandidate?.calculation ?? candidateResult?.preferredCandidate?.calculation ?? activePreview?.calculation ?? null
@@ -657,7 +720,7 @@ export function BlockDiceCalculator() {
           <div className={styles.summaryCard}>
             <p className={styles.eyebrow}>Calculate Mode</p>
             <ul className={styles.summaryList}>
-              <li>Tap one player to make them the active attacker.</li>
+              <li>Only Team {activeTeam} can be selected as the active attacker.</li>
               <li>
                 {previewMode === 'STANDARD'
                   ? 'Adjacent opposing players show inline dice overlays automatically.'
@@ -727,6 +790,7 @@ export function BlockDiceCalculator() {
           <ul className={styles.summaryList}>
             <li>{teamACount} players placed for Team A</li>
             <li>{teamBCount} players placed for Team B</li>
+            <li>Active side: Team {activeTeam}</li>
             <li>Attacker: {blockerLabel}</li>
             <li>Defender: {targetLabel}</li>
           </ul>
@@ -748,10 +812,31 @@ export function BlockDiceCalculator() {
 
       <section className={styles.boardPanel} aria-labelledby="board-title">
         <div className={styles.sectionHeading}>
-          <p className={styles.eyebrow}>Board</p>
-          <h3 id="board-title" className={styles.title}>
-            Tactical Grid
-          </h3>
+          <div className={styles.titleRow}>
+            <div>
+              <p className={styles.eyebrow}>Board</p>
+              <h3 id="board-title" className={styles.title}>
+                Tactical Grid
+              </h3>
+            </div>
+            <div className={styles.teamToggleRow} aria-label="Active team toggle">
+              {(['A', 'B'] as TeamSide[]).map((teamSide) => (
+                <button
+                  key={teamSide}
+                  type="button"
+                  className={
+                    activeTeam === teamSide
+                      ? `${styles.teamToggle} ${teamSide === 'A' ? styles.teamToggleAActive : styles.teamToggleBActive}`
+                      : styles.teamToggle
+                  }
+                  onClick={() => setActiveTeamSelection(teamSide)}
+                  aria-pressed={activeTeam === teamSide}
+                >
+                  {teamSide === 'A' ? 'Blue' : 'Red'}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className={styles.boardWorkspace}>
@@ -825,7 +910,7 @@ export function BlockDiceCalculator() {
                     {player ? (
                       <span className={tokenClassName}>
                         <strong className={showCalculateAnnotations ? styles.tokenNameCompact : styles.tokenName}>
-                          {getProfileLabel(player, playerProfiles)}
+                          {getProfileTokenNumber(player, playerProfiles)}
                         </strong>
                         {showEditTokenMeta ? <span className={styles.tokenMeta}>ST {getProfileStrength(player, playerProfiles)}</span> : null}
                         {showEditTokenMeta ? (
@@ -864,13 +949,13 @@ export function BlockDiceCalculator() {
           <div className={styles.playerCardGrid} aria-label="Selected player cards">
           <article
             className={`${styles.playerCard} ${
-              (blocker?.teamSide ?? 'A') === 'A' ? styles.playerCardTeamA : styles.playerCardTeamB
+              activeTeam === 'A' ? styles.playerCardTeamA : styles.playerCardTeamB
             }`}
           >
             <div className={styles.playerCardHeader}>
               <div className={styles.playerCardHeading}>
                 <p className={styles.playerCardLabel}>Attacker</p>
-                <p className={styles.playerCardName}>{blockerLabel !== 'none' ? blockerLabel : 'No attacker selected'}</p>
+                <p className={styles.playerCardName}>{blockerNumberLabel !== 'none' ? blockerNumberLabel : 'No attacker selected'}</p>
               </div>
               <p className={styles.playerCardStrength}>
                 {attackerCardStrength !== null ? `ST ${attackerCardStrength}` : 'ST -'}
@@ -906,13 +991,13 @@ export function BlockDiceCalculator() {
 
           <article
             className={`${styles.playerCard} ${
-              (target?.teamSide ?? 'B') === 'A' ? styles.playerCardTeamA : styles.playerCardTeamB
+              defendingTeam === 'A' ? styles.playerCardTeamA : styles.playerCardTeamB
             }`}
           >
             <div className={styles.playerCardHeader}>
               <div className={styles.playerCardHeading}>
                 <p className={styles.playerCardLabel}>Defender</p>
-                <p className={styles.playerCardName}>{targetLabel !== 'none' ? targetLabel : 'No defender selected'}</p>
+                <p className={styles.playerCardName}>{targetNumberLabel !== 'none' ? targetNumberLabel : 'No defender selected'}</p>
               </div>
               <p className={styles.playerCardStrength}>
                 {defenderCardStrength !== null ? `ST ${defenderCardStrength}` : 'ST -'}
@@ -1065,6 +1150,23 @@ export function BlockDiceCalculator() {
               >
                 Close
               </button>
+            </div>
+
+            <div className={styles.whyRoleRow} aria-label="Attacker and defender summary">
+              <span
+                className={`${styles.whyRoleChip} ${
+                  calculation.blocker.teamSide === 'A' ? styles.whyRoleTeamA : styles.whyRoleTeamB
+                }`}
+              >
+                A {blockerNumberLabel !== 'none' ? blockerNumberLabel : calculation.blocker.label}
+              </span>
+              <span
+                className={`${styles.whyRoleChip} ${
+                  calculation.target.teamSide === 'A' ? styles.whyRoleTeamA : styles.whyRoleTeamB
+                }`}
+              >
+                D {targetNumberLabel !== 'none' ? targetNumberLabel : calculation.target.label}
+              </span>
             </div>
 
             <div className={styles.explanationStack}>
