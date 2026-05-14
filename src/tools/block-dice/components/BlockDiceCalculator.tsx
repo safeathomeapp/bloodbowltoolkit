@@ -9,6 +9,8 @@ const GRID_SIZE = 7
 const STRENGTH_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8]
 const STORAGE_KEY = 'blood-bowl-toolkit:block-dice'
 const PLAYER_SKILL_OPTIONS: Skill[] = ['GUARD', 'DEFENSIVE', 'DAUNTLESS', 'HORNS']
+const ATTACKER_CARD_SKILL_OPTIONS: Skill[] = ['DAUNTLESS', 'HORNS']
+const DEFENDER_CARD_SKILL_OPTIONS: Skill[] = ['GUARD', 'DEFENSIVE']
 // Keep blitz candidate invalidation logic dormant for now.
 // The current MVP hides the explicit action because the UX is too loose for release.
 const SHOW_BLITZ_INVALIDATION_ACTION = false
@@ -928,7 +930,7 @@ export function BlockDiceCalculator() {
                       </select>
                     </div>
                     <div className={styles.playerCardToggleRow}>
-                      {PLAYER_SKILL_OPTIONS.map((skill) => (
+                      {ATTACKER_CARD_SKILL_OPTIONS.map((skill) => (
                         <button
                           key={skill}
                           type="button"
@@ -985,7 +987,7 @@ export function BlockDiceCalculator() {
                       </p>
                     </div>
                     <div className={styles.playerCardToggleRow}>
-                      {PLAYER_SKILL_OPTIONS.map((skill) => (
+                      {DEFENDER_CARD_SKILL_OPTIONS.map((skill) => (
                         <button
                           key={skill}
                           type="button"
