@@ -444,6 +444,11 @@ export function BlockDiceCalculator() {
   const targetProfile = getProfileForPlayer(target, playerProfiles)
   const blockerSkills = blockerProfile?.skills ?? []
   const targetSkills = targetProfile?.skills ?? []
+  const attackerCardStrength = blockerProfile
+    ? (blockerSkills.includes('DAUNTLESS') && targetProfile ? targetProfile.strength : blockerProfile.strength) +
+      (previewMode === 'BLITZ' && blockerSkills.includes('HORNS') ? 1 : 0)
+    : null
+  const defenderCardStrength = targetProfile?.strength ?? null
   const selectionHint =
     appMode === 'EDIT'
       ? 'Edit mode is active. Tap an empty square to place the configured player or an occupied square to remove one.'
@@ -855,8 +860,13 @@ export function BlockDiceCalculator() {
             }`}
           >
             <div className={styles.playerCardHeader}>
-              <p className={styles.playerCardLabel}>Attacker</p>
-              <p className={styles.playerCardName}>{blockerLabel !== 'none' ? blockerLabel : 'No attacker selected'}</p>
+              <div className={styles.playerCardHeading}>
+                <p className={styles.playerCardLabel}>Attacker</p>
+                <p className={styles.playerCardName}>{blockerLabel !== 'none' ? blockerLabel : 'No attacker selected'}</p>
+              </div>
+              <p className={styles.playerCardStrength}>
+                {attackerCardStrength !== null ? `ST ${attackerCardStrength}` : 'ST -'}
+              </p>
             </div>
             <p className={styles.playerCardMeta}>
               Skills: {blockerSkills.length > 0 ? blockerSkills.join(', ') : 'None'}
@@ -892,8 +902,13 @@ export function BlockDiceCalculator() {
             }`}
           >
             <div className={styles.playerCardHeader}>
-              <p className={styles.playerCardLabel}>Defender</p>
-              <p className={styles.playerCardName}>{targetLabel !== 'none' ? targetLabel : 'No defender selected'}</p>
+              <div className={styles.playerCardHeading}>
+                <p className={styles.playerCardLabel}>Defender</p>
+                <p className={styles.playerCardName}>{targetLabel !== 'none' ? targetLabel : 'No defender selected'}</p>
+              </div>
+              <p className={styles.playerCardStrength}>
+                {defenderCardStrength !== null ? `ST ${defenderCardStrength}` : 'ST -'}
+              </p>
             </div>
             <p className={styles.playerCardMeta}>
               Skills: {targetSkills.length > 0 ? targetSkills.join(', ') : 'None'}
