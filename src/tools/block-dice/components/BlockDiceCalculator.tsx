@@ -791,7 +791,7 @@ export function BlockDiceCalculator() {
                 >
                   {player ? (
                     <span className={tokenClassName}>
-                      <strong>{getProfileLabel(player, playerProfiles)}</strong>
+                      <strong>{isBlocker ? `*${getProfileLabel(player, playerProfiles)}` : getProfileLabel(player, playerProfiles)}</strong>
                       <span className={styles.tokenMeta}>ST {getProfileStrength(player, playerProfiles)}</span>
                       <span className={styles.tokenMeta}>
                         {player.isStanding ? 'Standing' : 'Prone'}
