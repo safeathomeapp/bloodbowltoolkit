@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import styles from './BlockDiceCalculator.module.css'
 import type { BoardState, PlayerProfile, PlacedPlayer, Position, Skill, TeamSide } from '../../../shared/types/game'
 import { calculateBlockDice } from '../rules/calculateBlockDice'
@@ -8,6 +8,7 @@ const GRID_SIZE = 7
 const STRENGTH_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8]
 const STORAGE_KEY = 'blood-bowl-toolkit:block-dice'
 type AppMode = 'EDIT' | 'CALCULATE'
+type PreviewMode = 'STANDARD' | 'BLITZ'
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -42,6 +43,7 @@ interface PersistedCalculatorState {
   boardState: BoardState
   nextNumbers: Record<TeamSide, number>
   appMode: AppMode
+  previewMode: PreviewMode
 }
 
 function loadPersistedState(): PersistedCalculatorState | null {
@@ -105,10 +107,13 @@ export function BlockDiceCalculator() {
     persistedState?.nextNumbers ?? { A: 1, B: 1 },
   )
   const [appMode, setAppMode] = useState<AppMode>(persistedState?.appMode ?? 'EDIT')
+  const [previewMode, setPreviewMode] = useState<PreviewMode>(persistedState?.previewMode ?? 'STANDARD')
   const [isWhyPanelOpen, setIsWhyPanelOpen] = useState(false)
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null)
   const [installStatus, setInstallStatus] = useState('PWA ready for install and offline use.')
   const [hasRestoredState] = useState(Boolean(persistedState))
+  const longPressTimerRef = useRef<number | null>(null)
+  const suppressClickRef = useRef(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -121,10 +126,11 @@ export function BlockDiceCalculator() {
       boardState,
       nextNumbers,
       appMode,
+      previewMode,
     }
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
-  }, [appMode, boardState, draft, nextNumbers, playerProfiles])
+  }, [appMode, boardState, draft, nextNumbers, playerProfiles, previewMode])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -226,7 +232,9 @@ export function BlockDiceCalculator() {
         }
       }
 
-      if (!isAdjacent(currentBlocker.position, player.position)) {
+      const previewIsAdjacent = isAdjacent(currentBlocker.position, player.position)
+
+      if (previewMode === 'STANDARD' && !previewIsAdjacent) {
         return currentState
       }
 
@@ -238,6 +246,11 @@ export function BlockDiceCalculator() {
   }
 
   const handleGridCellPress = (position: Position) => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false
+      return
+    }
+
     const existingPlayer = boardState.placedPlayers.find((player) => isSamePosition(player.position, position))
 
     if (appMode === 'EDIT') {
@@ -256,6 +269,7 @@ export function BlockDiceCalculator() {
     setBoardState(emptyBoardState)
     setNextNumbers({ A: 1, B: 1 })
     setAppMode('EDIT')
+    setPreviewMode('STANDARD')
     setIsWhyPanelOpen(false)
 
     if (typeof window !== 'undefined') {
@@ -283,8 +297,11 @@ export function BlockDiceCalculator() {
   const teamBCount = boardState.placedPlayers.filter((player) => player.teamSide === 'B').length
   const blocker = boardState.placedPlayers.find((player) => player.id === boardState.blockerId) ?? null
   const target = boardState.placedPlayers.find((player) => player.id === boardState.targetId) ?? null
-  const previews = blocker ? calculateAllTargetPreviews(boardState, playerProfiles, blocker.id) : []
+  const previews = blocker
+    ? calculateAllTargetPreviews(boardState, playerProfiles, blocker.id, previewMode)
+    : []
   const previewMap = new Map(previews.map((preview) => [preview.targetId, preview]))
+  const activePreview = target ? previewMap.get(target.id) ?? null : null
   const blockerLabel = blocker ? getProfileLabel(blocker, playerProfiles) : 'none'
   const targetLabel = target ? getProfileLabel(target, playerProfiles) : 'none'
   const selectionHint =
@@ -293,9 +310,36 @@ export function BlockDiceCalculator() {
       : !blocker
         ? 'Calculate mode is active. Tap any player to choose the active blocker.'
         : !target
-          ? 'Adjacent opposing players now show dice overlays. Tap one of those targets to inspect the detailed result.'
-          : 'Preview target selected. Tap another adjacent opposing player to switch the preview, or tap a friendly player to change blocker.'
-  const calculation = blocker && target ? calculateBlockDice(boardState, playerProfiles) : null
+          ? previewMode === 'STANDARD'
+            ? 'Adjacent opposing players now show dice overlays. Tap one of those targets to inspect the detailed result.'
+            : 'Blitz Preview is active. Potential block dice show on opposing players without checking movement legality.'
+          : previewMode === 'STANDARD'
+            ? 'Preview target selected. Tap another adjacent opposing player to switch the preview, or tap a friendly player to change blocker.'
+            : 'Blitz target selected. The result uses the best currently available adjacent attack square around that target.'
+  const calculation = activePreview?.calculation ?? (blocker && target ? calculateBlockDice(boardState, playerProfiles) : null)
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }
+
+  const startBlockerLongPress = (player: PlacedPlayer | undefined) => {
+    if (appMode !== 'CALCULATE' || !player || player.id !== blocker?.id) {
+      return
+    }
+
+    clearLongPressTimer()
+    longPressTimerRef.current = window.setTimeout(() => {
+      suppressClickRef.current = true
+      setPreviewMode((currentMode) => (currentMode === 'STANDARD' ? 'BLITZ' : 'STANDARD'))
+      setBoardState((currentState) => ({
+        ...currentState,
+        targetId: null,
+      }))
+    }, 450)
+  }
 
   return (
     <div className={styles.layout}>
@@ -315,7 +359,12 @@ export function BlockDiceCalculator() {
                 key={mode}
                 type="button"
                 className={appMode === mode ? styles.toggleActive : styles.toggle}
-                onClick={() => setAppMode(mode)}
+                onClick={() => {
+                  setAppMode(mode)
+                  if (mode === 'EDIT') {
+                    setPreviewMode('STANDARD')
+                  }
+                }}
                 aria-pressed={appMode === mode}
               >
                 {mode}
@@ -427,9 +476,25 @@ export function BlockDiceCalculator() {
             <p className={styles.eyebrow}>Calculate Mode</p>
             <ul className={styles.summaryList}>
               <li>Tap one player to make them the active blocker.</li>
-              <li>Adjacent opposing players show inline dice overlays automatically.</li>
+              <li>
+                {previewMode === 'STANDARD'
+                  ? 'Adjacent opposing players show inline dice overlays automatically.'
+                  : 'Blitz Preview is active and non-adjacent opposing players can show potential block dice.'}
+              </li>
               <li>Tap an adjacent opposing player only when you want detailed reasoning.</li>
             </ul>
+            {blocker ? (
+              <div className={styles.summaryTagRow}>
+                <span className={previewMode === 'BLITZ' ? styles.blitzTagActive : styles.blitzTag}>
+                  {previewMode === 'BLITZ' ? 'BLITZ MODE' : 'STANDARD MODE'}
+                </span>
+              </div>
+            ) : null}
+            {previewMode === 'BLITZ' ? (
+              <p className={styles.statusNote}>
+                Potential block dice only. Movement legality is not checked.
+              </p>
+            ) : null}
           </div>
         )}
 
@@ -472,8 +537,12 @@ export function BlockDiceCalculator() {
           <p className={styles.eyebrow}>Tactical Flow</p>
           <ul className={styles.summaryList}>
             <li>{selectionHint}</li>
-            <li>Standard calculate mode currently previews adjacent blocks only.</li>
-            <li>Blitz preview is intentionally not implemented in this pass.</li>
+            <li>
+              {previewMode === 'STANDARD'
+                ? 'Standard calculate mode currently previews adjacent blocks only.'
+                : 'Long press the active blocker again to leave Blitz Preview.'}
+            </li>
+            <li>Long press the active blocker in Calculate Mode to toggle Blitz Preview.</li>
           </ul>
         </div>
       </section>
@@ -520,6 +589,10 @@ export function BlockDiceCalculator() {
                   role="gridcell"
                   className={cellClassName}
                   onClick={() => handleGridCellPress({ row, col })}
+                  onPointerDown={() => startBlockerLongPress(player)}
+                  onPointerUp={clearLongPressTimer}
+                  onPointerLeave={clearLongPressTimer}
+                  onPointerCancel={clearLongPressTimer}
                 >
                   {player ? (
                     <span className={tokenClassName}>
@@ -559,6 +632,12 @@ export function BlockDiceCalculator() {
                 {calculation.blocker.label} into {calculation.target.label}
               </p>
               <p className={styles.resultCopy}>{calculation.finalDice.summary}</p>
+              {activePreview?.previewMode === 'BLITZ' ? (
+                <p className={styles.resultCopy}>
+                  Best current preview uses attack square {activePreview.attackPosition.row + 1},
+                  {activePreview.attackPosition.col + 1}.
+                </p>
+              ) : null}
               <div className={styles.resultActions}>
                 <button
                   type="button"

@@ -152,6 +152,37 @@
   gap: 0.7rem;
 }
 
+.summaryTagRow {
+  margin-top: 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.blitzTag,
+.blitzTagActive {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.blitzTag {
+  background: rgba(246, 239, 228, 0.08);
+  border: 1px solid rgba(246, 239, 228, 0.18);
+  color: rgba(246, 239, 228, 0.82);
+}
+
+.blitzTagActive {
+  background: rgba(255, 120, 59, 0.18);
+  border: 1px solid rgba(255, 120, 59, 0.45);
+  color: #ffcfac;
+}
+
 .statusNote {
   margin: 0.85rem 0 0;
   color: rgba(246, 239, 228, 0.74);

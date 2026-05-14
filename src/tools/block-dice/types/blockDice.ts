@@ -58,4 +58,6 @@ export interface TargetPreview {
   targetLabel: string
   diceLabel: string
   calculation: BlockDiceCalculation
+  attackPosition: Position
+  previewMode: 'STANDARD' | 'BLITZ'
 }

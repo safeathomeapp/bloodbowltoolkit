@@ -16,12 +16,12 @@
 - UX revision review and roadmap reset
 - Edit / Calculate mode architecture
 - Standard adjacent preview overlays
+- Blitz preview and non-adjacent target overlays
 
 ## Current Priorities
 
-- Add Blitz Preview via blocker long press
-- Extend the rules engine for non-adjacent preview generation
 - Add candidate attack square evaluation and manual invalidation
+- Bind the Why panel to selected blitz candidates
 - Defer merge planning until the revised UX rewrite is stable
 
 ## Deferred Features

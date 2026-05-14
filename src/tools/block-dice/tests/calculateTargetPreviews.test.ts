@@ -81,4 +81,17 @@ describe('calculateAllTargetPreviews', () => {
     expect(attackerPreviews.find((preview) => preview.targetId === 'B1')?.diceLabel).toBe('2D')
     expect(defenderPreviews.find((preview) => preview.targetId === 'B2')?.diceLabel).toBe('-2D')
   })
+
+  it('returns distant targets in blitz preview mode when a potential attack square exists', () => {
+    const { boardState, profiles } = buildState([
+      createPlayer('A1', 'A', { row: 0, col: 0 }, { strength: 3 }),
+      createPlayer('B1', 'B', { row: 4, col: 4 }, { strength: 3 }),
+    ])
+
+    const previews = calculateAllTargetPreviews(boardState, profiles, 'A1', 'BLITZ')
+
+    expect(previews).toHaveLength(1)
+    expect(previews[0]?.previewMode).toBe('BLITZ')
+    expect(previews[0]?.targetId).toBe('B1')
+  })
 })
