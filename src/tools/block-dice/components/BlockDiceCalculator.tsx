@@ -134,6 +134,18 @@ function getTokenRoleLabel(options: { isBlocker: boolean; isTarget: boolean; isB
   return null
 }
 
+function toDiceLabel(count: number, chooser: 'ATTACKER' | 'DEFENDER' | 'NONE') {
+  if (chooser === 'ATTACKER') {
+    return `${count}D`
+  }
+
+  if (chooser === 'DEFENDER') {
+    return `-${count}D`
+  }
+
+  return '1D'
+}
+
 export function BlockDiceCalculator() {
   const persistedState = loadPersistedState()
   const [draft, setDraft] = useState<PlacementDraft>(persistedState?.draft ?? defaultDraft)
@@ -504,6 +516,24 @@ export function BlockDiceCalculator() {
 
         return strengthAfterHorns
       })()
+    : null
+  const currentSquareBlitzCalculation =
+    blocker && target && previewMode === 'BLITZ' && isAdjacent(blocker.position, target.position)
+      ? calculateBlockDice(
+          {
+            ...boardState,
+            blockerId: blocker.id,
+            targetId: target.id,
+          },
+          playerProfiles,
+          { isBlitz: true },
+        )
+      : null
+  const currentSquareBlitzLabel = currentSquareBlitzCalculation
+    ? toDiceLabel(
+        currentSquareBlitzCalculation.finalDice.count,
+        currentSquareBlitzCalculation.finalDice.chooser,
+      )
     : null
   const defenderCardStrength = targetProfile?.strength ?? null
   const selectionHint =
@@ -950,6 +980,9 @@ export function BlockDiceCalculator() {
             <p className={styles.playerCardMeta}>
               Skills: {blockerSkills.length > 0 ? blockerSkills.join(', ') : 'None'}
             </p>
+            {currentSquareBlitzLabel ? (
+              <p className={styles.playerCardMeta}>Current square blitz: {currentSquareBlitzLabel}</p>
+            ) : null}
             <div className={styles.playerCardToggleRow}>
               {PLAYER_SKILL_OPTIONS.map((skill) => (
                 <button
