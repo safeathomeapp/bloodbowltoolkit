@@ -1208,10 +1208,20 @@ export function BlockDiceCalculator() {
 
       <section className={styles.resultsPanel} aria-labelledby="result-title">
         <div className={styles.sectionHeading}>
-          <p className={styles.eyebrow}>Result</p>
-          <h3 id="result-title" className={styles.title}>
-            Block Result
-          </h3>
+          <div className={styles.titleRow}>
+            <p id="result-title" className={styles.eyebrow}>Result</p>
+            {calculation ? (
+              <button
+                type="button"
+                className={styles.whyButton}
+                onClick={() => setIsWhyPanelOpen((current) => !current)}
+                aria-expanded={isWhyPanelOpen}
+                aria-controls="why-panel-inline"
+              >
+                {isWhyPanelOpen ? 'Hide Why' : 'Why?'}
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {calculation ? (
@@ -1229,15 +1239,6 @@ export function BlockDiceCalculator() {
                 </p>
               ) : null}
               <div className={styles.resultActions}>
-                <button
-                  type="button"
-                  className={styles.whyButton}
-                  onClick={() => setIsWhyPanelOpen((current) => !current)}
-                  aria-expanded={isWhyPanelOpen}
-                  aria-controls="why-panel-inline"
-                >
-                  {isWhyPanelOpen ? 'Hide Why' : 'Why?'}
-                </button>
                 {previewMode === 'BLITZ' && currentCandidate ? (
                   <button
                     type="button"
