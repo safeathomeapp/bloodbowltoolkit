@@ -77,4 +77,20 @@ describe('calculateBestPotentialBlock', () => {
 
     expect(preview).toBeNull()
   })
+
+  it('returns null when every valid candidate is invalidated', () => {
+    const blocker = createPlayer('A1', 'A', { row: 0, col: 0 }, { strength: 3 })
+    const target = createPlayer('B1', 'B', { row: 3, col: 3 }, { strength: 3 })
+    const { boardState, profiles } = buildState([blocker, target])
+
+    const preview = calculateBestPotentialBlock(
+      boardState,
+      profiles,
+      'A1',
+      'B1',
+      ['2,2', '2,3', '2,4', '3,2', '3,4', '4,2', '4,3', '4,4'],
+    )
+
+    expect(preview).toBeNull()
+  })
 })

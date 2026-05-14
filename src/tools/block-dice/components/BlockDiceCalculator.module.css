@@ -220,6 +220,31 @@
   box-shadow: inset 0 0 0 2px rgba(123, 197, 96, 0.32);
 }
 
+.candidateBest {
+  background: rgba(150, 212, 104, 0.18);
+  border-color: rgba(150, 212, 104, 0.8);
+}
+
+.candidateFallback {
+  background: rgba(88, 135, 218, 0.18);
+  border-color: rgba(88, 135, 218, 0.72);
+}
+
+.candidateInvalidated {
+  background: rgba(201, 82, 82, 0.16);
+  border-color: rgba(201, 82, 82, 0.7);
+  opacity: 0.72;
+}
+
+.candidateOccupied {
+  background: rgba(146, 149, 156, 0.16);
+  border-color: rgba(146, 149, 156, 0.6);
+}
+
+.candidateSelected {
+  box-shadow: inset 0 0 0 3px rgba(247, 234, 181, 0.72);
+}
+
 .cellHint {
   font-size: 0.72rem;
   color: rgba(246, 239, 228, 0.42);

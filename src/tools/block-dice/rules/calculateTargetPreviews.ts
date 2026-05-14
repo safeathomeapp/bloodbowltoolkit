@@ -26,6 +26,7 @@ export function calculateAllTargetPreviews(
   profiles: PlayerProfile[],
   blockerId: string,
   previewMode: 'STANDARD' | 'BLITZ' = 'STANDARD',
+  invalidatedByTarget: Record<string, string[]> = {},
 ): TargetPreview[] {
   const blocker = boardState.placedPlayers.find((player) => player.id === blockerId)
 
@@ -36,7 +37,15 @@ export function calculateAllTargetPreviews(
   if (previewMode === 'BLITZ') {
     return boardState.placedPlayers
       .filter((player) => player.teamSide !== blocker.teamSide)
-      .map((target) => calculateBestPotentialBlock(boardState, profiles, blockerId, target.id))
+      .map((target) =>
+        calculateBestPotentialBlock(
+          boardState,
+          profiles,
+          blockerId,
+          target.id,
+          invalidatedByTarget[target.id] ?? [],
+        ),
+      )
       .filter((preview): preview is TargetPreview => preview !== null)
   }
 

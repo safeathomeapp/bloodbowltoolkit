@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import styles from './BlockDiceCalculator.module.css'
 import type { BoardState, PlayerProfile, PlacedPlayer, Position, Skill, TeamSide } from '../../../shared/types/game'
 import { calculateBlockDice } from '../rules/calculateBlockDice'
+import { buildPositionKey, calculatePotentialBlockCandidates } from '../rules/calculatePotentialBlockCandidates'
 import { calculateAllTargetPreviews } from '../rules/calculateTargetPreviews'
 
 const GRID_SIZE = 7
@@ -44,6 +45,8 @@ interface PersistedCalculatorState {
   nextNumbers: Record<TeamSide, number>
   appMode: AppMode
   previewMode: PreviewMode
+  invalidatedBlitzCandidates: Record<string, string[]>
+  selectedBlitzCandidateKey: string | null
 }
 
 function loadPersistedState(): PersistedCalculatorState | null {
@@ -108,6 +111,12 @@ export function BlockDiceCalculator() {
   )
   const [appMode, setAppMode] = useState<AppMode>(persistedState?.appMode ?? 'EDIT')
   const [previewMode, setPreviewMode] = useState<PreviewMode>(persistedState?.previewMode ?? 'STANDARD')
+  const [invalidatedBlitzCandidates, setInvalidatedBlitzCandidates] = useState<Record<string, string[]>>(
+    persistedState?.invalidatedBlitzCandidates ?? {},
+  )
+  const [selectedBlitzCandidateKey, setSelectedBlitzCandidateKey] = useState<string | null>(
+    persistedState?.selectedBlitzCandidateKey ?? null,
+  )
   const [isWhyPanelOpen, setIsWhyPanelOpen] = useState(false)
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null)
   const [installStatus, setInstallStatus] = useState('PWA ready for install and offline use.')
@@ -127,10 +136,21 @@ export function BlockDiceCalculator() {
       nextNumbers,
       appMode,
       previewMode,
+      invalidatedBlitzCandidates,
+      selectedBlitzCandidateKey,
     }
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
-  }, [appMode, boardState, draft, nextNumbers, playerProfiles, previewMode])
+  }, [
+    appMode,
+    boardState,
+    draft,
+    invalidatedBlitzCandidates,
+    nextNumbers,
+    playerProfiles,
+    previewMode,
+    selectedBlitzCandidateKey,
+  ])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -251,6 +271,16 @@ export function BlockDiceCalculator() {
       return
     }
 
+    const positionKey = buildPositionKey(position)
+    const candidate = candidateMap.get(positionKey)
+
+    if (appMode === 'CALCULATE' && previewMode === 'BLITZ' && target && candidate) {
+      if (candidate.status === 'VALID') {
+        setSelectedBlitzCandidateKey(candidate.key)
+      }
+      return
+    }
+
     const existingPlayer = boardState.placedPlayers.find((player) => isSamePosition(player.position, position))
 
     if (appMode === 'EDIT') {
@@ -270,6 +300,8 @@ export function BlockDiceCalculator() {
     setNextNumbers({ A: 1, B: 1 })
     setAppMode('EDIT')
     setPreviewMode('STANDARD')
+    setInvalidatedBlitzCandidates({})
+    setSelectedBlitzCandidateKey(null)
     setIsWhyPanelOpen(false)
 
     if (typeof window !== 'undefined') {
@@ -297,11 +329,42 @@ export function BlockDiceCalculator() {
   const teamBCount = boardState.placedPlayers.filter((player) => player.teamSide === 'B').length
   const blocker = boardState.placedPlayers.find((player) => player.id === boardState.blockerId) ?? null
   const target = boardState.placedPlayers.find((player) => player.id === boardState.targetId) ?? null
+  const invalidationSetKey = blocker && target ? `${blocker.id}:${target.id}` : null
+  const invalidatedKeysForSelection =
+    invalidationSetKey ? invalidatedBlitzCandidates[invalidationSetKey] ?? [] : []
+  const invalidatedByTarget =
+    blocker && previewMode === 'BLITZ'
+      ? Object.fromEntries(
+          Object.entries(invalidatedBlitzCandidates)
+            .filter(([key]) => key.startsWith(`${blocker.id}:`))
+            .map(([key, keys]) => [key.split(':')[1] ?? '', keys]),
+        )
+      : {}
   const previews = blocker
-    ? calculateAllTargetPreviews(boardState, playerProfiles, blocker.id, previewMode)
+    ? calculateAllTargetPreviews(boardState, playerProfiles, blocker.id, previewMode, invalidatedByTarget)
     : []
   const previewMap = new Map(previews.map((preview) => [preview.targetId, preview]))
   const activePreview = target ? previewMap.get(target.id) ?? null : null
+  const candidateResult =
+    blocker && target && previewMode === 'BLITZ'
+      ? calculatePotentialBlockCandidates(
+          boardState,
+          playerProfiles,
+          blocker.id,
+          target.id,
+          invalidatedKeysForSelection,
+        )
+      : null
+  const candidateMap = new Map(candidateResult?.candidates.map((candidate) => [candidate.key, candidate]) ?? [])
+  const selectedCandidate =
+    candidateResult && selectedBlitzCandidateKey
+      ? candidateResult.candidates.find(
+          (candidate) =>
+            candidate.key === selectedBlitzCandidateKey &&
+            candidate.status === 'VALID' &&
+            candidate.calculation,
+        ) ?? null
+      : null
   const blockerLabel = blocker ? getProfileLabel(blocker, playerProfiles) : 'none'
   const targetLabel = target ? getProfileLabel(target, playerProfiles) : 'none'
   const selectionHint =
@@ -315,8 +378,11 @@ export function BlockDiceCalculator() {
             : 'Blitz Preview is active. Potential block dice show on opposing players without checking movement legality.'
           : previewMode === 'STANDARD'
             ? 'Preview target selected. Tap another adjacent opposing player to switch the preview, or tap a friendly player to change blocker.'
-            : 'Blitz target selected. The result uses the best currently available adjacent attack square around that target.'
-  const calculation = activePreview?.calculation ?? (blocker && target ? calculateBlockDice(boardState, playerProfiles) : null)
+            : 'Blitz target selected. Tap a candidate square to inspect that attack position or long press it to mark it unreachable.'
+  const calculation =
+    previewMode === 'BLITZ' && target
+      ? selectedCandidate?.calculation ?? candidateResult?.bestCandidate?.calculation ?? activePreview?.calculation ?? null
+      : activePreview?.calculation ?? (blocker && target ? calculateBlockDice(boardState, playerProfiles) : null)
 
   const clearLongPressTimer = () => {
     if (longPressTimerRef.current !== null) {
@@ -334,10 +400,41 @@ export function BlockDiceCalculator() {
     longPressTimerRef.current = window.setTimeout(() => {
       suppressClickRef.current = true
       setPreviewMode((currentMode) => (currentMode === 'STANDARD' ? 'BLITZ' : 'STANDARD'))
+      setSelectedBlitzCandidateKey(null)
       setBoardState((currentState) => ({
         ...currentState,
         targetId: null,
       }))
+    }, 450)
+  }
+
+  const startCandidateLongPress = (position: Position) => {
+    if (appMode !== 'CALCULATE' || previewMode !== 'BLITZ' || !invalidationSetKey) {
+      return
+    }
+
+    const key = buildPositionKey(position)
+    const candidate = candidateMap.get(key)
+
+    if (!candidate || candidate.status === 'OCCUPIED') {
+      return
+    }
+
+    clearLongPressTimer()
+    longPressTimerRef.current = window.setTimeout(() => {
+      suppressClickRef.current = true
+      setInvalidatedBlitzCandidates((current) => {
+        const existing = current[invalidationSetKey] ?? []
+        const next = existing.includes(key)
+          ? existing.filter((entry) => entry !== key)
+          : [...existing, key]
+
+        return {
+          ...current,
+          [invalidationSetKey]: next,
+        }
+      })
+      setSelectedBlitzCandidateKey((currentKey) => (currentKey === key ? null : currentKey))
     }, 450)
   }
 
@@ -495,6 +592,11 @@ export function BlockDiceCalculator() {
                 Potential block dice only. Movement legality is not checked.
               </p>
             ) : null}
+            {previewMode === 'BLITZ' && target ? (
+              <p className={styles.statusNote}>
+                Tap a candidate square to inspect it. Long press a candidate square to mark it unreachable.
+              </p>
+            ) : null}
           </div>
         )}
 
@@ -566,9 +668,18 @@ export function BlockDiceCalculator() {
               const isTarget = player?.id === boardState.targetId
               const preview = player ? previewMap.get(player.id) : undefined
               const isEligibleTarget = appMode === 'CALCULATE' && Boolean(preview)
+              const candidateKey = buildPositionKey({ row, col })
+              const candidate = candidateMap.get(candidateKey)
+              const isSelectedCandidate = candidate?.key === selectedBlitzCandidateKey
+              const isBestCandidate = candidateResult?.bestCandidate?.key === candidate?.key
               const cellClassName = [
                 player ? styles.cellOccupied : styles.cell,
                 isEligibleTarget && !isTarget ? styles.cellEligibleTarget : '',
+                candidate?.status === 'VALID' && isBestCandidate ? styles.candidateBest : '',
+                candidate?.status === 'VALID' && !isBestCandidate ? styles.candidateFallback : '',
+                candidate?.status === 'INVALIDATED' ? styles.candidateInvalidated : '',
+                candidate?.status === 'OCCUPIED' ? styles.candidateOccupied : '',
+                isSelectedCandidate ? styles.candidateSelected : '',
               ]
                 .filter(Boolean)
                 .join(' ')
@@ -589,7 +700,10 @@ export function BlockDiceCalculator() {
                   role="gridcell"
                   className={cellClassName}
                   onClick={() => handleGridCellPress({ row, col })}
-                  onPointerDown={() => startBlockerLongPress(player)}
+                  onPointerDown={() => {
+                    startBlockerLongPress(player)
+                    startCandidateLongPress({ row, col })
+                  }}
                   onPointerUp={clearLongPressTimer}
                   onPointerLeave={clearLongPressTimer}
                   onPointerCancel={clearLongPressTimer}
@@ -608,7 +722,9 @@ export function BlockDiceCalculator() {
                       {isTarget ? <span className={styles.tokenRole}>Target</span> : null}
                     </span>
                   ) : (
-                    <span className={styles.cellHint}>{row + 1},{col + 1}</span>
+                    <span className={styles.cellHint}>
+                      {candidate?.diceLabel ?? `${row + 1},${col + 1}`}
+                    </span>
                   )}
                 </button>
               )
@@ -632,10 +748,13 @@ export function BlockDiceCalculator() {
                 {calculation.blocker.label} into {calculation.target.label}
               </p>
               <p className={styles.resultCopy}>{calculation.finalDice.summary}</p>
-              {activePreview?.previewMode === 'BLITZ' ? (
+              {previewMode === 'BLITZ' && target ? (
                 <p className={styles.resultCopy}>
-                  Best current preview uses attack square {activePreview.attackPosition.row + 1},
-                  {activePreview.attackPosition.col + 1}.
+                  {(selectedCandidate ?? candidateResult?.bestCandidate)?.key
+                    ? `Current preview uses attack square ${(selectedCandidate ?? candidateResult?.bestCandidate)!.position.row + 1},${
+                        (selectedCandidate ?? candidateResult?.bestCandidate)!.position.col + 1
+                      }.`
+                    : 'No reachable candidate squares remain for this blitz preview.'}
                 </p>
               ) : null}
               <div className={styles.resultActions}>

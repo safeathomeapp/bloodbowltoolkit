@@ -61,3 +61,13 @@ export interface TargetPreview {
   attackPosition: Position
   previewMode: 'STANDARD' | 'BLITZ'
 }
+
+export type CandidateSquareStatus = 'VALID' | 'OCCUPIED' | 'INVALIDATED'
+
+export interface CandidateAttackSquare {
+  key: string
+  position: Position
+  status: CandidateSquareStatus
+  diceLabel: string | null
+  calculation: BlockDiceCalculation | null
+}
