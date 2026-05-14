@@ -268,6 +268,23 @@ describe('calculateBlockDice', () => {
     expect(result.finalDice.chooser).toBe('DEFENDER')
   })
 
+  it('groups irrelevant assist candidates in the explanation', () => {
+    const attacker = createPlayer('A1', 'A', { row: 3, col: 3 })
+    const defender = createPlayer('B1', 'B', { row: 3, col: 4 })
+    const a2 = createPlayer('A2', 'A', { row: 0, col: 0 })
+    const a3 = createPlayer('A3', 'A', { row: 0, col: 1 })
+    const a4 = createPlayer('A4', 'A', { row: 0, col: 2 })
+    const { boardState, profiles } = buildState([attacker, defender, a2, a3, a4], 'A1', 'B1')
+
+    const result = calculateBlockDice(boardState, profiles)
+    const offensiveSection = result.explanation.find((section) => section.title === 'Offensive Assists')
+    const cancelledSection = result.explanation.find((section) => section.title === 'Cancelled / Ignored')
+
+    expect(offensiveSection?.entries).toContain('A2, A3 and A4 are not relevant in this block.')
+    expect(offensiveSection?.entries).not.toContain('A2 is not marking the relevant player for this assist.')
+    expect(cancelledSection?.entries).toContain('A2, A3 and A4 are not relevant in this block.')
+  })
+
   it('applies Horns during a blitz', () => {
     const attacker = createPlayer('A1', 'A', { row: 3, col: 3 }, { strength: 3, skills: ['HORNS'] })
     const defender = createPlayer('B1', 'B', { row: 3, col: 4 }, { strength: 4 })

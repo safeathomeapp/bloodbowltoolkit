@@ -230,6 +230,39 @@ function buildFinalDiceSummary(attackerStrength: number, defenderStrength: numbe
   }
 }
 
+function formatLabelList(labels: string[]) {
+  if (labels.length <= 1) {
+    return labels[0] ?? ''
+  }
+
+  if (labels.length === 2) {
+    return `${labels[0]} and ${labels[1]}`
+  }
+
+  return `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`
+}
+
+function groupAssistExplanationEntries(assists: AssistDetail[]) {
+  const relevantSuffix = ' is not marking the relevant player for this assist.'
+  const irrelevantLabels = assists
+    .filter((assist) => assist.reason.endsWith(relevantSuffix))
+    .map((assist) => assist.label)
+  const groupedEntries: string[] = []
+
+  if (irrelevantLabels.length > 0) {
+    const subject = formatLabelList(irrelevantLabels)
+    const verb = irrelevantLabels.length === 1 ? 'is' : 'are'
+    groupedEntries.push(`${subject} ${verb} not relevant in this block.`)
+  }
+
+  return [
+    ...groupedEntries,
+    ...assists
+      .filter((assist) => !assist.reason.endsWith(relevantSuffix))
+      .map((assist) => assist.reason),
+  ]
+}
+
 function buildExplanation(
   blockerLabel: string,
   defenderLabel: string,
@@ -241,9 +274,11 @@ function buildExplanation(
   defensiveAssists: AssistDetail[],
   finalSummary: string,
 ): ExplanationSection[] {
-  const cancelledAssists = [...offensiveAssists, ...defensiveAssists]
-    .filter((assist) => assist.status !== 'VALID')
-    .map((assist) => assist.reason)
+  const offensiveExplanation = groupAssistExplanationEntries(offensiveAssists)
+  const defensiveExplanation = groupAssistExplanationEntries(defensiveAssists)
+  const cancelledAssists = groupAssistExplanationEntries(
+    [...offensiveAssists, ...defensiveAssists].filter((assist) => assist.status !== 'VALID'),
+  )
 
   return [
     {
@@ -259,14 +294,14 @@ function buildExplanation(
       title: 'Offensive Assists',
       entries:
         offensiveAssists.length > 0
-          ? offensiveAssists.map((assist) => assist.reason)
+          ? offensiveExplanation
           : ['No offensive assist candidates.'],
     },
     {
       title: 'Defensive Assists',
       entries:
         defensiveAssists.length > 0
-          ? defensiveAssists.map((assist) => assist.reason)
+          ? defensiveExplanation
           : ['No defensive assist candidates.'],
     },
     {
