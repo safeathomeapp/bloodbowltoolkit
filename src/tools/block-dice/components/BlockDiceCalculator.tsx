@@ -740,6 +740,7 @@ export function BlockDiceCalculator() {
               const candidate = candidateMap.get(candidateKey)
               const isSelectedCandidate = candidate?.key === selectedBlitzCandidateKey
               const isTopTierCandidate = candidate ? topTierCandidateKeys.has(candidate.key) : false
+              const showBlitzMarker = isBlocker && appMode === 'CALCULATE' && previewMode === 'BLITZ'
               const candidateStatusLabel = candidate
                 ? getCandidateStatusLabel(candidate.status, {
                     isTopTier: isTopTierCandidate,
@@ -791,7 +792,7 @@ export function BlockDiceCalculator() {
                 >
                   {player ? (
                     <span className={tokenClassName}>
-                      <strong>{isBlocker ? `*${getProfileLabel(player, playerProfiles)}` : getProfileLabel(player, playerProfiles)}</strong>
+                      <strong>{showBlitzMarker ? `*${getProfileLabel(player, playerProfiles)}` : getProfileLabel(player, playerProfiles)}</strong>
                       <span className={styles.tokenMeta}>ST {getProfileStrength(player, playerProfiles)}</span>
                       <span className={styles.tokenMeta}>
                         {player.isStanding ? 'Standing' : 'Prone'}
