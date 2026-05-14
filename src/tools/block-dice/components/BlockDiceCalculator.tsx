@@ -937,7 +937,7 @@ export function BlockDiceCalculator() {
                 className={styles.teamToggle}
                 onClick={resetBoard}
               >
-                CLEAR BOARD
+                CLEAR
               </button>
             </div>
             <div className={styles.teamToggleRow} aria-label="Active team toggle">
