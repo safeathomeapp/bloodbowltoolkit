@@ -238,4 +238,29 @@ describe('calculateBlockDice', () => {
     expect(result.finalDice.chooser).toBe('NONE')
     expect(result.explanation[0]?.entries).toContain('A1 uses temporary Dauntless and matches B1 at ST 5.')
   })
+
+  it('does not apply Horns outside a blitz', () => {
+    const attacker = createPlayer('A1', 'A', { row: 3, col: 3 }, { strength: 3, skills: ['HORNS'] })
+    const defender = createPlayer('B1', 'B', { row: 3, col: 4 }, { strength: 4 })
+    const { boardState, profiles } = buildState([attacker, defender], 'A1', 'B1')
+
+    const result = calculateBlockDice(boardState, profiles, { isBlitz: false })
+
+    expect(result.attackerStrength.base).toBe(3)
+    expect(result.attackerStrength.total).toBe(3)
+    expect(result.finalDice.chooser).toBe('DEFENDER')
+  })
+
+  it('applies Horns during a blitz', () => {
+    const attacker = createPlayer('A1', 'A', { row: 3, col: 3 }, { strength: 3, skills: ['HORNS'] })
+    const defender = createPlayer('B1', 'B', { row: 3, col: 4 }, { strength: 4 })
+    const { boardState, profiles } = buildState([attacker, defender], 'A1', 'B1')
+
+    const result = calculateBlockDice(boardState, profiles, { isBlitz: true })
+
+    expect(result.attackerStrength.base).toBe(3)
+    expect(result.attackerStrength.total).toBe(4)
+    expect(result.finalDice.chooser).toBe('NONE')
+    expect(result.explanation[0]?.entries).toContain('A1 gains +1 ST from Horns because this block is part of a blitz.')
+  })
 })

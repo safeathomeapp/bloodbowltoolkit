@@ -114,6 +114,7 @@ export function calculatePotentialBlockCandidates(
           targetId,
         },
         profiles,
+        { isBlitz: true },
       )
 
       return {

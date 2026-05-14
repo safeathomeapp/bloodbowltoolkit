@@ -8,6 +8,10 @@ import type {
   ExplanationSection,
 } from '../types/blockDice'
 
+interface BlockCalculationOptions {
+  isBlitz?: boolean
+}
+
 interface EvaluatedPlayer {
   placedPlayer: PlacedPlayer
   profile: PlayerProfile
@@ -230,6 +234,7 @@ function buildExplanation(
   blockerLabel: string,
   targetLabel: string,
   attackerBaseSummary: string,
+  hornsSummary: string | null,
   attackerStrength: number,
   defenderStrength: number,
   offensiveAssists: AssistDetail[],
@@ -246,6 +251,7 @@ function buildExplanation(
       entries: [
         `${blockerLabel} blocks ${targetLabel}.`,
         attackerBaseSummary,
+        ...(hornsSummary ? [hornsSummary] : []),
         `Base Strength comparison: ST ${attackerStrength} vs ST ${defenderStrength}.`,
       ],
     },
@@ -274,15 +280,24 @@ function buildExplanation(
   ]
 }
 
-export function calculateBlockDice(boardState: BoardState, profiles: PlayerProfile[]): BlockDiceCalculation {
+export function calculateBlockDice(
+  boardState: BoardState,
+  profiles: PlayerProfile[],
+  options: BlockCalculationOptions = {},
+): BlockDiceCalculation {
   const blocker = requirePlayer(boardState.blockerId, boardState, profiles)
   const target = requirePlayer(boardState.targetId, boardState, profiles)
   const activeTeam = blocker.placedPlayer.teamSide
   const attackerHasDauntless = hasSkill(blocker, 'DAUNTLESS')
+  const attackerUsesHorns = Boolean(options.isBlitz) && hasSkill(blocker, 'HORNS')
   const attackerBaseStrength = attackerHasDauntless ? target.profile.strength : blocker.profile.strength
   const attackerBaseSummary = attackerHasDauntless
     ? `${blocker.profile.name ?? blocker.placedPlayer.id} uses temporary Dauntless and matches ${target.profile.name ?? target.placedPlayer.id} at ST ${target.profile.strength}.`
     : `${blocker.profile.name ?? blocker.placedPlayer.id} uses their normal base Strength of ST ${blocker.profile.strength}.`
+  const hornsModifier = attackerUsesHorns ? 1 : 0
+  const hornsSummary = attackerUsesHorns
+    ? `${blocker.profile.name ?? blocker.placedPlayer.id} gains +1 ST from Horns because this block is part of a blitz.`
+    : null
 
   const offensiveAssists = boardState.placedPlayers
     .filter((player) => player.teamSide === blocker.placedPlayer.teamSide)
@@ -322,7 +337,7 @@ export function calculateBlockDice(boardState: BoardState, profiles: PlayerProfi
   const defensiveModifier = defensiveAssists
     .filter((assist) => assist.status === 'VALID')
     .reduce((total, assist) => total + assist.strengthModifier, 0)
-  const attackerStrength = attackerBaseStrength + offensiveModifier
+  const attackerStrength = attackerBaseStrength + hornsModifier + offensiveModifier
   const defenderStrength = target.profile.strength + defensiveModifier
   const finalDice = buildFinalDiceSummary(attackerStrength, defenderStrength)
   const blockerLabel = blocker.profile.name ?? blocker.placedPlayer.id
@@ -345,7 +360,7 @@ export function calculateBlockDice(boardState: BoardState, profiles: PlayerProfi
     },
     attackerStrength: {
       base: attackerBaseStrength,
-      assistModifier: offensiveModifier,
+      assistModifier: hornsModifier + offensiveModifier,
       total: attackerStrength,
     },
     defenderStrength: {
@@ -360,6 +375,7 @@ export function calculateBlockDice(boardState: BoardState, profiles: PlayerProfi
       blockerLabel,
       targetLabel,
       attackerBaseSummary,
+      hornsSummary,
       attackerStrength,
       defenderStrength,
       offensiveAssists,

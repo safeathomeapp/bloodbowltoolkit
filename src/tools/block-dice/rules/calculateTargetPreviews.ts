@@ -60,6 +60,7 @@ export function calculateAllTargetPreviews(
           targetId: target.id,
         },
         profiles,
+        { isBlitz: false },
       )
 
       return {

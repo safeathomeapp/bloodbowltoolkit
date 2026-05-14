@@ -101,6 +101,14 @@ function getProfileSkills(player: PlacedPlayer, profiles: PlayerProfile[]) {
   return profile?.skills ?? []
 }
 
+function getProfileForPlayer(player: PlacedPlayer | null, profiles: PlayerProfile[]) {
+  if (!player) {
+    return null
+  }
+
+  return profiles.find((entry) => entry.id === player.profileId) ?? null
+}
+
 function getTokenRoleLabel(options: { isBlocker: boolean; isTarget: boolean; isBlitzing: boolean }) {
   if (options.isBlocker) {
     return options.isBlitzing ? '*A' : 'A'
@@ -279,6 +287,20 @@ export function BlockDiceCalculator() {
     setSelectedBlitzCandidateKey((currentKey) => (currentKey === key ? null : currentKey))
   }
 
+  const togglePlayerSkill = (player: PlacedPlayer | null, skill: Skill) => {
+    if (!player?.profileId) {
+      return
+    }
+
+    setPlayerProfiles((currentProfiles) =>
+      currentProfiles.map((profile) =>
+        profile.id === player.profileId
+          ? { ...profile, skills: toggleSkill(profile.skills, skill) }
+          : profile,
+      ),
+    )
+  }
+
   const selectPlayer = (player: PlacedPlayer) => {
     setBoardState((currentState) => {
       const currentBlocker = currentState.placedPlayers.find((entry) => entry.id === currentState.blockerId)
@@ -418,6 +440,10 @@ export function BlockDiceCalculator() {
       : null
   const blockerLabel = blocker ? getProfileLabel(blocker, playerProfiles) : 'none'
   const targetLabel = target ? getProfileLabel(target, playerProfiles) : 'none'
+  const blockerProfile = getProfileForPlayer(blocker, playerProfiles)
+  const targetProfile = getProfileForPlayer(target, playerProfiles)
+  const blockerSkills = blockerProfile?.skills ?? []
+  const targetSkills = targetProfile?.skills ?? []
   const selectionHint =
     appMode === 'EDIT'
       ? 'Edit mode is active. Tap an empty square to place the configured player or an occupied square to remove one.'
@@ -433,7 +459,7 @@ export function BlockDiceCalculator() {
   const calculation =
     previewMode === 'BLITZ' && target
       ? selectedCandidate?.calculation ?? candidateResult?.preferredCandidate?.calculation ?? activePreview?.calculation ?? null
-      : activePreview?.calculation ?? (blocker && target ? calculateBlockDice(boardState, playerProfiles) : null)
+      : activePreview?.calculation ?? (blocker && target ? calculateBlockDice(boardState, playerProfiles, { isBlitz: false }) : null)
 
   const clearLongPressTimer = () => {
     if (longPressTimerRef.current !== null) {
@@ -561,7 +587,7 @@ export function BlockDiceCalculator() {
             <div className={styles.controlGroup}>
               <span className={styles.label}>Skills</span>
               <div className={styles.toggleRow}>
-                {(['GUARD', 'DEFENSIVE', 'DAUNTLESS'] as Skill[]).map((skill) => (
+                {(['GUARD', 'DEFENSIVE'] as Skill[]).map((skill) => (
                   <button
                     key={skill}
                     type="button"
@@ -715,110 +741,168 @@ export function BlockDiceCalculator() {
           </h3>
         </div>
 
-        <div className={styles.grid} role="grid" aria-label="7 by 7 tactical grid">
-          {Array.from({ length: GRID_SIZE }, (_, row) =>
-            Array.from({ length: GRID_SIZE }, (_, col) => {
-              const player = boardState.placedPlayers.find(
-                (entry) => entry.position.row === row && entry.position.col === col,
-              )
-              const skills = player ? getProfileSkills(player, playerProfiles) : []
-              const isBlocker = player?.id === boardState.blockerId
-              const isTarget = player?.id === boardState.targetId
-              const preview = player ? previewMap.get(player.id) : undefined
-              const isEligibleTarget = appMode === 'CALCULATE' && Boolean(preview)
-              const candidateKey = buildPositionKey({ row, col })
-              const candidate = candidateMap.get(candidateKey)
-              const isSelectedCandidate = candidate?.key === selectedBlitzCandidateKey
-              const isTopTierCandidate = candidate ? topTierCandidateKeys.has(candidate.key) : false
-              const showBlitzMarker = isBlocker && appMode === 'CALCULATE' && previewMode === 'BLITZ'
-              const showCalculateAnnotations = appMode === 'CALCULATE'
-              const showEditTokenMeta = appMode === 'EDIT'
-              const tokenRoleLabel = getTokenRoleLabel({
-                isBlocker: Boolean(isBlocker),
-                isTarget: Boolean(isTarget),
-                isBlitzing: showBlitzMarker,
-              })
-              const cellClassName = [
-                player ? styles.cellOccupied : styles.cell,
-                isEligibleTarget && !isTarget ? styles.cellEligibleTarget : '',
-                candidate?.status === 'VALID' && isTopTierCandidate ? styles.candidateBest : '',
-                candidate?.status === 'VALID' && !isTopTierCandidate ? styles.candidateFallback : '',
-                candidate?.status === 'INVALIDATED' ? styles.candidateInvalidated : '',
-                candidate?.status === 'OCCUPIED' ? styles.candidateOccupied : '',
-                isSelectedCandidate ? styles.candidateSelected : '',
-              ]
-                .filter(Boolean)
-                .join(' ')
-              const tokenClassName = player
-                ? [
-                    player.teamSide === 'A' ? styles.tokenTeamA : styles.tokenTeamB,
-                    showCalculateAnnotations ? styles.tokenCompact : '',
-                    isBlocker ? styles.tokenBlocker : '',
-                    isTarget ? styles.tokenTarget : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')
-                : ''
+        <div className={styles.boardWorkspace}>
+          <div className={styles.grid} role="grid" aria-label="7 by 7 tactical grid">
+            {Array.from({ length: GRID_SIZE }, (_, row) =>
+              Array.from({ length: GRID_SIZE }, (_, col) => {
+                const player = boardState.placedPlayers.find(
+                  (entry) => entry.position.row === row && entry.position.col === col,
+                )
+                const skills = player ? getProfileSkills(player, playerProfiles) : []
+                const isBlocker = player?.id === boardState.blockerId
+                const isTarget = player?.id === boardState.targetId
+                const preview = player ? previewMap.get(player.id) : undefined
+                const isEligibleTarget = appMode === 'CALCULATE' && Boolean(preview)
+                const candidateKey = buildPositionKey({ row, col })
+                const candidate = candidateMap.get(candidateKey)
+                const isSelectedCandidate = candidate?.key === selectedBlitzCandidateKey
+                const isTopTierCandidate = candidate ? topTierCandidateKeys.has(candidate.key) : false
+                const showBlitzMarker = isBlocker && appMode === 'CALCULATE' && previewMode === 'BLITZ'
+                const showCalculateAnnotations = appMode === 'CALCULATE'
+                const showEditTokenMeta = appMode === 'EDIT'
+                const tokenRoleLabel = getTokenRoleLabel({
+                  isBlocker: Boolean(isBlocker),
+                  isTarget: Boolean(isTarget),
+                  isBlitzing: showBlitzMarker,
+                })
+                const cellClassName = [
+                  player ? styles.cellOccupied : styles.cell,
+                  isEligibleTarget && !isTarget ? styles.cellEligibleTarget : '',
+                  candidate?.status === 'VALID' && isTopTierCandidate ? styles.candidateBest : '',
+                  candidate?.status === 'VALID' && !isTopTierCandidate ? styles.candidateFallback : '',
+                  candidate?.status === 'INVALIDATED' ? styles.candidateInvalidated : '',
+                  candidate?.status === 'OCCUPIED' ? styles.candidateOccupied : '',
+                  isSelectedCandidate ? styles.candidateSelected : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')
+                const tokenClassName = player
+                  ? [
+                      player.teamSide === 'A' ? styles.tokenTeamA : styles.tokenTeamB,
+                      showCalculateAnnotations ? styles.tokenCompact : '',
+                      isBlocker ? styles.tokenBlocker : '',
+                      isTarget ? styles.tokenTarget : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')
+                  : ''
 
-              return (
-                <button
-                  key={`${row}-${col}`}
-                  type="button"
-                  role="gridcell"
-                  className={cellClassName}
-                  onClick={() => handleGridCellPress({ row, col })}
-                  aria-label={
-                    player
-                      ? undefined
-                      : showCalculateAnnotations && candidate
-                        ? `Candidate square ${row + 1},${col + 1}${candidate.diceLabel ? `, ${candidate.diceLabel}` : ''}`
-                        : `Grid square ${row + 1},${col + 1}`
-                  }
-                  onPointerDown={() => {
-                    startBlockerLongPress(player)
-                    startCandidateLongPress({ row, col })
-                  }}
-                  onPointerUp={clearLongPressTimer}
-                  onPointerLeave={clearLongPressTimer}
-                  onPointerCancel={clearLongPressTimer}
-                >
-                  {player ? (
-                    <span className={tokenClassName}>
-                      <strong className={showCalculateAnnotations ? styles.tokenNameCompact : styles.tokenName}>
-                        {getProfileLabel(player, playerProfiles)}
-                      </strong>
-                      {showEditTokenMeta ? <span className={styles.tokenMeta}>ST {getProfileStrength(player, playerProfiles)}</span> : null}
-                      {showEditTokenMeta ? (
-                        <span className={styles.tokenMeta}>
-                          {player.isStanding ? 'Standing' : 'Prone'}
-                          {player.hasTackleZone ? ' · TZ' : ' · No TZ'}
-                        </span>
-                      ) : null}
-                      {showEditTokenMeta && skills.length > 0 ? <span className={styles.tokenMeta}>{skills.join(', ')}</span> : null}
-                      {preview ? (
-                        <span className={showCalculateAnnotations ? styles.previewBadgeCompact : styles.previewBadge}>
-                          {preview.diceLabel}
-                        </span>
-                      ) : null}
-                      {showCalculateAnnotations && tokenRoleLabel ? (
-                        <span className={styles.tokenRoleCorner}>{tokenRoleLabel}</span>
-                      ) : null}
-                    </span>
-                  ) : (
-                    appMode === 'EDIT' ? (
-                      <span className={styles.cellHintStack}>
-                        <span className={styles.cellHintPrimary}>{`${row + 1},${col + 1}`}</span>
+                return (
+                  <button
+                    key={`${row}-${col}`}
+                    type="button"
+                    role="gridcell"
+                    className={cellClassName}
+                    onClick={() => handleGridCellPress({ row, col })}
+                    aria-label={
+                      player
+                        ? undefined
+                        : showCalculateAnnotations && candidate
+                          ? `Candidate square ${row + 1},${col + 1}${candidate.diceLabel ? `, ${candidate.diceLabel}` : ''}`
+                          : `Grid square ${row + 1},${col + 1}`
+                    }
+                    onPointerDown={() => {
+                      startBlockerLongPress(player)
+                      startCandidateLongPress({ row, col })
+                    }}
+                    onPointerUp={clearLongPressTimer}
+                    onPointerLeave={clearLongPressTimer}
+                    onPointerCancel={clearLongPressTimer}
+                  >
+                    {player ? (
+                      <span className={tokenClassName}>
+                        <strong className={showCalculateAnnotations ? styles.tokenNameCompact : styles.tokenName}>
+                          {getProfileLabel(player, playerProfiles)}
+                        </strong>
+                        {showEditTokenMeta ? <span className={styles.tokenMeta}>ST {getProfileStrength(player, playerProfiles)}</span> : null}
+                        {showEditTokenMeta ? (
+                          <span className={styles.tokenMeta}>
+                            {player.isStanding ? 'Standing' : 'Prone'}
+                            {player.hasTackleZone ? ' · TZ' : ' · No TZ'}
+                          </span>
+                        ) : null}
+                        {showEditTokenMeta && skills.length > 0 ? <span className={styles.tokenMeta}>{skills.join(', ')}</span> : null}
+                        {preview ? (
+                          <span className={showCalculateAnnotations ? styles.previewBadgeCompact : styles.previewBadge}>
+                            {preview.diceLabel}
+                          </span>
+                        ) : null}
+                        {showCalculateAnnotations && tokenRoleLabel ? (
+                          <span className={styles.tokenRoleCorner}>{tokenRoleLabel}</span>
+                        ) : null}
                       </span>
-                    ) : candidate?.diceLabel ? (
-                      <span className={styles.cellHintStack}>
-                        <span className={styles.cellHintPrimary}>{candidate.diceLabel}</span>
-                      </span>
-                    ) : null
-                  )}
-                </button>
-              )
-            }),
-          )}
+                    ) : (
+                      appMode === 'EDIT' ? (
+                        <span className={styles.cellHintStack}>
+                          <span className={styles.cellHintPrimary}>{`${row + 1},${col + 1}`}</span>
+                        </span>
+                      ) : candidate?.diceLabel ? (
+                        <span className={styles.cellHintStack}>
+                          <span className={styles.cellHintPrimary}>{candidate.diceLabel}</span>
+                        </span>
+                      ) : null
+                    )}
+                  </button>
+                )
+              }),
+            )}
+          </div>
+
+          <div className={styles.playerCardGrid} aria-label="Selected player cards">
+          <article
+            className={`${styles.playerCard} ${
+              (blocker?.teamSide ?? 'A') === 'A' ? styles.playerCardTeamA : styles.playerCardTeamB
+            }`}
+          >
+            <div className={styles.playerCardHeader}>
+              <p className={styles.playerCardLabel}>Attacker</p>
+              <p className={styles.playerCardName}>{blockerLabel !== 'none' ? blockerLabel : 'No attacker selected'}</p>
+            </div>
+            <p className={styles.playerCardMeta}>
+              Skills: {blockerSkills.length > 0 ? blockerSkills.join(', ') : 'None'}
+            </p>
+            <div className={styles.playerCardToggleRow}>
+              <button
+                type="button"
+                className={blockerSkills.includes('DAUNTLESS') ? styles.playerToggleActive : styles.playerToggle}
+                onClick={() => togglePlayerSkill(blocker, 'DAUNTLESS')}
+                disabled={!blocker}
+                aria-pressed={blockerSkills.includes('DAUNTLESS')}
+              >
+                Dauntless
+              </button>
+              <button
+                type="button"
+                className={blockerSkills.includes('HORNS') ? styles.playerToggleActive : styles.playerToggle}
+                onClick={() => togglePlayerSkill(blocker, 'HORNS')}
+                disabled={!blocker}
+                aria-pressed={blockerSkills.includes('HORNS')}
+              >
+                Horns
+              </button>
+            </div>
+            <p className={styles.playerCardNote}>
+              Horns adds +1 ST only when the block is part of a blitz.
+            </p>
+          </article>
+
+          <article
+            className={`${styles.playerCard} ${
+              (target?.teamSide ?? 'B') === 'A' ? styles.playerCardTeamA : styles.playerCardTeamB
+            }`}
+          >
+            <div className={styles.playerCardHeader}>
+              <p className={styles.playerCardLabel}>Defender</p>
+              <p className={styles.playerCardName}>{targetLabel !== 'none' ? targetLabel : 'No defender selected'}</p>
+            </div>
+            <p className={styles.playerCardMeta}>
+              Skills: {targetSkills.length > 0 ? targetSkills.join(', ') : 'None'}
+            </p>
+            <p className={styles.playerCardNote}>
+              Defender-specific outcome toggles are not needed yet. This card is informational for now.
+            </p>
+          </article>
+        </div>
         </div>
       </section>
 

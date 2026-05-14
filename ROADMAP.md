@@ -20,12 +20,14 @@
 - Candidate attack squares, square-specific Why, and explicit invalidation
 - Candidate-square readability refinement
 - Tie-aware blitz candidate ranking
+- Player cards and contextual attacker controls
 
 ## Current Priorities
 
 - Simplify candidate visuals and remove misleading `BEST` / `ALT` language where no mathematical distinction exists
 - Re-test the candidate-square flow on a phone after the tie-aware update
 - Perform a broader calculator UI cleanup pass after candidate semantics are corrected
+- Expand functional rules coverage and scenario utility on top of the new player-card control surface
 - Defer merge planning until the revised UX rewrite is stable
 
 ## Deferred Features
