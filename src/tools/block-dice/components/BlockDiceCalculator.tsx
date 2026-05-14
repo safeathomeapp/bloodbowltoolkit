@@ -210,6 +210,7 @@ export function BlockDiceCalculator() {
   )
   const [isWhyPanelOpen, setIsWhyPanelOpen] = useState(false)
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false)
+  const [isHelpOpen, setIsHelpOpen] = useState(false)
   const longPressTimerRef = useRef<number | null>(null)
   const suppressClickRef = useRef(false)
 
@@ -569,6 +570,7 @@ export function BlockDiceCalculator() {
     setSelectedBlitzCandidateKey(null)
     setIsWhyPanelOpen(false)
     setIsHeaderMenuOpen(false)
+    setIsHelpOpen(false)
 
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(STORAGE_KEY)
@@ -803,7 +805,14 @@ export function BlockDiceCalculator() {
                     >
                       Clear pitch
                     </button>
-                    <button type="button" className={styles.menuItem} disabled>
+                    <button
+                      type="button"
+                      className={styles.menuItem}
+                      onClick={() => {
+                        setIsHeaderMenuOpen(false)
+                        setIsHelpOpen(true)
+                      }}
+                    >
                       Help
                     </button>
                     <button type="button" className={styles.menuItem} disabled>
@@ -1139,6 +1148,73 @@ export function BlockDiceCalculator() {
             </div>
           ) : null}
         </section>
+      ) : null}
+
+      {isHelpOpen ? (
+        <div
+          className={styles.bottomSheetBackdrop}
+          role="presentation"
+          onClick={() => setIsHelpOpen(false)}
+        >
+          <section
+            className={styles.bottomSheet}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="help-sheet-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.bottomSheetHeader}>
+              <div>
+                <p className={styles.eyebrow}>Help</p>
+                <p id="help-sheet-title" className={styles.resultHeadline}>Block Dice Guide</p>
+              </div>
+              <button
+                type="button"
+                className={styles.teamToggle}
+                onClick={() => setIsHelpOpen(false)}
+              >
+                CLOSE
+              </button>
+            </div>
+
+            <div className={styles.explanationStack}>
+              <div className={styles.explanationCard}>
+                <p className={styles.resultHeadline}>Edit Mode</p>
+                <ul className={styles.summaryList}>
+                  <li>Tap an empty square to place a player for the active side.</li>
+                  <li>Tap a placed player to edit them in the matching blue or red card below the grid.</li>
+                  <li>Long press a placed player to remove them from the pitch.</li>
+                </ul>
+              </div>
+
+              <div className={styles.explanationCard}>
+                <p className={styles.resultHeadline}>Calculate Mode</p>
+                <ul className={styles.summaryList}>
+                  <li>Select an attacker from the active side, then select a defender.</li>
+                  <li>Adjacent defenders show direct dice previews automatically.</li>
+                  <li>The lower player cards let you adjust attacker and defender skills during testing.</li>
+                </ul>
+              </div>
+
+              <div className={styles.explanationCard}>
+                <p className={styles.resultHeadline}>Blitz Preview</p>
+                <ul className={styles.summaryList}>
+                  <li>Long press the active attacker in calculate mode to enter blitz preview.</li>
+                  <li>Potential dice are shown without checking movement legality.</li>
+                  <li>If the attacker is already adjacent, the current square blitz dice show on that attacker token.</li>
+                </ul>
+              </div>
+
+              <div className={styles.explanationCard}>
+                <p className={styles.resultHeadline}>Why?</p>
+                <ul className={styles.summaryList}>
+                  <li>Use `WHY?` to inspect offensive assists and defensive assists for the current matchup.</li>
+                  <li>`✓` means the assist is applied, `▲` means it is marked or fails, and `⊘` means it is not relevant.</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+        </div>
       ) : null}
 
     </div>
