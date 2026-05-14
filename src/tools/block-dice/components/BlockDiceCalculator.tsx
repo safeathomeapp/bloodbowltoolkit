@@ -135,10 +135,6 @@ function toDiceLabel(count: number, chooser: 'ATTACKER' | 'DEFENDER' | 'NONE') {
   return '1D'
 }
 
-function getTeamName(teamSide: TeamSide) {
-  return teamSide === 'A' ? 'Blue' : 'Red'
-}
-
 function getExplanationEntryMeta(tone: 'SUCCESS' | 'WARNING' | 'MUTED') {
   if (tone === 'SUCCESS') {
     return {
@@ -391,18 +387,6 @@ export function BlockDiceCalculator() {
     setPlayerProfiles((currentProfiles) =>
       currentProfiles.map((profile) =>
         profile.id === player.profileId ? { ...profile, strength } : profile,
-      ),
-    )
-  }
-
-  const updatePlacedPlayerName = (player: PlacedPlayer | null, name: string) => {
-    if (!player?.profileId) {
-      return
-    }
-
-    setPlayerProfiles((currentProfiles) =>
-      currentProfiles.map((profile) =>
-        profile.id === player.profileId ? { ...profile, name } : profile,
       ),
     )
   }
@@ -874,8 +858,8 @@ export function BlockDiceCalculator() {
                   ? [
                       player.teamSide === 'A' ? styles.tokenTeamA : styles.tokenTeamB,
                       showCalculateAnnotations ? styles.tokenCompact : '',
-                      isBlocker ? styles.tokenBlocker : '',
-                      isTarget ? styles.tokenTarget : '',
+                      showCalculateAnnotations && isBlocker ? styles.tokenBlocker : '',
+                      showCalculateAnnotations && isTarget ? styles.tokenTarget : '',
                     ]
                       .filter(Boolean)
                       .join(' ')
@@ -950,16 +934,7 @@ export function BlockDiceCalculator() {
                     }`}
                   >
                     <div className={styles.playerCardHeader}>
-                      {card.selectedPlayer ? (
-                        <input
-                          className={styles.playerCardNameInput}
-                          value={card.name}
-                          onChange={(event) => updatePlacedPlayerName(card.selectedPlayer, event.target.value)}
-                          placeholder={`${getTeamName(card.teamSide)} player`}
-                        />
-                      ) : (
-                        <p className={styles.playerCardName}>{card.name}</p>
-                      )}
+                      <p className={styles.playerCardName}>{card.name}</p>
                       <select
                         id={`edit-strength-${card.teamSide}`}
                         className={styles.playerCardStrengthSelect}

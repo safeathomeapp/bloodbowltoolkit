@@ -425,21 +425,11 @@
   color: #ffe7a0;
 }
 
-.playerCardNameInput,
 .playerCardStrengthSelect {
   border: 1px solid rgba(246, 239, 228, 0.16);
   border-radius: 0.72rem;
   background: rgba(246, 239, 228, 0.08);
   color: inherit;
-}
-
-.playerCardNameInput {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 0.65rem 0.55rem;
-  font-size: 0.96rem;
-  font-weight: 800;
-  text-align: center;
 }
 
 .playerCardStrengthSelect {
@@ -932,11 +922,6 @@
 
   .playerCardName {
     font-size: 0.86rem;
-  }
-
-  .playerCardNameInput {
-    font-size: 0.82rem;
-    padding: 0.5rem 0.58rem;
   }
 
   .playerCardStrength {
