@@ -124,6 +124,18 @@ function getCandidateStatusLabel(
   return 'VALID'
 }
 
+function getTokenRoleLabel(options: { isBlocker: boolean; isTarget: boolean; isBlitzing: boolean }) {
+  if (options.isBlocker) {
+    return options.isBlitzing ? '*A' : 'A'
+  }
+
+  if (options.isTarget) {
+    return 'T'
+  }
+
+  return null
+}
+
 export function BlockDiceCalculator() {
   const persistedState = loadPersistedState()
   const [draft, setDraft] = useState<PlacementDraft>(persistedState?.draft ?? defaultDraft)
@@ -742,12 +754,18 @@ export function BlockDiceCalculator() {
               const isSelectedCandidate = candidate?.key === selectedBlitzCandidateKey
               const isTopTierCandidate = candidate ? topTierCandidateKeys.has(candidate.key) : false
               const showBlitzMarker = isBlocker && appMode === 'CALCULATE' && previewMode === 'BLITZ'
+              const showCalculateAnnotations = appMode === 'CALCULATE'
               const candidateStatusLabel = candidate
                 ? getCandidateStatusLabel(candidate.status, {
                     isTopTier: isTopTierCandidate,
                     isSelected: isSelectedCandidate,
                   })
                 : null
+              const tokenRoleLabel = getTokenRoleLabel({
+                isBlocker: Boolean(isBlocker),
+                isTarget: Boolean(isTarget),
+                isBlitzing: showBlitzMarker,
+              })
               const cellClassName = [
                 player ? styles.cellOccupied : styles.cell,
                 isEligibleTarget && !isTarget ? styles.cellEligibleTarget : '',
@@ -779,7 +797,7 @@ export function BlockDiceCalculator() {
                   aria-label={
                     player
                       ? undefined
-                      : candidate
+                      : showCalculateAnnotations && candidate
                         ? `Candidate square ${row + 1},${col + 1}, ${candidateStatusLabel ?? 'candidate'}${candidate.diceLabel ? `, ${candidate.diceLabel}` : ''}`
                         : `Grid square ${row + 1},${col + 1}`
                   }
@@ -793,7 +811,7 @@ export function BlockDiceCalculator() {
                 >
                   {player ? (
                     <span className={tokenClassName}>
-                      <strong>{showBlitzMarker ? `*${getProfileLabel(player, playerProfiles)}` : getProfileLabel(player, playerProfiles)}</strong>
+                      <strong>{getProfileLabel(player, playerProfiles)}</strong>
                       <span className={styles.tokenMeta}>ST {getProfileStrength(player, playerProfiles)}</span>
                       <span className={styles.tokenMeta}>
                         {player.isStanding ? 'Standing' : 'Prone'}
@@ -801,15 +819,14 @@ export function BlockDiceCalculator() {
                       </span>
                       {skills.length > 0 ? <span className={styles.tokenMeta}>{skills.join(', ')}</span> : null}
                       {preview ? <span className={styles.previewBadge}>{preview.diceLabel}</span> : null}
-                      {isBlocker ? <span className={styles.tokenRole}>Blocker</span> : null}
-                      {isTarget ? <span className={styles.tokenRole}>Target</span> : null}
-                      {candidateStatusLabel ? <span className={styles.candidateTokenBadge}>{candidateStatusLabel}</span> : null}
+                      {showCalculateAnnotations && tokenRoleLabel ? <span className={styles.tokenRole}>{tokenRoleLabel}</span> : null}
                     </span>
                   ) : (
-                    <span className={styles.cellHintStack}>
-                      <span className={styles.cellHintPrimary}>{candidate?.diceLabel ?? `${row + 1},${col + 1}`}</span>
-                      {candidateStatusLabel ? <span className={styles.cellHintStatus}>{candidateStatusLabel}</span> : null}
-                    </span>
+                    appMode === 'EDIT' ? (
+                      <span className={styles.cellHintStack}>
+                        <span className={styles.cellHintPrimary}>{`${row + 1},${col + 1}`}</span>
+                      </span>
+                    ) : null
                   )}
                 </button>
               )
