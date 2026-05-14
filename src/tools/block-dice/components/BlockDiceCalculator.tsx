@@ -1252,23 +1252,6 @@ export function BlockDiceCalculator() {
 
               {isWhyPanelOpen ? (
                 <div id="why-panel-inline">
-                  <div className={styles.whyRoleRow} aria-label="Attacker and defender summary">
-                    <span
-                      className={`${styles.whyRoleChip} ${
-                        calculation.blocker.teamSide === 'A' ? styles.whyRoleTeamA : styles.whyRoleTeamB
-                      }`}
-                    >
-                      A {blockerNumberLabel !== 'none' ? blockerNumberLabel : calculation.blocker.label}
-                    </span>
-                    <span
-                      className={`${styles.whyRoleChip} ${
-                        calculation.target.teamSide === 'A' ? styles.whyRoleTeamA : styles.whyRoleTeamB
-                      }`}
-                    >
-                      D {targetNumberLabel !== 'none' ? targetNumberLabel : calculation.target.label}
-                    </span>
-                  </div>
-
                   <div className={styles.explanationStack}>
                     {calculation.explanation.map((section) => (
                       <div key={section.title} className={styles.explanationCard}>
