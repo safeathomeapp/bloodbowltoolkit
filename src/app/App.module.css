@@ -108,6 +108,28 @@
   font-size: 1.5rem;
 }
 
+@media (max-width: 47.99rem) {
+  .shell {
+    padding: 0.55rem;
+  }
+
+  .hero,
+  .card,
+  .panel,
+  .workspace {
+    padding: 0.85rem;
+    border-radius: 1rem;
+  }
+
+  .grid {
+    gap: 0.75rem;
+  }
+
+  .workspaceHeader {
+    margin-bottom: 0.7rem;
+  }
+}
+
 @media (min-width: 48rem) {
   .shell {
     padding: 2rem;
