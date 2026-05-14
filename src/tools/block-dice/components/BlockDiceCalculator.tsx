@@ -930,7 +930,7 @@ export function BlockDiceCalculator() {
                       </select>
                     </div>
                     <div className={styles.playerCardToggleRow}>
-                      {ATTACKER_CARD_SKILL_OPTIONS.map((skill) => (
+                      {PLAYER_SKILL_OPTIONS.map((skill) => (
                         <button
                           key={skill}
                           type="button"
@@ -987,7 +987,7 @@ export function BlockDiceCalculator() {
                       </p>
                     </div>
                     <div className={styles.playerCardToggleRow}>
-                      {DEFENDER_CARD_SKILL_OPTIONS.map((skill) => (
+                      {ATTACKER_CARD_SKILL_OPTIONS.map((skill) => (
                         <button
                           key={skill}
                           type="button"
@@ -1017,7 +1017,7 @@ export function BlockDiceCalculator() {
                       </p>
                     </div>
                     <div className={styles.playerCardToggleRow}>
-                      {PLAYER_SKILL_OPTIONS.map((skill) => (
+                      {DEFENDER_CARD_SKILL_OPTIONS.map((skill) => (
                         <button
                           key={skill}
                           type="button"
