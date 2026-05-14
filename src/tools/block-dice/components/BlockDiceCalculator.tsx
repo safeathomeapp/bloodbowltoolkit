@@ -123,7 +123,7 @@ function getProfileForPlayer(player: PlacedPlayer | null, profiles: PlayerProfil
 
 function getTokenRoleLabel(options: { isBlocker: boolean; isTarget: boolean; isBlitzing: boolean }) {
   if (options.isBlocker) {
-    return options.isBlitzing ? '*A' : 'A'
+    return options.isBlitzing ? '*A*' : 'A'
   }
 
   if (options.isTarget) {
