@@ -949,7 +949,7 @@ export function BlockDiceCalculator() {
                   onClick={() => setActiveTeamSelection(teamSide)}
                   aria-pressed={activeTeam === teamSide}
                 >
-                  {teamSide === 'A' ? 'Blue' : 'Red'}
+                  {teamSide === 'A' ? 'BLUE' : 'RED'}
                 </button>
               ))}
             </div>
@@ -1213,12 +1213,12 @@ export function BlockDiceCalculator() {
             {calculation ? (
               <button
                 type="button"
-                className={styles.whyButton}
+                className={styles.teamToggle}
                 onClick={() => setIsWhyPanelOpen((current) => !current)}
                 aria-expanded={isWhyPanelOpen}
                 aria-controls="why-panel-inline"
               >
-                {isWhyPanelOpen ? 'Hide Why' : 'Why?'}
+                {isWhyPanelOpen ? 'HIDE WHY' : 'WHY?'}
               </button>
             ) : null}
           </div>
