@@ -328,9 +328,10 @@
 
 .playerCardHeader {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
+  text-align: center;
 }
 
 .playerCardHeading {
@@ -352,6 +353,7 @@
   font-size: 1rem;
   font-weight: 800;
   line-height: 1.1;
+  text-align: center;
 }
 
 .playerCardStrength {
@@ -374,16 +376,18 @@
 .playerCardNameInput {
   flex: 1 1 auto;
   min-width: 0;
-  padding: 0.65rem 0.75rem;
+  padding: 0.65rem 0.55rem;
   font-size: 0.96rem;
   font-weight: 800;
+  text-align: center;
 }
 
 .playerCardStrengthSelect {
   flex: 0 0 auto;
   min-height: 2.6rem;
-  padding: 0.55rem 0.65rem;
+  padding: 0.55rem;
   font-weight: 800;
+  text-align: center;
 }
 
 .playerCardMeta,
@@ -406,6 +410,7 @@
   padding: 0.65rem 0.55rem;
   font-weight: 800;
   border: 1px solid rgba(246, 239, 228, 0.18);
+  text-align: center;
 }
 
 .playerToggle {
