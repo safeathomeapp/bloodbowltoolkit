@@ -1012,9 +1012,6 @@ export function BlockDiceCalculator() {
                 {attackerCardStrength !== null ? `ST ${attackerCardStrength}` : 'ST -'}
               </p>
             </div>
-            <p className={styles.playerCardMeta}>
-              Skills: {blockerSkills.length > 0 ? blockerSkills.join(', ') : 'None'}
-            </p>
             <div className={styles.playerCardToggleRow}>
               {PLAYER_SKILL_OPTIONS.map((skill) => (
                 <button
@@ -1045,9 +1042,6 @@ export function BlockDiceCalculator() {
                 {defenderCardStrength !== null ? `ST ${defenderCardStrength}` : 'ST -'}
               </p>
             </div>
-            <p className={styles.playerCardMeta}>
-              Skills: {targetSkills.length > 0 ? targetSkills.join(', ') : 'None'}
-            </p>
             <div className={styles.playerCardToggleRow}>
               {PLAYER_SKILL_OPTIONS.map((skill) => (
                 <button
