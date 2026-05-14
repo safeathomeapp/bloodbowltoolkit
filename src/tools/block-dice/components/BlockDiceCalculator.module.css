@@ -716,6 +716,35 @@
   color: #beb8c3;
 }
 
+.assistEntry {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.assistEntryIcon {
+  flex: 0 0 auto;
+  min-width: 0.9rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.assistEntryText {
+  flex: 1 1 auto;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .bottomSheetBackdrop {
   position: fixed;
   inset: 0;

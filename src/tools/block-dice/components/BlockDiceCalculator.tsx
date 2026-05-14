@@ -139,6 +139,30 @@ function getTeamName(teamSide: TeamSide) {
   return teamSide === 'A' ? 'Blue' : 'Red'
 }
 
+function getExplanationEntryMeta(tone: 'SUCCESS' | 'WARNING' | 'MUTED') {
+  if (tone === 'SUCCESS') {
+    return {
+      className: styles.assistVALID,
+      icon: '✓',
+      iconLabel: 'Successful assist',
+    }
+  }
+
+  if (tone === 'WARNING') {
+    return {
+      className: styles.assistCANCELLED,
+      icon: '▲',
+      iconLabel: 'Marked or failed assist',
+    }
+  }
+
+  return {
+    className: styles.assistINELIGIBLE,
+    icon: '⊘',
+    iconLabel: 'Not relevant assist line',
+  }
+}
+
 export function BlockDiceCalculator() {
   const persistedState = loadPersistedState()
   const [teamDrafts, setTeamDrafts] = useState<Record<TeamSide, TeamDraft>>(() => {
@@ -1092,18 +1116,21 @@ export function BlockDiceCalculator() {
                     <p className={styles.resultHeadline}>{section.title}</p>
                     <ul className={styles.summaryList}>
                       {section.entries.map((entry) => (
-                        <li
-                          key={entry.text}
-                          className={
-                            entry.tone === 'SUCCESS'
-                              ? styles.assistVALID
-                              : entry.tone === 'WARNING'
-                                ? styles.assistCANCELLED
-                                : styles.assistINELIGIBLE
-                          }
-                        >
-                          {entry.text}
-                        </li>
+                        (() => {
+                          const entryMeta = getExplanationEntryMeta(entry.tone)
+
+                          return (
+                            <li key={entry.text} className={`${entryMeta.className} ${styles.assistEntry}`}>
+                              <span className={styles.assistEntryIcon} aria-hidden="true">
+                                {entryMeta.icon}
+                              </span>
+                              <span className={styles.assistEntryText}>
+                                <span className={styles.srOnly}>{entryMeta.iconLabel}: </span>
+                                {entry.text}
+                              </span>
+                            </li>
+                          )
+                        })()
                       ))}
                     </ul>
                   </div>
