@@ -977,7 +977,8 @@ export function BlockDiceCalculator() {
                 const showCalculateAnnotations = appMode === 'CALCULATE'
                 const shouldHideOtherTargetPreview =
                   focusSelectedDefender && appMode === 'CALCULATE' && Boolean(target) && !isTarget
-                const visiblePreview = shouldHideOtherTargetPreview ? undefined : preview
+                const visiblePreview =
+                  appMode === 'CALCULATE' && !shouldHideOtherTargetPreview ? preview : undefined
                 const tokenRoleLabel = getTokenRoleLabel({
                   isBlocker: Boolean(isBlocker),
                   isTarget: Boolean(isTarget),
