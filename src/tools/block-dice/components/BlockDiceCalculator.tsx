@@ -47,6 +47,7 @@ interface PersistedCalculatorState {
   activeTeam: TeamSide
   appMode: AppMode
   previewMode: PreviewMode
+  focusSelectedDefender: boolean
   invalidatedBlitzCandidates: Record<string, string[]>
   selectedBlitzCandidateKey: string | null
 }
@@ -167,6 +168,9 @@ export function BlockDiceCalculator() {
   })
   const [appMode, setAppMode] = useState<AppMode>(persistedState?.appMode ?? 'EDIT')
   const [previewMode, setPreviewMode] = useState<PreviewMode>(persistedState?.previewMode ?? 'STANDARD')
+  const [focusSelectedDefender, setFocusSelectedDefender] = useState(
+    persistedState?.focusSelectedDefender ?? false,
+  )
   const [invalidatedBlitzCandidates, setInvalidatedBlitzCandidates] = useState<Record<string, string[]>>(
     persistedState?.invalidatedBlitzCandidates ?? {},
   )
@@ -193,6 +197,7 @@ export function BlockDiceCalculator() {
       activeTeam,
       appMode,
       previewMode,
+      focusSelectedDefender,
       invalidatedBlitzCandidates,
       selectedBlitzCandidateKey,
     }
@@ -203,6 +208,7 @@ export function BlockDiceCalculator() {
     activeTeam,
     boardState,
     draft,
+    focusSelectedDefender,
     invalidatedBlitzCandidates,
     nextNumbers,
     playerProfiles,
@@ -430,6 +436,7 @@ export function BlockDiceCalculator() {
     setNextNumbers({ A: 1, B: 1 })
     setAppMode('EDIT')
     setPreviewMode('STANDARD')
+    setFocusSelectedDefender(false)
     setInvalidatedBlitzCandidates({})
     setSelectedBlitzCandidateKey(null)
     setIsWhyPanelOpen(false)
@@ -773,6 +780,24 @@ export function BlockDiceCalculator() {
                 </div>
               </>
             ) : null}
+            <div className={styles.controlGroup}>
+              <span className={styles.label}>Selected defender focus</span>
+              <div className={styles.toggleRow}>
+                <button
+                  type="button"
+                  className={focusSelectedDefender ? styles.toggleActive : styles.toggle}
+                  onClick={() => setFocusSelectedDefender((current) => !current)}
+                  aria-pressed={focusSelectedDefender}
+                >
+                  {focusSelectedDefender ? 'Focused' : 'Show all'}
+                </button>
+              </div>
+              <p className={styles.statusNote}>
+                {focusSelectedDefender
+                  ? 'Once a defender is selected, other target dice labels are hidden.'
+                  : 'All possible target dice labels remain visible while selecting a defender.'}
+              </p>
+            </div>
           </div>
         )}
 
@@ -876,6 +901,9 @@ export function BlockDiceCalculator() {
                   isBlocker && showBlitzMarker && currentSquareBlitzLabel ? currentSquareBlitzLabel : null
                 const showCalculateAnnotations = appMode === 'CALCULATE'
                 const showEditTokenMeta = appMode === 'EDIT'
+                const shouldHideOtherTargetPreview =
+                  focusSelectedDefender && appMode === 'CALCULATE' && Boolean(target) && !isTarget
+                const visiblePreview = shouldHideOtherTargetPreview ? undefined : preview
                 const tokenRoleLabel = getTokenRoleLabel({
                   isBlocker: Boolean(isBlocker),
                   isTarget: Boolean(isTarget),
@@ -938,9 +966,9 @@ export function BlockDiceCalculator() {
                           </span>
                         ) : null}
                         {showEditTokenMeta && skills.length > 0 ? <span className={styles.tokenMeta}>{skills.join(', ')}</span> : null}
-                        {preview ? (
+                        {visiblePreview ? (
                           <span className={showCalculateAnnotations ? styles.previewBadgeCompact : styles.previewBadge}>
-                            {preview.diceLabel}
+                            {visiblePreview.diceLabel}
                           </span>
                         ) : null}
                         {!preview && attackerCurrentSquareDiceLabel ? (
