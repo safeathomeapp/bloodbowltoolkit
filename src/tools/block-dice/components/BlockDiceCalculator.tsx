@@ -1149,7 +1149,7 @@ export function BlockDiceCalculator() {
                     <div className={styles.playerCardHeader}>
                       <div className={styles.playerCardHeading}>
                         <p className={styles.playerCardLabel}>Attacker</p>
-                        <p className={styles.playerCardName}>{blockerNumberLabel !== 'none' ? blockerNumberLabel : 'No attacker selected'}</p>
+                        <p className={styles.playerCardName}>{blockerNumberLabel !== 'none' ? blockerNumberLabel : '-'}</p>
                       </div>
                       <p className={styles.playerCardStrength}>
                         {attackerCardStrength !== null ? `ST ${attackerCardStrength}` : 'ST -'}
@@ -1179,7 +1179,7 @@ export function BlockDiceCalculator() {
                     <div className={styles.playerCardHeader}>
                       <div className={styles.playerCardHeading}>
                         <p className={styles.playerCardLabel}>Defender</p>
-                        <p className={styles.playerCardName}>{targetNumberLabel !== 'none' ? targetNumberLabel : 'No defender selected'}</p>
+                        <p className={styles.playerCardName}>{targetNumberLabel !== 'none' ? targetNumberLabel : '-'}</p>
                       </div>
                       <p className={styles.playerCardStrength}>
                         {defenderCardStrength !== null ? `ST ${defenderCardStrength}` : 'ST -'}
