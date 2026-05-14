@@ -1050,10 +1050,8 @@ export function BlockDiceCalculator() {
 
       {appMode === 'CALCULATE' && calculation ? (
         <section className={styles.resultsPanel} aria-labelledby="result-title">
-          <div className={styles.resultStack}>
-            <div className={styles.resultCard}>
-              <div className={styles.resultHeaderRow}>
-                <p id="result-title" className={styles.resultHeadline}>{calculation.finalDice.summary}</p>
+          <div className={styles.resultHeaderRow}>
+            <p id="result-title" className={styles.resultHeadline}>{calculation.finalDice.summary}</p>
               <button
                 type="button"
                 className={styles.teamToggle}
@@ -1063,58 +1061,56 @@ export function BlockDiceCalculator() {
               >
                 {isWhyPanelOpen ? 'HIDE WHY' : 'WHY?'}
               </button>
-              </div>
-              <p className={styles.resultCopy}>
-                Attacker ST {calculation.attackerStrength.total} vs Defender ST {calculation.defenderStrength.total}
-              </p>
-              {previewMode === 'BLITZ' && target ? (
-                <p className={styles.resultCopy}>
-                  {currentCandidatePositionLabel
-                    ? `Current preview uses attack square ${currentCandidatePositionLabel}.`
-                    : 'No reachable candidate squares remain for this blitz preview.'}
-                </p>
-              ) : null}
-              <div className={styles.resultActions}>
-                {SHOW_BLITZ_INVALIDATION_ACTION && previewMode === 'BLITZ' && currentCandidate ? (
-                  <button
-                    type="button"
-                    className={styles.actionButtonSecondary}
-                    onClick={() => toggleCandidateInvalidation(currentCandidate.key)}
-                  >
-                    Mark {currentCandidatePositionLabel} unreachable
-                  </button>
-                ) : null}
-              </div>
-
-              {isWhyPanelOpen ? (
-                <div id="why-panel-inline">
-                  <div className={styles.explanationStack}>
-                    {calculation.explanation.map((section) => (
-                      <div key={section.title} className={styles.explanationCard}>
-                        <p className={styles.resultHeadline}>{section.title}</p>
-                        <ul className={styles.summaryList}>
-                          {section.entries.map((entry) => (
-                            <li
-                              key={entry.text}
-                              className={
-                                entry.tone === 'SUCCESS'
-                                  ? styles.assistVALID
-                                  : entry.tone === 'WARNING'
-                                    ? styles.assistCANCELLED
-                                    : styles.assistINELIGIBLE
-                              }
-                            >
-                              {entry.text}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
           </div>
+          <p className={styles.resultCopy}>
+            Attacker ST {calculation.attackerStrength.total} vs Defender ST {calculation.defenderStrength.total}
+          </p>
+          {previewMode === 'BLITZ' && target ? (
+            <p className={styles.resultCopy}>
+              {currentCandidatePositionLabel
+                ? `Current preview uses attack square ${currentCandidatePositionLabel}.`
+                : 'No reachable candidate squares remain for this blitz preview.'}
+            </p>
+          ) : null}
+          <div className={styles.resultActions}>
+            {SHOW_BLITZ_INVALIDATION_ACTION && previewMode === 'BLITZ' && currentCandidate ? (
+              <button
+                type="button"
+                className={styles.actionButtonSecondary}
+                onClick={() => toggleCandidateInvalidation(currentCandidate.key)}
+              >
+                Mark {currentCandidatePositionLabel} unreachable
+              </button>
+            ) : null}
+          </div>
+
+          {isWhyPanelOpen ? (
+            <div id="why-panel-inline">
+              <div className={styles.explanationStack}>
+                {calculation.explanation.map((section) => (
+                  <div key={section.title} className={styles.explanationCard}>
+                    <p className={styles.resultHeadline}>{section.title}</p>
+                    <ul className={styles.summaryList}>
+                      {section.entries.map((entry) => (
+                        <li
+                          key={entry.text}
+                          className={
+                            entry.tone === 'SUCCESS'
+                              ? styles.assistVALID
+                              : entry.tone === 'WARNING'
+                                ? styles.assistCANCELLED
+                                : styles.assistINELIGIBLE
+                          }
+                        >
+                          {entry.text}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
