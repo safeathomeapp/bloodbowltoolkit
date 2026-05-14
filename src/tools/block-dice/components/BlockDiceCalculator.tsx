@@ -1200,8 +1200,10 @@ export function BlockDiceCalculator() {
                 <p className={styles.resultHeadline}>Blitz Preview</p>
                 <ul className={styles.summaryList}>
                   <li>Long press the active attacker in calculate mode to enter blitz preview.</li>
+                  <li>The active blitzing attacker is marked as `*A*` on the grid.</li>
                   <li>Potential dice are shown without checking movement legality.</li>
                   <li>If the attacker is already adjacent, the current square blitz dice show on that attacker token.</li>
+                  <li>Long press the same active attacker again to leave blitz preview.</li>
                 </ul>
               </div>
 
