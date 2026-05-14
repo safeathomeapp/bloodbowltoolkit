@@ -1029,9 +1029,6 @@ export function BlockDiceCalculator() {
                 </button>
               ))}
             </div>
-            <p className={styles.playerCardNote}>
-              Horns is applied before Dauntless on a blitz. Guard and Defensive stay on the player profile for assist checks.
-            </p>
           </article>
 
           <article
@@ -1065,9 +1062,6 @@ export function BlockDiceCalculator() {
                 </button>
               ))}
             </div>
-            <p className={styles.playerCardNote}>
-              Use these toggles to change the selected defender profile directly without rebuilding the board.
-            </p>
           </article>
         </div>
         </div>
