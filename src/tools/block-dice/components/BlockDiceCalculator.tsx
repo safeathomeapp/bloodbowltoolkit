@@ -115,7 +115,7 @@ function getTokenRoleLabel(options: { isBlocker: boolean; isTarget: boolean; isB
   }
 
   if (options.isTarget) {
-    return 'T'
+    return 'D'
   }
 
   return null
@@ -445,24 +445,30 @@ export function BlockDiceCalculator() {
   const blockerSkills = blockerProfile?.skills ?? []
   const targetSkills = targetProfile?.skills ?? []
   const attackerCardStrength = blockerProfile
-    ? (blockerSkills.includes('DAUNTLESS') && targetProfile
-        ? Math.max(blockerProfile.strength, targetProfile.strength)
-        : blockerProfile.strength) +
-      (previewMode === 'BLITZ' && blockerSkills.includes('HORNS') ? 1 : 0)
+    ? (() => {
+        const hornsModifier = previewMode === 'BLITZ' && blockerSkills.includes('HORNS') ? 1 : 0
+        const strengthAfterHorns = blockerProfile.strength + hornsModifier
+
+        if (blockerSkills.includes('DAUNTLESS') && targetProfile && targetProfile.strength > strengthAfterHorns) {
+          return targetProfile.strength
+        }
+
+        return strengthAfterHorns
+      })()
     : null
   const defenderCardStrength = targetProfile?.strength ?? null
   const selectionHint =
     appMode === 'EDIT'
       ? 'Edit mode is active. Tap an empty square to place the configured player or an occupied square to remove one.'
       : !blocker
-        ? 'Calculate mode is active. Tap any player to choose the active blocker.'
+        ? 'Calculate mode is active. Tap any player to choose the active attacker.'
         : !target
           ? previewMode === 'STANDARD'
-            ? 'Adjacent opposing players now show dice overlays. Tap one of those targets to inspect the detailed result.'
+            ? 'Adjacent opposing players now show dice overlays. Tap one of those defenders to inspect the detailed result.'
             : 'Blitz Preview is active. Potential block dice show on opposing players without checking movement legality.'
           : previewMode === 'STANDARD'
-            ? 'Preview target selected. Tap that target again to make them the blocker, tap another adjacent opposing player to switch the preview, or tap a friendly player to change blocker.'
-            : 'Blitz target selected. Tap that target again to make them the blocker, tap a candidate square to inspect it, long press it for Why, or use the result action to mark it unreachable.'
+            ? 'Preview defender selected. Tap that defender again to make them the attacker, tap another adjacent opposing player to switch the preview, or tap a friendly player to change attacker.'
+            : 'Blitz defender selected. Tap that defender again to make them the attacker, tap a candidate square to inspect it, long press it for Why, or use the result action to mark it unreachable.'
   const calculation =
     previewMode === 'BLITZ' && target
       ? selectedCandidate?.calculation ?? candidateResult?.preferredCandidate?.calculation ?? activePreview?.calculation ?? null
@@ -651,7 +657,7 @@ export function BlockDiceCalculator() {
           <div className={styles.summaryCard}>
             <p className={styles.eyebrow}>Calculate Mode</p>
             <ul className={styles.summaryList}>
-              <li>Tap one player to make them the active blocker.</li>
+              <li>Tap one player to make them the active attacker.</li>
               <li>
                 {previewMode === 'STANDARD'
                   ? 'Adjacent opposing players show inline dice overlays automatically.'
@@ -721,8 +727,8 @@ export function BlockDiceCalculator() {
           <ul className={styles.summaryList}>
             <li>{teamACount} players placed for Team A</li>
             <li>{teamBCount} players placed for Team B</li>
-            <li>Blocker: {blockerLabel}</li>
-            <li>Target: {targetLabel}</li>
+            <li>Attacker: {blockerLabel}</li>
+            <li>Defender: {targetLabel}</li>
           </ul>
         </div>
 
@@ -733,9 +739,9 @@ export function BlockDiceCalculator() {
             <li>
               {previewMode === 'STANDARD'
                 ? 'Standard calculate mode currently previews adjacent blocks only.'
-                : 'Long press the active blocker again to leave Blitz Preview.'}
+                : 'Long press the active attacker again to leave Blitz Preview.'}
             </li>
-            <li>Long press the active blocker in Calculate Mode to toggle Blitz Preview.</li>
+            <li>Long press the active attacker in Calculate Mode to toggle Blitz Preview.</li>
           </ul>
         </div>
       </section>
@@ -894,7 +900,7 @@ export function BlockDiceCalculator() {
               </button>
             </div>
             <p className={styles.playerCardNote}>
-              Horns adds +1 ST only when the block is part of a blitz.
+              Horns adds +1 ST only on a blitz, and it is applied before Dauntless.
             </p>
           </article>
 
@@ -1025,8 +1031,8 @@ export function BlockDiceCalculator() {
           <div className={styles.resultCard}>
             <p className={styles.resultHeadline}>Preview ready</p>
             <p className={styles.resultCopy}>
-              In Calculate Mode, choose a blocker first. Adjacent opposing players will show block
-              dice overlays, and tapping one of those targets will open the detailed result.
+              In Calculate Mode, choose an attacker first. Adjacent opposing players will show block
+              dice overlays, and tapping one of those defenders will open the detailed result.
             </p>
           </div>
         )}

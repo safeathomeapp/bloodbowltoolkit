@@ -232,7 +232,7 @@ function buildFinalDiceSummary(attackerStrength: number, defenderStrength: numbe
 
 function buildExplanation(
   blockerLabel: string,
-  targetLabel: string,
+  defenderLabel: string,
   attackerBaseSummary: string,
   hornsSummary: string | null,
   attackerStrength: number,
@@ -249,7 +249,7 @@ function buildExplanation(
     {
       title: 'Base',
       entries: [
-        `${blockerLabel} blocks ${targetLabel}.`,
+        `${blockerLabel} blocks ${defenderLabel}.`,
         attackerBaseSummary,
         ...(hornsSummary ? [hornsSummary] : []),
         `Base Strength comparison: ST ${attackerStrength} vs ST ${defenderStrength}.`,
@@ -290,15 +290,17 @@ export function calculateBlockDice(
   const activeTeam = blocker.placedPlayer.teamSide
   const attackerHasDauntless = hasSkill(blocker, 'DAUNTLESS')
   const attackerUsesHorns = Boolean(options.isBlitz) && hasSkill(blocker, 'HORNS')
-  const attackerBaseStrength = attackerHasDauntless
-    ? Math.max(blocker.profile.strength, target.profile.strength)
-    : blocker.profile.strength
-  const attackerBaseSummary = attackerHasDauntless
-    ? blocker.profile.strength < target.profile.strength
-      ? `${blocker.profile.name ?? blocker.placedPlayer.id} uses temporary Dauntless and rises to match ${target.profile.name ?? target.placedPlayer.id} at ST ${target.profile.strength}.`
-      : `${blocker.profile.name ?? blocker.placedPlayer.id} has Dauntless, but keeps their higher base Strength of ST ${blocker.profile.strength}.`
-    : `${blocker.profile.name ?? blocker.placedPlayer.id} uses their normal base Strength of ST ${blocker.profile.strength}.`
   const hornsModifier = attackerUsesHorns ? 1 : 0
+  const strengthAfterHorns = blocker.profile.strength + hornsModifier
+  const attackerBaseStrength =
+    attackerHasDauntless && target.profile.strength > strengthAfterHorns
+      ? target.profile.strength
+      : strengthAfterHorns
+  const attackerBaseSummary = attackerHasDauntless
+    ? target.profile.strength > strengthAfterHorns
+      ? `${blocker.profile.name ?? blocker.placedPlayer.id} uses temporary Dauntless after Horns and rises to match ${target.profile.name ?? target.placedPlayer.id} at ST ${target.profile.strength}.`
+      : `${blocker.profile.name ?? blocker.placedPlayer.id} has Dauntless, but it does not trigger because their Strength is already high enough.`
+    : `${blocker.profile.name ?? blocker.placedPlayer.id} uses their normal base Strength of ST ${blocker.profile.strength}.`
   const hornsSummary = attackerUsesHorns
     ? `${blocker.profile.name ?? blocker.placedPlayer.id} gains +1 ST from Horns because this block is part of a blitz.`
     : null
@@ -341,11 +343,11 @@ export function calculateBlockDice(
   const defensiveModifier = defensiveAssists
     .filter((assist) => assist.status === 'VALID')
     .reduce((total, assist) => total + assist.strengthModifier, 0)
-  const attackerStrength = attackerBaseStrength + hornsModifier + offensiveModifier
+  const attackerStrength = attackerBaseStrength + offensiveModifier
   const defenderStrength = target.profile.strength + defensiveModifier
   const finalDice = buildFinalDiceSummary(attackerStrength, defenderStrength)
   const blockerLabel = blocker.profile.name ?? blocker.placedPlayer.id
-  const targetLabel = target.profile.name ?? target.placedPlayer.id
+  const defenderLabel = target.profile.name ?? target.placedPlayer.id
 
   return {
     blocker: {
@@ -357,14 +359,14 @@ export function calculateBlockDice(
     },
     target: {
       id: target.placedPlayer.id,
-      label: targetLabel,
+      label: defenderLabel,
       teamSide: target.placedPlayer.teamSide,
       strength: target.profile.strength,
       position: target.placedPlayer.position,
     },
     attackerStrength: {
       base: attackerBaseStrength,
-      assistModifier: hornsModifier + offensiveModifier,
+      assistModifier: offensiveModifier,
       total: attackerStrength,
     },
     defenderStrength: {
@@ -377,7 +379,7 @@ export function calculateBlockDice(
     finalDice,
     explanation: buildExplanation(
       blockerLabel,
-      targetLabel,
+      defenderLabel,
       attackerBaseSummary,
       hornsSummary,
       attackerStrength,

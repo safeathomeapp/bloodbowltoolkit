@@ -236,7 +236,9 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.base).toBe(5)
     expect(result.attackerStrength.total).toBe(5)
     expect(result.finalDice.chooser).toBe('NONE')
-    expect(result.explanation[0]?.entries).toContain('A1 uses temporary Dauntless and rises to match B1 at ST 5.')
+    expect(result.explanation[0]?.entries).toContain(
+      'A1 uses temporary Dauntless after Horns and rises to match B1 at ST 5.',
+    )
   })
 
   it('does not reduce strength when Dauntless is enabled against a weaker target', () => {
@@ -249,7 +251,9 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.base).toBe(5)
     expect(result.attackerStrength.total).toBe(5)
     expect(result.finalDice.chooser).toBe('ATTACKER')
-    expect(result.explanation[0]?.entries).toContain('A1 has Dauntless, but keeps their higher base Strength of ST 5.')
+    expect(result.explanation[0]?.entries).toContain(
+      'A1 has Dauntless, but it does not trigger because their Strength is already high enough.',
+    )
   })
 
   it('does not apply Horns outside a blitz', () => {
@@ -271,9 +275,42 @@ describe('calculateBlockDice', () => {
 
     const result = calculateBlockDice(boardState, profiles, { isBlitz: true })
 
-    expect(result.attackerStrength.base).toBe(3)
+    expect(result.attackerStrength.base).toBe(4)
     expect(result.attackerStrength.total).toBe(4)
     expect(result.finalDice.chooser).toBe('NONE')
     expect(result.explanation[0]?.entries).toContain('A1 gains +1 ST from Horns because this block is part of a blitz.')
+  })
+
+  it('does not trigger Dauntless when Horns already reaches the defender strength', () => {
+    const attacker = createPlayer('A1', 'A', { row: 3, col: 3 }, { strength: 3, skills: ['DAUNTLESS', 'HORNS'] })
+    const defender = createPlayer('B1', 'B', { row: 3, col: 4 }, { strength: 4 })
+    const { boardState, profiles } = buildState([attacker, defender], 'A1', 'B1')
+
+    const result = calculateBlockDice(boardState, profiles, { isBlitz: true })
+
+    expect(result.attackerStrength.base).toBe(4)
+    expect(result.attackerStrength.total).toBe(4)
+    expect(result.finalDice.chooser).toBe('NONE')
+    expect(result.explanation[0]?.entries).toContain(
+      'A1 has Dauntless, but it does not trigger because their Strength is already high enough.',
+    )
+  })
+
+  it('checks Dauntless after Horns during a blitz', () => {
+    const attacker = createPlayer('A1', 'A', { row: 3, col: 3 }, { strength: 3, skills: ['DAUNTLESS', 'HORNS'] })
+    const defender = createPlayer('B1', 'B', { row: 3, col: 4 }, { strength: 5 })
+    const { boardState, profiles } = buildState([attacker, defender], 'A1', 'B1')
+
+    const result = calculateBlockDice(boardState, profiles, { isBlitz: true })
+
+    expect(result.attackerStrength.base).toBe(5)
+    expect(result.attackerStrength.total).toBe(5)
+    expect(result.finalDice.chooser).toBe('NONE')
+    expect(result.explanation[0]?.entries).toContain(
+      'A1 gains +1 ST from Horns because this block is part of a blitz.',
+    )
+    expect(result.explanation[0]?.entries).toContain(
+      'A1 uses temporary Dauntless after Horns and rises to match B1 at ST 5.',
+    )
   })
 })
