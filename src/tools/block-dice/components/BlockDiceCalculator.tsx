@@ -101,29 +101,6 @@ function getProfileSkills(player: PlacedPlayer, profiles: PlayerProfile[]) {
   return profile?.skills ?? []
 }
 
-function getCandidateStatusLabel(
-  status: 'VALID' | 'OCCUPIED' | 'INVALIDATED',
-  options: { isTopTier: boolean; isSelected: boolean },
-) {
-  if (status === 'OCCUPIED') {
-    return 'OCCUPIED'
-  }
-
-  if (status === 'INVALIDATED') {
-    return 'OFF'
-  }
-
-  if (options.isSelected) {
-    return 'SELECTED'
-  }
-
-  if (options.isTopTier) {
-    return 'TOP'
-  }
-
-  return 'VALID'
-}
-
 function getTokenRoleLabel(options: { isBlocker: boolean; isTarget: boolean; isBlitzing: boolean }) {
   if (options.isBlocker) {
     return options.isBlitzing ? '*A' : 'A'
@@ -755,12 +732,7 @@ export function BlockDiceCalculator() {
               const isTopTierCandidate = candidate ? topTierCandidateKeys.has(candidate.key) : false
               const showBlitzMarker = isBlocker && appMode === 'CALCULATE' && previewMode === 'BLITZ'
               const showCalculateAnnotations = appMode === 'CALCULATE'
-              const candidateStatusLabel = candidate
-                ? getCandidateStatusLabel(candidate.status, {
-                    isTopTier: isTopTierCandidate,
-                    isSelected: isSelectedCandidate,
-                  })
-                : null
+              const showEditTokenMeta = appMode === 'EDIT'
               const tokenRoleLabel = getTokenRoleLabel({
                 isBlocker: Boolean(isBlocker),
                 isTarget: Boolean(isTarget),
@@ -798,7 +770,7 @@ export function BlockDiceCalculator() {
                     player
                       ? undefined
                       : showCalculateAnnotations && candidate
-                        ? `Candidate square ${row + 1},${col + 1}, ${candidateStatusLabel ?? 'candidate'}${candidate.diceLabel ? `, ${candidate.diceLabel}` : ''}`
+                        ? `Candidate square ${row + 1},${col + 1}${candidate.diceLabel ? `, ${candidate.diceLabel}` : ''}`
                         : `Grid square ${row + 1},${col + 1}`
                   }
                   onPointerDown={() => {
@@ -812,12 +784,14 @@ export function BlockDiceCalculator() {
                   {player ? (
                     <span className={tokenClassName}>
                       <strong>{getProfileLabel(player, playerProfiles)}</strong>
-                      <span className={styles.tokenMeta}>ST {getProfileStrength(player, playerProfiles)}</span>
-                      <span className={styles.tokenMeta}>
-                        {player.isStanding ? 'Standing' : 'Prone'}
-                        {player.hasTackleZone ? ' · TZ' : ' · No TZ'}
-                      </span>
-                      {skills.length > 0 ? <span className={styles.tokenMeta}>{skills.join(', ')}</span> : null}
+                      {showEditTokenMeta ? <span className={styles.tokenMeta}>ST {getProfileStrength(player, playerProfiles)}</span> : null}
+                      {showEditTokenMeta ? (
+                        <span className={styles.tokenMeta}>
+                          {player.isStanding ? 'Standing' : 'Prone'}
+                          {player.hasTackleZone ? ' · TZ' : ' · No TZ'}
+                        </span>
+                      ) : null}
+                      {showEditTokenMeta && skills.length > 0 ? <span className={styles.tokenMeta}>{skills.join(', ')}</span> : null}
                       {preview ? <span className={styles.previewBadge}>{preview.diceLabel}</span> : null}
                       {showCalculateAnnotations && tokenRoleLabel ? <span className={styles.tokenRole}>{tokenRoleLabel}</span> : null}
                     </span>
@@ -825,6 +799,10 @@ export function BlockDiceCalculator() {
                     appMode === 'EDIT' ? (
                       <span className={styles.cellHintStack}>
                         <span className={styles.cellHintPrimary}>{`${row + 1},${col + 1}`}</span>
+                      </span>
+                    ) : candidate?.diceLabel ? (
+                      <span className={styles.cellHintStack}>
+                        <span className={styles.cellHintPrimary}>{candidate.diceLabel}</span>
                       </span>
                     ) : null
                   )}
