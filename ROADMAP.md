@@ -19,10 +19,10 @@
 - Blitz preview and non-adjacent target overlays
 - Candidate attack squares, square-specific Why, and explicit invalidation
 - Candidate-square readability refinement
+- Tie-aware blitz candidate ranking
 
 ## Current Priorities
 
-- Refactor blitz candidate evaluation to support tied top-tier squares instead of a forced single “best” square
 - Simplify candidate visuals and remove misleading `BEST` / `ALT` language where no mathematical distinction exists
 - Re-test the candidate-square flow on a phone after the tie-aware update
 - Perform a broader calculator UI cleanup pass after candidate semantics are corrected

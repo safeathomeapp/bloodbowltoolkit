@@ -54,17 +54,18 @@ describe('calculatePotentialBlockCandidates', () => {
 
     expect(result.candidates).toHaveLength(8)
     expect(result.candidates.find((candidate) => candidate.key === '2,2')?.status).toBe('OCCUPIED')
-    expect(result.bestCandidate).not.toBeNull()
+    expect(result.preferredCandidate).not.toBeNull()
+    expect(result.topTierCandidates.length).toBeGreaterThan(0)
   })
 
-  it('excludes invalidated squares from best-candidate selection', () => {
+  it('excludes invalidated squares from preferred-candidate selection', () => {
     const blocker = createPlayer('A1', 'A', { row: 0, col: 0 })
     const target = createPlayer('B1', 'B', { row: 3, col: 3 })
     const assist = createPlayer('A2', 'A', { row: 2, col: 2 })
     const { boardState, profiles } = buildState([blocker, target, assist])
 
     const initial = calculatePotentialBlockCandidates(boardState, profiles, 'A1', 'B1')
-    const initialBestKey = initial.bestCandidate?.key
+    const initialBestKey = initial.preferredCandidate?.key
     expect(initialBestKey).toBeTruthy()
 
     const recalculated = calculatePotentialBlockCandidates(
@@ -76,7 +77,18 @@ describe('calculatePotentialBlockCandidates', () => {
     )
 
     expect(recalculated.candidates.find((candidate) => candidate.key === initialBestKey)?.status).toBe('INVALIDATED')
-    expect(recalculated.bestCandidate?.key).not.toBe(initialBestKey)
+    expect(recalculated.preferredCandidate?.key).not.toBe(initialBestKey)
+  })
+
+  it('returns every equally optimal square in the top tier', () => {
+    const blocker = createPlayer('A1', 'A', { row: 0, col: 0 })
+    const target = createPlayer('B1', 'B', { row: 3, col: 3 })
+    const { boardState, profiles } = buildState([blocker, target])
+
+    const result = calculatePotentialBlockCandidates(boardState, profiles, 'A1', 'B1')
+
+    expect(result.topTierCandidates).toHaveLength(8)
+    expect(new Set(result.topTierCandidates.map((candidate) => candidate.diceLabel))).toEqual(new Set(['1D']))
   })
 
   it('creates stable position keys for candidate invalidation', () => {

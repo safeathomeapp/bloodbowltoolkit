@@ -9,7 +9,7 @@ export function calculateBestPotentialBlock(
   targetId: string,
   invalidatedKeys: string[] = [],
 ): TargetPreview | null {
-  const { bestCandidate } = calculatePotentialBlockCandidates(
+  const { preferredCandidate } = calculatePotentialBlockCandidates(
     boardState,
     profiles,
     blockerId,
@@ -17,17 +17,17 @@ export function calculateBestPotentialBlock(
     invalidatedKeys,
   )
 
-  if (!bestCandidate || !bestCandidate.calculation) {
+  if (!preferredCandidate || !preferredCandidate.calculation) {
     return null
   }
 
   return {
     blockerId,
     targetId,
-    targetLabel: bestCandidate.calculation.target.label,
-    diceLabel: bestCandidate.diceLabel ?? '1D',
-    calculation: bestCandidate.calculation,
-    attackPosition: bestCandidate.position,
+    targetLabel: preferredCandidate.calculation.target.label,
+    diceLabel: preferredCandidate.diceLabel ?? '1D',
+    calculation: preferredCandidate.calculation,
+    attackPosition: preferredCandidate.position,
     previewMode: 'BLITZ',
   }
 }

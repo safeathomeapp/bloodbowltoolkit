@@ -1,5 +1,9 @@
 import type { BoardState, PlayerProfile, Position } from '../../../shared/types/game'
-import type { BlockDiceCalculation, CandidateAttackSquare, DiceChooser } from '../types/blockDice'
+import type {
+  BlockDiceCalculation,
+  DiceChooser,
+  PotentialBlockCandidateResult,
+} from '../types/blockDice'
 import { calculateBlockDice } from './calculateBlockDice'
 
 export function buildPositionKey(position: Position) {
@@ -72,14 +76,15 @@ export function calculatePotentialBlockCandidates(
   blockerId: string,
   targetId: string,
   invalidatedKeys: string[] = [],
-) {
+): PotentialBlockCandidateResult {
   const blocker = boardState.placedPlayers.find((player) => player.id === blockerId)
   const target = boardState.placedPlayers.find((player) => player.id === targetId)
 
   if (!blocker || !target) {
     return {
-      candidates: [] as CandidateAttackSquare[],
-      bestCandidate: null as CandidateAttackSquare | null,
+      candidates: [],
+      topTierCandidates: [],
+      preferredCandidate: null,
     }
   }
 
@@ -120,12 +125,24 @@ export function calculatePotentialBlockCandidates(
       }
     })
 
-  const bestCandidate = candidates
+  const rankedCandidates = candidates
     .filter((candidate) => candidate.status === 'VALID' && candidate.calculation)
-    .sort((left, right) => scoreCalculation(right.calculation!.finalDice) - scoreCalculation(left.calculation!.finalDice))[0] ?? null
+    .map((candidate) => ({
+      candidate,
+      score: scoreCalculation(candidate.calculation!.finalDice),
+    }))
+    .sort((left, right) => right.score - left.score)
+
+  const topScore = rankedCandidates[0]?.score ?? null
+  const topTierCandidates =
+    topScore === null
+      ? []
+      : rankedCandidates.filter((entry) => entry.score === topScore).map((entry) => entry.candidate)
+  const preferredCandidate = rankedCandidates[0]?.candidate ?? null
 
   return {
     candidates,
-    bestCandidate,
+    topTierCandidates,
+    preferredCandidate,
   }
 }

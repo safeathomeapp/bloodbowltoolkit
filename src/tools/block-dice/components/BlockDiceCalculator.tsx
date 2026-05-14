@@ -103,7 +103,7 @@ function getProfileSkills(player: PlacedPlayer, profiles: PlayerProfile[]) {
 
 function getCandidateStatusLabel(
   status: 'VALID' | 'OCCUPIED' | 'INVALIDATED',
-  options: { isBest: boolean; isSelected: boolean },
+  options: { isTopTier: boolean; isSelected: boolean },
 ) {
   if (status === 'OCCUPIED') {
     return 'OCCUPIED'
@@ -117,11 +117,11 @@ function getCandidateStatusLabel(
     return 'SELECTED'
   }
 
-  if (options.isBest) {
-    return 'BEST'
+  if (options.isTopTier) {
+    return 'TOP'
   }
 
-  return 'ALT'
+  return 'VALID'
 }
 
 export function BlockDiceCalculator() {
@@ -408,6 +408,7 @@ export function BlockDiceCalculator() {
         )
       : null
   const candidateMap = new Map(candidateResult?.candidates.map((candidate) => [candidate.key, candidate]) ?? [])
+  const topTierCandidateKeys = new Set(candidateResult?.topTierCandidates.map((candidate) => candidate.key) ?? [])
   const selectedCandidate =
     candidateResult && selectedBlitzCandidateKey
       ? candidateResult.candidates.find(
@@ -433,7 +434,7 @@ export function BlockDiceCalculator() {
             : 'Blitz target selected. Tap a candidate square to inspect it, long press it for Why, or use the result action to mark it unreachable.'
   const calculation =
     previewMode === 'BLITZ' && target
-      ? selectedCandidate?.calculation ?? candidateResult?.bestCandidate?.calculation ?? activePreview?.calculation ?? null
+      ? selectedCandidate?.calculation ?? candidateResult?.preferredCandidate?.calculation ?? activePreview?.calculation ?? null
       : activePreview?.calculation ?? (blocker && target ? calculateBlockDice(boardState, playerProfiles) : null)
 
   const clearLongPressTimer = () => {
@@ -480,7 +481,7 @@ export function BlockDiceCalculator() {
     }, 450)
   }
 
-  const currentCandidate = selectedCandidate ?? candidateResult?.bestCandidate ?? null
+  const currentCandidate = selectedCandidate ?? candidateResult?.preferredCandidate ?? null
   const currentCandidatePositionLabel = currentCandidate
     ? `${currentCandidate.position.row + 1},${currentCandidate.position.col + 1}`
     : null
@@ -649,8 +650,8 @@ export function BlockDiceCalculator() {
                   Tap a candidate square to inspect it. Long press a candidate square to open Why. Tap a dimmed square to restore it.
                 </p>
                 <div className={styles.legendRow} aria-label="Blitz candidate legend">
-                  <span className={`${styles.legendChip} ${styles.legendBest}`}>BEST</span>
-                  <span className={`${styles.legendChip} ${styles.legendAlt}`}>ALT</span>
+                  <span className={`${styles.legendChip} ${styles.legendBest}`}>TOP</span>
+                  <span className={`${styles.legendChip} ${styles.legendAlt}`}>VALID</span>
                   <span className={`${styles.legendChip} ${styles.legendOff}`}>OFF</span>
                   <span className={`${styles.legendChip} ${styles.legendOccupied}`}>OCCUPIED</span>
                 </div>
@@ -730,18 +731,18 @@ export function BlockDiceCalculator() {
               const candidateKey = buildPositionKey({ row, col })
               const candidate = candidateMap.get(candidateKey)
               const isSelectedCandidate = candidate?.key === selectedBlitzCandidateKey
-              const isBestCandidate = candidateResult?.bestCandidate?.key === candidate?.key
+              const isTopTierCandidate = candidate ? topTierCandidateKeys.has(candidate.key) : false
               const candidateStatusLabel = candidate
                 ? getCandidateStatusLabel(candidate.status, {
-                    isBest: isBestCandidate,
+                    isTopTier: isTopTierCandidate,
                     isSelected: isSelectedCandidate,
                   })
                 : null
               const cellClassName = [
                 player ? styles.cellOccupied : styles.cell,
                 isEligibleTarget && !isTarget ? styles.cellEligibleTarget : '',
-                candidate?.status === 'VALID' && isBestCandidate ? styles.candidateBest : '',
-                candidate?.status === 'VALID' && !isBestCandidate ? styles.candidateFallback : '',
+                candidate?.status === 'VALID' && isTopTierCandidate ? styles.candidateBest : '',
+                candidate?.status === 'VALID' && !isTopTierCandidate ? styles.candidateFallback : '',
                 candidate?.status === 'INVALIDATED' ? styles.candidateInvalidated : '',
                 candidate?.status === 'OCCUPIED' ? styles.candidateOccupied : '',
                 isSelectedCandidate ? styles.candidateSelected : '',

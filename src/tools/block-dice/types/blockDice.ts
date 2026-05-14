@@ -71,3 +71,9 @@ export interface CandidateAttackSquare {
   diceLabel: string | null
   calculation: BlockDiceCalculation | null
 }
+
+export interface PotentialBlockCandidateResult {
+  candidates: CandidateAttackSquare[]
+  topTierCandidates: CandidateAttackSquare[]
+  preferredCandidate: CandidateAttackSquare | null
+}
