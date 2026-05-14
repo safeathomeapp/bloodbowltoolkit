@@ -15,11 +15,6 @@ const SHOW_BLITZ_INVALIDATION_ACTION = false
 type AppMode = 'EDIT' | 'CALCULATE'
 type PreviewMode = 'STANDARD' | 'BLITZ'
 
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
-}
-
 interface TeamDraft {
   strength: number
   skills: Skill[]
@@ -95,11 +90,6 @@ function isAdjacent(left: Position, right: Position) {
 
 function toggleSkill(skills: Skill[], skill: Skill) {
   return skills.includes(skill) ? skills.filter((entry) => entry !== skill) : [...skills, skill]
-}
-
-function getProfileLabel(player: PlacedPlayer, profiles: PlayerProfile[]) {
-  const profile = profiles.find((entry) => entry.id === player.profileId)
-  return profile?.name ?? player.id
 }
 
 function getProfileTokenNumber(player: PlacedPlayer, profiles: PlayerProfile[]) {
@@ -184,9 +174,7 @@ export function BlockDiceCalculator() {
   })
   const [appMode, setAppMode] = useState<AppMode>(persistedState?.appMode ?? 'EDIT')
   const [previewMode, setPreviewMode] = useState<PreviewMode>(persistedState?.previewMode ?? 'STANDARD')
-  const [focusSelectedDefender, setFocusSelectedDefender] = useState(
-    persistedState?.focusSelectedDefender ?? false,
-  )
+  const focusSelectedDefender = true
   const [selectedEditPlayerIds, setSelectedEditPlayerIds] = useState<Record<TeamSide, string | null>>(
     persistedState?.selectedEditPlayerIds ?? { A: null, B: null },
   )
@@ -197,9 +185,6 @@ export function BlockDiceCalculator() {
     persistedState?.selectedBlitzCandidateKey ?? null,
   )
   const [isWhyPanelOpen, setIsWhyPanelOpen] = useState(false)
-  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null)
-  const [installStatus, setInstallStatus] = useState('PWA ready for install and offline use.')
-  const [hasRestoredState] = useState(Boolean(persistedState))
   const longPressTimerRef = useRef<number | null>(null)
   const suppressClickRef = useRef(false)
 
@@ -236,31 +221,6 @@ export function BlockDiceCalculator() {
     selectedEditPlayerIds,
     selectedBlitzCandidateKey,
   ])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    const handleBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault()
-      setInstallPromptEvent(event as BeforeInstallPromptEvent)
-      setInstallStatus('Install prompt is available on this device.')
-    }
-
-    const handleAppInstalled = () => {
-      setInstallPromptEvent(null)
-      setInstallStatus('App installed. This toolkit is available offline.')
-    }
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-    window.addEventListener('appinstalled', handleAppInstalled)
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-      window.removeEventListener('appinstalled', handleAppInstalled)
-    }
-  }, [])
 
   const removePlayer = (playerId: string) => {
     const existingPlayer = boardState.placedPlayers.find((player) => player.id === playerId)
@@ -579,7 +539,6 @@ export function BlockDiceCalculator() {
     setNextNumbers({ A: 1, B: 1 })
     setAppMode('EDIT')
     setPreviewMode('STANDARD')
-    setFocusSelectedDefender(false)
     setSelectedEditPlayerIds({ A: null, B: null })
     setInvalidatedBlitzCandidates({})
     setSelectedBlitzCandidateKey(null)
@@ -590,24 +549,6 @@ export function BlockDiceCalculator() {
     }
   }
 
-  const promptInstall = async () => {
-    if (!installPromptEvent) {
-      setInstallStatus('Use your browser menu to install the app on this device.')
-      return
-    }
-
-    await installPromptEvent.prompt()
-    const outcome = await installPromptEvent.userChoice
-    setInstallStatus(
-      outcome.outcome === 'accepted'
-        ? 'Install accepted. The PWA should now be added to your device.'
-        : 'Install prompt dismissed. You can open it again later if the browser still offers it.',
-    )
-    setInstallPromptEvent(null)
-  }
-
-  const teamACount = boardState.placedPlayers.filter((player) => player.teamSide === 'A').length
-  const teamBCount = boardState.placedPlayers.filter((player) => player.teamSide === 'B').length
   const defendingTeam: TeamSide = activeTeam === 'A' ? 'B' : 'A'
   const selectedEditPlayerA =
     boardState.placedPlayers.find((player) => player.id === selectedEditPlayerIds.A) ?? null
@@ -654,8 +595,6 @@ export function BlockDiceCalculator() {
             candidate.calculation,
         ) ?? null
       : null
-  const blockerLabel = blocker ? getProfileLabel(blocker, playerProfiles) : 'none'
-  const targetLabel = target ? getProfileLabel(target, playerProfiles) : 'none'
   const blockerNumberLabel = blocker ? getProfileTokenNumber(blocker, playerProfiles) : 'none'
   const targetNumberLabel = target ? getProfileTokenNumber(target, playerProfiles) : 'none'
   const blockerProfile = getProfileForPlayer(blocker, playerProfiles)
@@ -709,18 +648,6 @@ export function BlockDiceCalculator() {
       )
     : null
   const defenderCardStrength = targetProfile?.strength ?? null
-  const selectionHint =
-    appMode === 'EDIT'
-      ? 'Edit mode is active. Tap an empty square to place the configured player or an occupied square to remove one.'
-      : !blocker
-        ? `Calculate mode is active. Team ${activeTeam} is the attacker. Tap one of that team's players to choose the active attacker.`
-        : !target
-          ? previewMode === 'STANDARD'
-            ? 'Adjacent opposing players now show dice overlays. Tap one of those defenders to inspect the detailed result.'
-            : 'Blitz Preview is active. Potential block dice show on opposing players without checking movement legality.'
-          : previewMode === 'STANDARD'
-            ? 'Preview defender selected. Tap another adjacent opposing player to switch the preview, or tap a friendly player to change attacker.'
-            : 'Blitz defender selected. Tap a candidate square to inspect it, long press it for Why, or use the result action to mark it unreachable.'
   const calculation =
     previewMode === 'BLITZ' && target
       ? selectedCandidate?.calculation ?? candidateResult?.preferredCandidate?.calculation ?? activePreview?.calculation ?? null
@@ -789,132 +716,6 @@ export function BlockDiceCalculator() {
 
   return (
     <div className={styles.layout}>
-      <section className={styles.controls} aria-labelledby="placement-controls">
-        <div className={styles.sectionHeading}>
-          <p className={styles.eyebrow}>Toolkit</p>
-          <h3 id="placement-controls" className={styles.title}>
-            Session Controls
-          </h3>
-        </div>
-
-        {appMode === 'EDIT' ? (
-          <div className={styles.summaryCard}>
-            <p className={styles.eyebrow}>Edit Mode</p>
-            <ul className={styles.summaryList}>
-              <li>Tap an empty square to place a player for the currently active side.</li>
-              <li>Tap an occupied square to select that player for editing in the team card below.</li>
-              <li>Long press an occupied square to remove that player from the grid.</li>
-            </ul>
-          </div>
-        ) : (
-          <div className={styles.summaryCard}>
-            <p className={styles.eyebrow}>Calculate Mode</p>
-            <ul className={styles.summaryList}>
-              <li>Only Team {activeTeam} can be selected as the active attacker.</li>
-              <li>
-                {previewMode === 'STANDARD'
-                  ? 'Adjacent opposing players show inline dice overlays automatically.'
-                  : 'Blitz Preview is active and non-adjacent opposing players can show potential block dice.'}
-              </li>
-              <li>
-                {previewMode === 'STANDARD'
-                  ? 'Tap an adjacent opposing player when you want the detailed reasoning.'
-                  : 'Tap a candidate square to inspect that attack position and long press it for Why.'}
-              </li>
-            </ul>
-            {blocker ? (
-              <div className={styles.summaryTagRow}>
-                <span className={previewMode === 'BLITZ' ? styles.blitzTagActive : styles.blitzTag}>
-                  {previewMode === 'BLITZ' ? 'BLITZ MODE' : 'STANDARD MODE'}
-                </span>
-              </div>
-            ) : null}
-            {previewMode === 'BLITZ' ? (
-              <p className={styles.statusNote}>
-                Potential block dice only. Movement legality is not checked.
-              </p>
-            ) : null}
-            {previewMode === 'BLITZ' && target ? (
-              <>
-                <p className={styles.statusNote}>
-                  Tap a candidate square to inspect it. Long press a candidate square to open Why. Tap a dimmed square to restore it.
-                </p>
-                <div className={styles.legendRow} aria-label="Blitz candidate legend">
-                  <span className={`${styles.legendChip} ${styles.legendBest}`}>TOP</span>
-                  <span className={`${styles.legendChip} ${styles.legendAlt}`}>VALID</span>
-                  <span className={`${styles.legendChip} ${styles.legendOff}`}>OFF</span>
-                  <span className={`${styles.legendChip} ${styles.legendOccupied}`}>OCCUPIED</span>
-                </div>
-              </>
-            ) : null}
-            <div className={styles.controlGroup}>
-              <span className={styles.label}>Selected defender focus</span>
-              <div className={styles.toggleRow}>
-                <button
-                  type="button"
-                  className={focusSelectedDefender ? styles.toggleActive : styles.toggle}
-                  onClick={() => setFocusSelectedDefender((current) => !current)}
-                  aria-pressed={focusSelectedDefender}
-                >
-                  {focusSelectedDefender ? 'Focused' : 'Show all'}
-                </button>
-              </div>
-              <p className={styles.statusNote}>
-                {focusSelectedDefender
-                  ? 'Once a defender is selected, other target dice labels are hidden.'
-                  : 'All possible target dice labels remain visible while selecting a defender.'}
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className={styles.summaryCard}>
-          <p className={styles.eyebrow}>Local Toolkit</p>
-          <ul className={styles.summaryList}>
-            <li>Board setup is saved locally on this device.</li>
-            <li>{hasRestoredState ? 'Previous local board state was restored for this session.' : 'No previous saved board state was restored.'}</li>
-            <li>{installStatus}</li>
-          </ul>
-          <div className={styles.actionGrid} aria-label="Local toolkit actions">
-            <button
-              type="button"
-              className={styles.actionButtonPrimary}
-              onClick={() => void promptInstall()}
-              aria-describedby="install-status"
-            >
-              Install app
-            </button>
-          </div>
-          <p id="install-status" className={styles.statusNote} aria-live="polite">
-            {installStatus}
-          </p>
-        </div>
-
-        <div className={styles.summaryCard}>
-          <p className={styles.eyebrow}>Board Summary</p>
-          <ul className={styles.summaryList}>
-            <li>{teamACount} players placed for Team A</li>
-            <li>{teamBCount} players placed for Team B</li>
-            <li>Active side: Team {activeTeam}</li>
-            <li>Attacker: {blockerLabel}</li>
-            <li>Defender: {targetLabel}</li>
-          </ul>
-        </div>
-
-        <div className={styles.summaryCard}>
-          <p className={styles.eyebrow}>Tactical Flow</p>
-          <ul className={styles.summaryList}>
-            <li>{selectionHint}</li>
-            <li>
-              {previewMode === 'STANDARD'
-                ? 'Standard calculate mode currently previews adjacent blocks only.'
-                : 'Long press the active attacker again to leave Blitz Preview.'}
-            </li>
-            <li>Long press the active attacker in Calculate Mode to toggle Blitz Preview.</li>
-          </ul>
-        </div>
-      </section>
-
       <section className={styles.boardPanel} aria-label="Board panel">
         <div className={styles.sectionHeading}>
           <div className={styles.titleRow}>
