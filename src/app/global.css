@@ -4,8 +4,9 @@
   font-weight: 400;
   color: #f6efe4;
   background:
-    radial-gradient(circle at top, rgba(174, 54, 74, 0.35), transparent 35%),
-    linear-gradient(180deg, #5d0f29 0%, #2a101a 42%, #130a0d 100%);
+    radial-gradient(circle at top, rgba(73, 104, 160, 0.18), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(54, 67, 96, 0.16), transparent 38%),
+    linear-gradient(180deg, #1d222d 0%, #131821 46%, #0c1016 100%);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -18,7 +19,7 @@
 
 html {
   min-height: 100%;
-  background: #130a0d;
+  background: #0c1016;
 }
 
 body {
