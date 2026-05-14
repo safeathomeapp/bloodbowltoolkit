@@ -406,8 +406,11 @@
 
 .playerToggle,
 .playerToggleActive {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 0.72rem;
-  padding: 0.65rem 0.55rem;
+  padding: 0.65rem;
   font-weight: 800;
   border: 1px solid rgba(246, 239, 228, 0.18);
   text-align: center;
