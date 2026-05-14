@@ -294,6 +294,14 @@ export function BlockDiceCalculator() {
     setBoardState((currentState) => {
       const currentBlocker = currentState.placedPlayers.find((entry) => entry.id === currentState.blockerId)
 
+      if (player.id === currentState.targetId) {
+        return {
+          ...currentState,
+          blockerId: player.id,
+          targetId: null,
+        }
+      }
+
       if (player.teamSide === currentBlocker?.teamSide || !currentBlocker) {
         return {
           ...currentState,
@@ -430,8 +438,8 @@ export function BlockDiceCalculator() {
             ? 'Adjacent opposing players now show dice overlays. Tap one of those targets to inspect the detailed result.'
             : 'Blitz Preview is active. Potential block dice show on opposing players without checking movement legality.'
           : previewMode === 'STANDARD'
-            ? 'Preview target selected. Tap another adjacent opposing player to switch the preview, or tap a friendly player to change blocker.'
-            : 'Blitz target selected. Tap a candidate square to inspect it, long press it for Why, or use the result action to mark it unreachable.'
+            ? 'Preview target selected. Tap that target again to make them the blocker, tap another adjacent opposing player to switch the preview, or tap a friendly player to change blocker.'
+            : 'Blitz target selected. Tap that target again to make them the blocker, tap a candidate square to inspect it, long press it for Why, or use the result action to mark it unreachable.'
   const calculation =
     previewMode === 'BLITZ' && target
       ? selectedCandidate?.calculation ?? candidateResult?.preferredCandidate?.calculation ?? activePreview?.calculation ?? null

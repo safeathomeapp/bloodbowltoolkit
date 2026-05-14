@@ -1,6 +1,9 @@
 .layout {
   display: grid;
   gap: 1rem;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .controls,
@@ -256,6 +259,7 @@
   border-radius: 0.95rem;
   padding: 0.35rem;
   background: rgba(246, 239, 228, 0.06);
+  touch-action: manipulation;
 }
 
 .cellOccupied {
@@ -336,6 +340,8 @@
   padding: 0.45rem;
   border-radius: 0.85rem;
   text-align: left;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .tokenTeamA {
