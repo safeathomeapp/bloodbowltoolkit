@@ -6,8 +6,6 @@
   -webkit-touch-callout: none;
 }
 
-.controls,
-.boardPanel,
 .resultsPanel {
   padding: 1rem;
   border-radius: 1.2rem;
@@ -733,8 +731,6 @@
     gap: 0.55rem;
   }
 
-  .controls,
-  .boardPanel,
   .resultsPanel {
     padding: 0.5rem;
   }

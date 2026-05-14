@@ -716,7 +716,7 @@ export function BlockDiceCalculator() {
 
   return (
     <div className={styles.layout}>
-      <section className={styles.boardPanel} aria-label="Board panel">
+      <section aria-label="Board panel">
         <div className={styles.sectionHeading}>
           <div className={styles.titleRow}>
             <div className={styles.toggleRow}>
@@ -1014,11 +1014,11 @@ export function BlockDiceCalculator() {
         </div>
       </section>
 
-      <section className={styles.resultsPanel} aria-labelledby="result-title">
-        <div className={styles.sectionHeading}>
-          <div className={styles.titleRow}>
-            <p id="result-title" className={styles.eyebrow}>Result</p>
-            {calculation ? (
+      {appMode === 'CALCULATE' && calculation ? (
+        <section className={styles.resultsPanel} aria-labelledby="result-title">
+          <div className={styles.sectionHeading}>
+            <div className={styles.titleRow}>
+              <p id="result-title" className={styles.eyebrow}>Result</p>
               <button
                 type="button"
                 className={styles.teamToggle}
@@ -1028,11 +1028,9 @@ export function BlockDiceCalculator() {
               >
                 {isWhyPanelOpen ? 'HIDE WHY' : 'WHY?'}
               </button>
-            ) : null}
+            </div>
           </div>
-        </div>
 
-        {calculation ? (
           <div className={styles.resultStack}>
             <div className={styles.resultCard}>
               <p className={styles.resultHeadline}>{calculation.finalDice.summary}</p>
@@ -1087,16 +1085,8 @@ export function BlockDiceCalculator() {
               ) : null}
             </div>
           </div>
-        ) : (
-          <div className={styles.resultCard}>
-            <p className={styles.resultHeadline}>Preview ready</p>
-            <p className={styles.resultCopy}>
-              In Calculate Mode, choose an attacker first. Adjacent opposing players will show block
-              dice overlays, and tapping one of those defenders will open the detailed result.
-            </p>
-          </div>
-        )}
-      </section>
+        </section>
+      ) : null}
 
     </div>
   )
