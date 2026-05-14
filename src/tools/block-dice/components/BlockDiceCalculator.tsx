@@ -110,16 +110,6 @@ function getProfileTokenNumber(player: PlacedPlayer, profiles: PlayerProfile[]) 
   return numericId ?? player.id
 }
 
-function getProfileStrength(player: PlacedPlayer, profiles: PlayerProfile[]) {
-  const profile = profiles.find((entry) => entry.id === player.profileId)
-  return profile?.strength ?? 0
-}
-
-function getProfileSkills(player: PlacedPlayer, profiles: PlayerProfile[]) {
-  const profile = profiles.find((entry) => entry.id === player.profileId)
-  return profile?.skills ?? []
-}
-
 function getProfileForPlayer(player: PlacedPlayer | null, profiles: PlayerProfile[]) {
   if (!player) {
     return null
@@ -416,6 +406,18 @@ export function BlockDiceCalculator() {
     )
   }
 
+  const updatePlacedPlayerName = (player: PlacedPlayer | null, name: string) => {
+    if (!player?.profileId) {
+      return
+    }
+
+    setPlayerProfiles((currentProfiles) =>
+      currentProfiles.map((profile) =>
+        profile.id === player.profileId ? { ...profile, name } : profile,
+      ),
+    )
+  }
+
   const updateTeamDraft = (teamSide: TeamSide, updates: Partial<TeamDraft>) => {
     setTeamDrafts((current) => ({
       ...current,
@@ -666,9 +668,7 @@ export function BlockDiceCalculator() {
       teamSide,
       selectedPlayer,
       selectedProfile,
-      name: selectedPlayer
-        ? `Player ${getProfileTokenNumber(selectedPlayer, playerProfiles)}`
-        : 'New player',
+      name: selectedProfile?.name ?? (selectedPlayer ? `Player ${getProfileTokenNumber(selectedPlayer, playerProfiles)}` : 'New player'),
       strength: selectedProfile?.strength ?? draft.strength,
       skills: selectedProfile?.skills ?? draft.skills,
       isStanding: selectedPlayer?.isStanding ?? draft.isStanding,
@@ -923,7 +923,7 @@ export function BlockDiceCalculator() {
                 <button
                   key={mode}
                   type="button"
-                  className={appMode === mode ? styles.toggleActive : styles.toggle}
+                  className={appMode === mode ? `${styles.teamToggle} ${styles.headerModeToggleActive}` : styles.teamToggle}
                   onClick={() => {
                     setAppMode(mode)
                     if (mode === 'EDIT') {
@@ -963,7 +963,6 @@ export function BlockDiceCalculator() {
                 const player = boardState.placedPlayers.find(
                   (entry) => entry.position.row === row && entry.position.col === col,
                 )
-                const skills = player ? getProfileSkills(player, playerProfiles) : []
                 const isBlocker = player?.id === boardState.blockerId
                 const isTarget = player?.id === boardState.targetId
                 const preview = player ? previewMap.get(player.id) : undefined
@@ -976,7 +975,6 @@ export function BlockDiceCalculator() {
                 const attackerCurrentSquareDiceLabel =
                   isBlocker && showBlitzMarker && currentSquareBlitzLabel ? currentSquareBlitzLabel : null
                 const showCalculateAnnotations = appMode === 'CALCULATE'
-                const showEditTokenMeta = appMode === 'EDIT'
                 const shouldHideOtherTargetPreview =
                   focusSelectedDefender && appMode === 'CALCULATE' && Boolean(target) && !isTarget
                 const visiblePreview = shouldHideOtherTargetPreview ? undefined : preview
@@ -1035,14 +1033,6 @@ export function BlockDiceCalculator() {
                         <strong className={showCalculateAnnotations ? styles.tokenNameCompact : styles.tokenName}>
                           {getProfileTokenNumber(player, playerProfiles)}
                         </strong>
-                        {showEditTokenMeta ? <span className={styles.tokenMeta}>ST {getProfileStrength(player, playerProfiles)}</span> : null}
-                        {showEditTokenMeta ? (
-                          <span className={styles.tokenMeta}>
-                            {player.isStanding ? 'Standing' : 'Prone'}
-                            {player.hasTackleZone ? ' · TZ' : ' · No TZ'}
-                          </span>
-                        ) : null}
-                        {showEditTokenMeta && skills.length > 0 ? <span className={styles.tokenMeta}>{skills.join(', ')}</span> : null}
                         {visiblePreview ? (
                           <span className={showCalculateAnnotations ? styles.previewBadgeCompact : styles.previewBadge}>
                             {visiblePreview.diceLabel}
@@ -1084,18 +1074,19 @@ export function BlockDiceCalculator() {
                     }`}
                   >
                     <div className={styles.playerCardHeader}>
-                      <div className={styles.playerCardHeading}>
-                        <p className={styles.playerCardLabel}>{getTeamName(card.teamSide)}</p>
+                      {card.selectedPlayer ? (
+                        <input
+                          className={styles.playerCardNameInput}
+                          value={card.name}
+                          onChange={(event) => updatePlacedPlayerName(card.selectedPlayer, event.target.value)}
+                          placeholder={`${getTeamName(card.teamSide)} player`}
+                        />
+                      ) : (
                         <p className={styles.playerCardName}>{card.name}</p>
-                      </div>
-                    </div>
-                    <div className={styles.controlGroup}>
-                      <label className={styles.label} htmlFor={`edit-strength-${card.teamSide}`}>
-                        Strength
-                      </label>
+                      )}
                       <select
                         id={`edit-strength-${card.teamSide}`}
-                        className={styles.select}
+                        className={styles.playerCardStrengthSelect}
                         value={card.strength}
                         onChange={(event) => applyEditorStrength(card.teamSide, card.selectedPlayer, Number(event.target.value))}
                       >
@@ -1122,7 +1113,7 @@ export function BlockDiceCalculator() {
                     <div className={styles.playerCardToggleRow}>
                       <button
                         type="button"
-                        className={card.isStanding ? styles.playerToggleActive : styles.playerToggle}
+                        className={!card.isStanding ? styles.playerToggleActive : styles.playerToggle}
                         onClick={() =>
                           applyEditorStanding(
                             card.teamSide,
@@ -1131,9 +1122,9 @@ export function BlockDiceCalculator() {
                             card.hasTackleZone,
                           )
                         }
-                        aria-pressed={card.isStanding}
+                        aria-pressed={!card.isStanding}
                       >
-                        Standing
+                        Prone
                       </button>
                       <button
                         type="button"

@@ -78,6 +78,12 @@
   color: #d8e9ff;
 }
 
+.headerModeToggleActive {
+  background: rgba(241, 178, 74, 0.22);
+  border-color: rgba(241, 178, 74, 0.68);
+  color: #ffe3a0;
+}
+
 .teamToggleBActive {
   background: rgba(223, 72, 89, 0.22);
   border-color: rgba(248, 108, 115, 0.68);
@@ -355,6 +361,29 @@
   font-weight: 900;
   letter-spacing: 0.04em;
   color: #ffe7a0;
+}
+
+.playerCardNameInput,
+.playerCardStrengthSelect {
+  border: 1px solid rgba(246, 239, 228, 0.16);
+  border-radius: 0.72rem;
+  background: rgba(246, 239, 228, 0.08);
+  color: inherit;
+}
+
+.playerCardNameInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+
+.playerCardStrengthSelect {
+  flex: 0 0 auto;
+  min-height: 2.6rem;
+  padding: 0.55rem 0.65rem;
+  font-weight: 800;
 }
 
 .playerCardMeta,
@@ -794,7 +823,18 @@
     font-size: 0.86rem;
   }
 
+  .playerCardNameInput {
+    font-size: 0.82rem;
+    padding: 0.5rem 0.58rem;
+  }
+
   .playerCardStrength {
+    font-size: 0.68rem;
+  }
+
+  .playerCardStrengthSelect {
+    min-height: 2.2rem;
+    padding: 0.45rem 0.55rem;
     font-size: 0.68rem;
   }
 
