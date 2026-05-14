@@ -5,6 +5,7 @@ import type {
   AssistType,
   BlockDiceCalculation,
   DiceChooser,
+  ExplanationEntry,
   ExplanationSection,
 } from '../types/blockDice'
 
@@ -186,7 +187,7 @@ function evaluateAssist(
     isGuardSuppressedByDefensive(candidate, activeTeam, boardState, profiles)
   const usedGuard = hasSkill(candidate, 'GUARD') && !guardSuppressedByDefensive
   const markers = listMarkers(candidate, boardState, profiles, ignoredOpponentIds)
-  const markerLabels = markers.map((marker) => marker.profile.name ?? marker.placedPlayer.id)
+  const markerLabels = markers.map((marker) => getRelativeParticipantLabel(marker, activeTeam))
 
   if (markers.length > 0 && !usedGuard) {
     return {
@@ -250,24 +251,38 @@ function formatLabelList(labels: string[]) {
   return `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`
 }
 
+function buildExplanationEntry(text: string, tone: ExplanationEntry['tone']): ExplanationEntry {
+  return { text, tone }
+}
+
 function groupAssistExplanationEntries(assists: AssistDetail[]) {
   const relevantSuffix = ' is not marking the relevant player for this assist.'
+  const validEntries = assists
+    .filter((assist) => assist.status === 'VALID')
+    .map((assist) => buildExplanationEntry(assist.reason, 'SUCCESS'))
+  const cancelledEntries = assists
+    .filter((assist) => assist.status === 'CANCELLED')
+    .map((assist) => buildExplanationEntry(assist.reason, 'WARNING'))
   const irrelevantLabels = assists
     .filter((assist) => assist.reason.endsWith(relevantSuffix))
     .map((assist) => assist.label)
-  const groupedEntries: string[] = []
+  const groupedEntries: ExplanationEntry[] = []
 
   if (irrelevantLabels.length > 0) {
     const subject = formatLabelList(irrelevantLabels)
     const verb = irrelevantLabels.length === 1 ? 'is' : 'are'
-    groupedEntries.push(`${subject} ${verb} not relevant in this block.`)
+    groupedEntries.push(buildExplanationEntry(`${subject} ${verb} not relevant in this block.`, 'MUTED'))
   }
 
+  const otherIneligibleEntries = assists
+    .filter((assist) => assist.status === 'INELIGIBLE' && !assist.reason.endsWith(relevantSuffix))
+    .map((assist) => buildExplanationEntry(assist.reason, 'MUTED'))
+
   return [
+    ...validEntries,
+    ...cancelledEntries,
     ...groupedEntries,
-    ...assists
-      .filter((assist) => !assist.reason.endsWith(relevantSuffix))
-      .map((assist) => assist.reason),
+    ...otherIneligibleEntries,
   ]
 }
 
@@ -284,15 +299,18 @@ function buildExplanation(
       title: 'Offensive Assists',
       entries:
         attackerModifierEntries.length > 0 || offensiveAssists.length > 0
-          ? [...attackerModifierEntries, ...offensiveExplanation]
-          : ['No offensive assist candidates or attacker modifiers.'],
+          ? [
+              ...attackerModifierEntries.map((entry) => buildExplanationEntry(entry, 'SUCCESS')),
+              ...offensiveExplanation,
+            ]
+          : [buildExplanationEntry('No offensive assist candidates or attacker modifiers.', 'MUTED')],
     },
     {
       title: 'Defensive Assists',
       entries:
         defensiveAssists.length > 0
           ? defensiveExplanation
-          : ['No defensive assist candidates.'],
+          : [buildExplanationEntry('No defensive assist candidates.', 'MUTED')],
     },
   ]
 }

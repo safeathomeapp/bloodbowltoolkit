@@ -47,6 +47,10 @@ function buildState(
   }
 }
 
+function explanationTexts(result: ReturnType<typeof calculateBlockDice>, title: string) {
+  return result.explanation.find((section) => section.title === title)?.entries.map((entry) => entry.text) ?? []
+}
+
 describe('calculateBlockDice', () => {
   it('returns one die for equal strength', () => {
     const attacker = createPlayer('A1', 'A', { row: 3, col: 3 })
@@ -236,7 +240,7 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.base).toBe(5)
     expect(result.attackerStrength.total).toBe(5)
     expect(result.finalDice.chooser).toBe('NONE')
-    expect(result.explanation[0]?.entries).toContain(
+    expect(explanationTexts(result, 'Offensive Assists')).toContain(
       'A uses Dauntless after Horns and rises to match D at ST 5.',
     )
   })
@@ -251,7 +255,7 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.base).toBe(5)
     expect(result.attackerStrength.total).toBe(5)
     expect(result.finalDice.chooser).toBe('ATTACKER')
-    expect(result.explanation[0]?.entries).toContain(
+    expect(explanationTexts(result, 'Offensive Assists')).toContain(
       'A has Dauntless, but it does not trigger because their Strength is already high enough.',
     )
   })
@@ -277,9 +281,9 @@ describe('calculateBlockDice', () => {
     const { boardState, profiles } = buildState([attacker, defender, a2, a3, a4], 'A1', 'B1')
 
     const result = calculateBlockDice(boardState, profiles)
-    const offensiveSection = result.explanation.find((section) => section.title === 'Offensive Assists')
-    expect(offensiveSection?.entries).toContain('A2, A3 and A4 are not relevant in this block.')
-    expect(offensiveSection?.entries).not.toContain('A2 is not marking the relevant player for this assist.')
+    const offensiveTexts = explanationTexts(result, 'Offensive Assists')
+    expect(offensiveTexts).toContain('A2, A3 and A4 are not relevant in this block.')
+    expect(offensiveTexts).not.toContain('A2 is not marking the relevant player for this assist.')
   })
 
   it('applies Horns during a blitz', () => {
@@ -292,7 +296,7 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.base).toBe(4)
     expect(result.attackerStrength.total).toBe(4)
     expect(result.finalDice.chooser).toBe('NONE')
-    expect(result.explanation[0]?.entries).toContain('A gains +1 ST from Horns because this block is part of a blitz.')
+    expect(explanationTexts(result, 'Offensive Assists')).toContain('A gains +1 ST from Horns because this block is part of a blitz.')
   })
 
   it('does not trigger Dauntless when Horns already reaches the defender strength', () => {
@@ -305,7 +309,7 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.base).toBe(4)
     expect(result.attackerStrength.total).toBe(4)
     expect(result.finalDice.chooser).toBe('NONE')
-    expect(result.explanation[0]?.entries).toContain(
+    expect(explanationTexts(result, 'Offensive Assists')).toContain(
       'A has Dauntless, but it does not trigger because their Strength is already high enough.',
     )
   })
@@ -320,11 +324,36 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.base).toBe(5)
     expect(result.attackerStrength.total).toBe(5)
     expect(result.finalDice.chooser).toBe('NONE')
-    expect(result.explanation[0]?.entries).toContain(
+    expect(explanationTexts(result, 'Offensive Assists')).toContain(
       'A gains +1 ST from Horns because this block is part of a blitz.',
     )
-    expect(result.explanation[0]?.entries).toContain(
+    expect(explanationTexts(result, 'Offensive Assists')).toContain(
       'A uses Dauntless after Horns and rises to match D at ST 5.',
     )
+  })
+
+  it('orders assist explanation entries as successful then marked then non relevant', () => {
+    const attacker = createPlayer('A1', 'A', { row: 3, col: 3 })
+    const defender = createPlayer('B1', 'B', { row: 3, col: 4 })
+    const validAssist = createPlayer('A2', 'A', { row: 2, col: 4 })
+    const cancelledAssist = createPlayer('A3', 'A', { row: 4, col: 4 })
+    const marker = createPlayer('B2', 'B', { row: 5, col: 4 })
+    const irrelevantAssist = createPlayer('A4', 'A', { row: 0, col: 0 })
+    const { boardState, profiles } = buildState(
+      [attacker, defender, validAssist, cancelledAssist, marker, irrelevantAssist],
+      'A1',
+      'B1',
+    )
+
+    const result = calculateBlockDice(boardState, profiles)
+    const offensiveEntries =
+      result.explanation.find((section) => section.title === 'Offensive Assists')?.entries ?? []
+
+    expect(offensiveEntries.map((entry) => entry.text)).toEqual([
+      'A2 provides a offensive assist.',
+      'A3 cannot assist because they are marked by D2.',
+      'A4 is not relevant in this block.',
+    ])
+    expect(offensiveEntries.map((entry) => entry.tone)).toEqual(['SUCCESS', 'WARNING', 'MUTED'])
   })
 })

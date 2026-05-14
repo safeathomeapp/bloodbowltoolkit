@@ -1076,7 +1076,18 @@ export function BlockDiceCalculator() {
                         <p className={styles.resultHeadline}>{section.title}</p>
                         <ul className={styles.summaryList}>
                           {section.entries.map((entry) => (
-                            <li key={entry}>{entry}</li>
+                            <li
+                              key={entry.text}
+                              className={
+                                entry.tone === 'SUCCESS'
+                                  ? styles.assistVALID
+                                  : entry.tone === 'WARNING'
+                                    ? styles.assistCANCELLED
+                                    : styles.assistINELIGIBLE
+                              }
+                            >
+                              {entry.text}
+                            </li>
                           ))}
                         </ul>
                       </div>

@@ -36,9 +36,16 @@ export interface FinalDiceSummary {
   summary: string
 }
 
+export type ExplanationTone = 'SUCCESS' | 'WARNING' | 'MUTED'
+
+export interface ExplanationEntry {
+  text: string
+  tone: ExplanationTone
+}
+
 export interface ExplanationSection {
   title: string
-  entries: string[]
+  entries: ExplanationEntry[]
 }
 
 export interface BlockDiceCalculation {
