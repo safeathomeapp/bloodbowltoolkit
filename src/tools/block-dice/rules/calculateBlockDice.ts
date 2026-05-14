@@ -17,6 +17,14 @@ interface EvaluatedPlayer {
   profile: PlayerProfile
 }
 
+function getRelativeParticipantLabel(player: EvaluatedPlayer, activeTeam: TeamSide) {
+  const prefix = player.placedPlayer.teamSide === activeTeam ? 'A' : 'D'
+  const fallbackLabel = player.profile.name ?? player.placedPlayer.id
+  const numericSuffix = player.profile.number ?? fallbackLabel.match(/(\d+)$/)?.[1]
+
+  return numericSuffix ? `${prefix}${numericSuffix}` : prefix
+}
+
 function isAdjacent(left: Position, right: Position) {
   const rowDelta = Math.abs(left.row - right.row)
   const colDelta = Math.abs(left.col - right.col)
@@ -129,7 +137,7 @@ function evaluateAssist(
   boardState: BoardState,
   profiles: PlayerProfile[],
 ): AssistDetail {
-  const label = candidate.profile.name ?? candidate.placedPlayer.id
+  const label = getRelativeParticipantLabel(candidate, activeTeam)
 
   if (!candidate.placedPlayer.isStanding) {
     return {
@@ -264,38 +272,20 @@ function groupAssistExplanationEntries(assists: AssistDetail[]) {
 }
 
 function buildExplanation(
-  blockerLabel: string,
-  defenderLabel: string,
-  attackerBaseSummary: string,
-  hornsSummary: string | null,
-  attackerStrength: number,
-  defenderStrength: number,
+  attackerModifierEntries: string[],
   offensiveAssists: AssistDetail[],
   defensiveAssists: AssistDetail[],
-  finalSummary: string,
 ): ExplanationSection[] {
   const offensiveExplanation = groupAssistExplanationEntries(offensiveAssists)
   const defensiveExplanation = groupAssistExplanationEntries(defensiveAssists)
-  const cancelledAssists = groupAssistExplanationEntries(
-    [...offensiveAssists, ...defensiveAssists].filter((assist) => assist.status !== 'VALID'),
-  )
 
   return [
     {
-      title: 'Base',
-      entries: [
-        `${blockerLabel} blocks ${defenderLabel}.`,
-        attackerBaseSummary,
-        ...(hornsSummary ? [hornsSummary] : []),
-        `Base Strength comparison: ST ${attackerStrength} vs ST ${defenderStrength}.`,
-      ],
-    },
-    {
       title: 'Offensive Assists',
       entries:
-        offensiveAssists.length > 0
-          ? offensiveExplanation
-          : ['No offensive assist candidates.'],
+        attackerModifierEntries.length > 0 || offensiveAssists.length > 0
+          ? [...attackerModifierEntries, ...offensiveExplanation]
+          : ['No offensive assist candidates or attacker modifiers.'],
     },
     {
       title: 'Defensive Assists',
@@ -303,14 +293,6 @@ function buildExplanation(
         defensiveAssists.length > 0
           ? defensiveExplanation
           : ['No defensive assist candidates.'],
-    },
-    {
-      title: 'Cancelled / Ignored',
-      entries: cancelledAssists.length > 0 ? cancelledAssists : ['No cancelled or ignored assists.'],
-    },
-    {
-      title: 'Final',
-      entries: [finalSummary],
     },
   ]
 }
@@ -333,12 +315,13 @@ export function calculateBlockDice(
       : strengthAfterHorns
   const attackerBaseSummary = attackerHasDauntless
     ? target.profile.strength > strengthAfterHorns
-      ? `${blocker.profile.name ?? blocker.placedPlayer.id} uses temporary Dauntless after Horns and rises to match ${target.profile.name ?? target.placedPlayer.id} at ST ${target.profile.strength}.`
-      : `${blocker.profile.name ?? blocker.placedPlayer.id} has Dauntless, but it does not trigger because their Strength is already high enough.`
-    : `${blocker.profile.name ?? blocker.placedPlayer.id} uses their normal base Strength of ST ${blocker.profile.strength}.`
-  const hornsSummary = attackerUsesHorns
-    ? `${blocker.profile.name ?? blocker.placedPlayer.id} gains +1 ST from Horns because this block is part of a blitz.`
+      ? `A uses Dauntless after Horns and rises to match D at ST ${target.profile.strength}.`
+      : 'A has Dauntless, but it does not trigger because their Strength is already high enough.'
     : null
+  const hornsSummary = attackerUsesHorns
+    ? 'A gains +1 ST from Horns because this block is part of a blitz.'
+    : null
+  const attackerModifierEntries = [hornsSummary, attackerBaseSummary].filter((entry): entry is string => Boolean(entry))
 
   const offensiveAssists = boardState.placedPlayers
     .filter((player) => player.teamSide === blocker.placedPlayer.teamSide)
@@ -413,15 +396,9 @@ export function calculateBlockDice(
     defensiveAssists,
     finalDice,
     explanation: buildExplanation(
-      blockerLabel,
-      defenderLabel,
-      attackerBaseSummary,
-      hornsSummary,
-      attackerStrength,
-      defenderStrength,
+      attackerModifierEntries,
       offensiveAssists,
       defensiveAssists,
-      finalDice.summary,
     ),
   }
 }

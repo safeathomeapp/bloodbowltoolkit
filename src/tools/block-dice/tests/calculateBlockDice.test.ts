@@ -59,8 +59,8 @@ describe('calculateBlockDice', () => {
     expect(result.defenderStrength.total).toBe(3)
     expect(result.finalDice.count).toBe(1)
     expect(result.finalDice.chooser).toBe('NONE')
-    expect(result.explanation[0]?.title).toBe('Base')
-    expect(result.explanation.at(-1)?.title).toBe('Final')
+    expect(result.explanation[0]?.title).toBe('Offensive Assists')
+    expect(result.explanation[1]?.title).toBe('Defensive Assists')
   })
 
   it('adds an offensive assist', () => {
@@ -237,7 +237,7 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.total).toBe(5)
     expect(result.finalDice.chooser).toBe('NONE')
     expect(result.explanation[0]?.entries).toContain(
-      'A1 uses temporary Dauntless after Horns and rises to match B1 at ST 5.',
+      'A uses Dauntless after Horns and rises to match D at ST 5.',
     )
   })
 
@@ -252,7 +252,7 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.total).toBe(5)
     expect(result.finalDice.chooser).toBe('ATTACKER')
     expect(result.explanation[0]?.entries).toContain(
-      'A1 has Dauntless, but it does not trigger because their Strength is already high enough.',
+      'A has Dauntless, but it does not trigger because their Strength is already high enough.',
     )
   })
 
@@ -278,11 +278,8 @@ describe('calculateBlockDice', () => {
 
     const result = calculateBlockDice(boardState, profiles)
     const offensiveSection = result.explanation.find((section) => section.title === 'Offensive Assists')
-    const cancelledSection = result.explanation.find((section) => section.title === 'Cancelled / Ignored')
-
     expect(offensiveSection?.entries).toContain('A2, A3 and A4 are not relevant in this block.')
     expect(offensiveSection?.entries).not.toContain('A2 is not marking the relevant player for this assist.')
-    expect(cancelledSection?.entries).toContain('A2, A3 and A4 are not relevant in this block.')
   })
 
   it('applies Horns during a blitz', () => {
@@ -295,7 +292,7 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.base).toBe(4)
     expect(result.attackerStrength.total).toBe(4)
     expect(result.finalDice.chooser).toBe('NONE')
-    expect(result.explanation[0]?.entries).toContain('A1 gains +1 ST from Horns because this block is part of a blitz.')
+    expect(result.explanation[0]?.entries).toContain('A gains +1 ST from Horns because this block is part of a blitz.')
   })
 
   it('does not trigger Dauntless when Horns already reaches the defender strength', () => {
@@ -309,7 +306,7 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.total).toBe(4)
     expect(result.finalDice.chooser).toBe('NONE')
     expect(result.explanation[0]?.entries).toContain(
-      'A1 has Dauntless, but it does not trigger because their Strength is already high enough.',
+      'A has Dauntless, but it does not trigger because their Strength is already high enough.',
     )
   })
 
@@ -324,10 +321,10 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.total).toBe(5)
     expect(result.finalDice.chooser).toBe('NONE')
     expect(result.explanation[0]?.entries).toContain(
-      'A1 gains +1 ST from Horns because this block is part of a blitz.',
+      'A gains +1 ST from Horns because this block is part of a blitz.',
     )
     expect(result.explanation[0]?.entries).toContain(
-      'A1 uses temporary Dauntless after Horns and rises to match B1 at ST 5.',
+      'A uses Dauntless after Horns and rises to match D at ST 5.',
     )
   })
 })
