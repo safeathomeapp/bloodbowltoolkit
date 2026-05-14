@@ -8,6 +8,7 @@ import { calculateAllTargetPreviews } from '../rules/calculateTargetPreviews'
 const GRID_SIZE = 7
 const STRENGTH_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8]
 const STORAGE_KEY = 'blood-bowl-toolkit:block-dice'
+const PLAYER_SKILL_OPTIONS: Skill[] = ['GUARD', 'DEFENSIVE', 'DAUNTLESS', 'HORNS']
 type AppMode = 'EDIT' | 'CALCULATE'
 type PreviewMode = 'STANDARD' | 'BLITZ'
 
@@ -646,7 +647,7 @@ export function BlockDiceCalculator() {
             </div>
 
             <div className={styles.controlGroup}>
-              <span className={styles.label}>Skills</span>
+              <span className={styles.label}>New player skills</span>
               <div className={styles.toggleRow}>
                 {(['GUARD', 'DEFENSIVE'] as Skill[]).map((skill) => (
                   <button
@@ -950,27 +951,21 @@ export function BlockDiceCalculator() {
               Skills: {blockerSkills.length > 0 ? blockerSkills.join(', ') : 'None'}
             </p>
             <div className={styles.playerCardToggleRow}>
-              <button
-                type="button"
-                className={blockerSkills.includes('DAUNTLESS') ? styles.playerToggleActive : styles.playerToggle}
-                onClick={() => togglePlayerSkill(blocker, 'DAUNTLESS')}
-                disabled={!blocker}
-                aria-pressed={blockerSkills.includes('DAUNTLESS')}
-              >
-                Dauntless
-              </button>
-              <button
-                type="button"
-                className={blockerSkills.includes('HORNS') ? styles.playerToggleActive : styles.playerToggle}
-                onClick={() => togglePlayerSkill(blocker, 'HORNS')}
-                disabled={!blocker}
-                aria-pressed={blockerSkills.includes('HORNS')}
-              >
-                Horns
-              </button>
+              {PLAYER_SKILL_OPTIONS.map((skill) => (
+                <button
+                  key={skill}
+                  type="button"
+                  className={blockerSkills.includes(skill) ? styles.playerToggleActive : styles.playerToggle}
+                  onClick={() => togglePlayerSkill(blocker, skill)}
+                  disabled={!blocker}
+                  aria-pressed={blockerSkills.includes(skill)}
+                >
+                  {skill}
+                </button>
+              ))}
             </div>
             <p className={styles.playerCardNote}>
-              Horns adds +1 ST only on a blitz, and it is applied before Dauntless.
+              Horns is applied before Dauntless on a blitz. Guard and Defensive stay on the player profile for assist checks.
             </p>
           </article>
 
@@ -991,8 +986,22 @@ export function BlockDiceCalculator() {
             <p className={styles.playerCardMeta}>
               Skills: {targetSkills.length > 0 ? targetSkills.join(', ') : 'None'}
             </p>
+            <div className={styles.playerCardToggleRow}>
+              {PLAYER_SKILL_OPTIONS.map((skill) => (
+                <button
+                  key={skill}
+                  type="button"
+                  className={targetSkills.includes(skill) ? styles.playerToggleActive : styles.playerToggle}
+                  onClick={() => togglePlayerSkill(target, skill)}
+                  disabled={!target}
+                  aria-pressed={targetSkills.includes(skill)}
+                >
+                  {skill}
+                </button>
+              ))}
+            </div>
             <p className={styles.playerCardNote}>
-              Defender-specific outcome toggles are not needed yet. This card is informational for now.
+              Use these toggles to change the selected defender profile directly without rebuilding the board.
             </p>
           </article>
         </div>
