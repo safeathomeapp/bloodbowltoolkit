@@ -290,9 +290,13 @@ export function calculateBlockDice(
   const activeTeam = blocker.placedPlayer.teamSide
   const attackerHasDauntless = hasSkill(blocker, 'DAUNTLESS')
   const attackerUsesHorns = Boolean(options.isBlitz) && hasSkill(blocker, 'HORNS')
-  const attackerBaseStrength = attackerHasDauntless ? target.profile.strength : blocker.profile.strength
+  const attackerBaseStrength = attackerHasDauntless
+    ? Math.max(blocker.profile.strength, target.profile.strength)
+    : blocker.profile.strength
   const attackerBaseSummary = attackerHasDauntless
-    ? `${blocker.profile.name ?? blocker.placedPlayer.id} uses temporary Dauntless and matches ${target.profile.name ?? target.placedPlayer.id} at ST ${target.profile.strength}.`
+    ? blocker.profile.strength < target.profile.strength
+      ? `${blocker.profile.name ?? blocker.placedPlayer.id} uses temporary Dauntless and rises to match ${target.profile.name ?? target.placedPlayer.id} at ST ${target.profile.strength}.`
+      : `${blocker.profile.name ?? blocker.placedPlayer.id} has Dauntless, but keeps their higher base Strength of ST ${blocker.profile.strength}.`
     : `${blocker.profile.name ?? blocker.placedPlayer.id} uses their normal base Strength of ST ${blocker.profile.strength}.`
   const hornsModifier = attackerUsesHorns ? 1 : 0
   const hornsSummary = attackerUsesHorns

@@ -445,7 +445,9 @@ export function BlockDiceCalculator() {
   const blockerSkills = blockerProfile?.skills ?? []
   const targetSkills = targetProfile?.skills ?? []
   const attackerCardStrength = blockerProfile
-    ? (blockerSkills.includes('DAUNTLESS') && targetProfile ? targetProfile.strength : blockerProfile.strength) +
+    ? (blockerSkills.includes('DAUNTLESS') && targetProfile
+        ? Math.max(blockerProfile.strength, targetProfile.strength)
+        : blockerProfile.strength) +
       (previewMode === 'BLITZ' && blockerSkills.includes('HORNS') ? 1 : 0)
     : null
   const defenderCardStrength = targetProfile?.strength ?? null
