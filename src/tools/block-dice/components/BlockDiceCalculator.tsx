@@ -881,9 +881,6 @@ export function BlockDiceCalculator() {
             >
               Install app
             </button>
-            <button type="button" className={styles.actionButtonSecondary} onClick={resetBoard}>
-              Reset board
-            </button>
           </div>
           <p id="install-status" className={styles.statusNote} aria-live="polite">
             {installStatus}
@@ -935,6 +932,13 @@ export function BlockDiceCalculator() {
                   {mode}
                 </button>
               ))}
+              <button
+                type="button"
+                className={styles.teamToggle}
+                onClick={resetBoard}
+              >
+                CLEAR BOARD
+              </button>
             </div>
             <div className={styles.teamToggleRow} aria-label="Active team toggle">
               {(['A', 'B'] as TeamSide[]).map((teamSide) => (
