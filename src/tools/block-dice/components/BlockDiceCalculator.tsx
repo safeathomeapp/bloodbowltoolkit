@@ -686,7 +686,7 @@ export function BlockDiceCalculator() {
             <div className={styles.controlGroup}>
               <span className={styles.label}>New player skills</span>
               <div className={styles.toggleRow}>
-                {(['GUARD', 'DEFENSIVE'] as Skill[]).map((skill) => (
+                {(['GUARD', 'DEFENSIVE', 'DAUNTLESS', 'HORNS'] as Skill[]).map((skill) => (
                   <button
                     key={skill}
                     type="button"
@@ -707,35 +707,35 @@ export function BlockDiceCalculator() {
 
             <div className={styles.controlGroup}>
               <span className={styles.label}>Status</span>
-              <div className={styles.checkRow}>
-                <label className={styles.checkbox}>
-                  <input
-                    type="checkbox"
-                    checked={draft.isStanding}
-                    onChange={(event) =>
-                      setDraft((currentDraft) => ({
-                        ...currentDraft,
-                        isStanding: event.target.checked,
-                        hasTackleZone: event.target.checked ? currentDraft.hasTackleZone : false,
-                      }))
-                    }
-                  />
+              <div className={styles.toggleRow}>
+                <button
+                  type="button"
+                  className={draft.isStanding ? styles.toggleActive : styles.toggle}
+                  onClick={() =>
+                    setDraft((currentDraft) => ({
+                      ...currentDraft,
+                      isStanding: !currentDraft.isStanding,
+                      hasTackleZone: !currentDraft.isStanding ? currentDraft.hasTackleZone : false,
+                    }))
+                  }
+                  aria-pressed={draft.isStanding}
+                >
                   Standing
-                </label>
-                <label className={styles.checkbox}>
-                  <input
-                    type="checkbox"
-                    checked={draft.hasTackleZone}
-                    disabled={!draft.isStanding}
-                    onChange={(event) =>
-                      setDraft((currentDraft) => ({
-                        ...currentDraft,
-                        hasTackleZone: event.target.checked,
-                      }))
-                    }
-                  />
+                </button>
+                <button
+                  type="button"
+                  className={draft.hasTackleZone ? styles.toggleActive : styles.toggle}
+                  onClick={() =>
+                    setDraft((currentDraft) => ({
+                      ...currentDraft,
+                      hasTackleZone: !currentDraft.hasTackleZone,
+                    }))
+                  }
+                  disabled={!draft.isStanding}
+                  aria-pressed={draft.hasTackleZone}
+                >
                   Tackle zone
-                </label>
+                </button>
               </div>
             </div>
           </>
