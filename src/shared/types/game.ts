@@ -1,6 +1,6 @@
 export type TeamSide = 'A' | 'B'
 
-export type Skill = 'GUARD' | 'DEFENSIVE'
+export type Skill = 'GUARD' | 'DEFENSIVE' | 'DAUNTLESS'
 
 export interface Position {
   row: number

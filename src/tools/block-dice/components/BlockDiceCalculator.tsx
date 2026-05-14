@@ -561,7 +561,7 @@ export function BlockDiceCalculator() {
             <div className={styles.controlGroup}>
               <span className={styles.label}>Skills</span>
               <div className={styles.toggleRow}>
-                {(['GUARD', 'DEFENSIVE'] as Skill[]).map((skill) => (
+                {(['GUARD', 'DEFENSIVE', 'DAUNTLESS'] as Skill[]).map((skill) => (
                   <button
                     key={skill}
                     type="button"

@@ -213,4 +213,29 @@ describe('calculateBlockDice', () => {
     expect(firstResult.attackerStrength.total).toBe(4)
     expect(secondResult.attackerStrength.total).toBe(3)
   })
+
+  it('uses the player strength when Dauntless is not enabled', () => {
+    const attacker = createPlayer('A1', 'A', { row: 3, col: 3 }, { strength: 3 })
+    const defender = createPlayer('B1', 'B', { row: 3, col: 4 }, { strength: 5 })
+    const { boardState, profiles } = buildState([attacker, defender], 'A1', 'B1')
+
+    const result = calculateBlockDice(boardState, profiles)
+
+    expect(result.attackerStrength.base).toBe(3)
+    expect(result.attackerStrength.total).toBe(3)
+    expect(result.finalDice.chooser).toBe('DEFENDER')
+  })
+
+  it('matches the target strength when Dauntless is enabled', () => {
+    const attacker = createPlayer('A1', 'A', { row: 3, col: 3 }, { strength: 3, skills: ['DAUNTLESS'] })
+    const defender = createPlayer('B1', 'B', { row: 3, col: 4 }, { strength: 5 })
+    const { boardState, profiles } = buildState([attacker, defender], 'A1', 'B1')
+
+    const result = calculateBlockDice(boardState, profiles)
+
+    expect(result.attackerStrength.base).toBe(5)
+    expect(result.attackerStrength.total).toBe(5)
+    expect(result.finalDice.chooser).toBe('NONE')
+    expect(result.explanation[0]?.entries).toContain('A1 uses temporary Dauntless and matches B1 at ST 5.')
+  })
 })

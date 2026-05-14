@@ -229,6 +229,7 @@ function buildFinalDiceSummary(attackerStrength: number, defenderStrength: numbe
 function buildExplanation(
   blockerLabel: string,
   targetLabel: string,
+  attackerBaseSummary: string,
   attackerStrength: number,
   defenderStrength: number,
   offensiveAssists: AssistDetail[],
@@ -244,6 +245,7 @@ function buildExplanation(
       title: 'Base',
       entries: [
         `${blockerLabel} blocks ${targetLabel}.`,
+        attackerBaseSummary,
         `Base Strength comparison: ST ${attackerStrength} vs ST ${defenderStrength}.`,
       ],
     },
@@ -276,6 +278,11 @@ export function calculateBlockDice(boardState: BoardState, profiles: PlayerProfi
   const blocker = requirePlayer(boardState.blockerId, boardState, profiles)
   const target = requirePlayer(boardState.targetId, boardState, profiles)
   const activeTeam = blocker.placedPlayer.teamSide
+  const attackerHasDauntless = hasSkill(blocker, 'DAUNTLESS')
+  const attackerBaseStrength = attackerHasDauntless ? target.profile.strength : blocker.profile.strength
+  const attackerBaseSummary = attackerHasDauntless
+    ? `${blocker.profile.name ?? blocker.placedPlayer.id} uses temporary Dauntless and matches ${target.profile.name ?? target.placedPlayer.id} at ST ${target.profile.strength}.`
+    : `${blocker.profile.name ?? blocker.placedPlayer.id} uses their normal base Strength of ST ${blocker.profile.strength}.`
 
   const offensiveAssists = boardState.placedPlayers
     .filter((player) => player.teamSide === blocker.placedPlayer.teamSide)
@@ -315,7 +322,7 @@ export function calculateBlockDice(boardState: BoardState, profiles: PlayerProfi
   const defensiveModifier = defensiveAssists
     .filter((assist) => assist.status === 'VALID')
     .reduce((total, assist) => total + assist.strengthModifier, 0)
-  const attackerStrength = blocker.profile.strength + offensiveModifier
+  const attackerStrength = attackerBaseStrength + offensiveModifier
   const defenderStrength = target.profile.strength + defensiveModifier
   const finalDice = buildFinalDiceSummary(attackerStrength, defenderStrength)
   const blockerLabel = blocker.profile.name ?? blocker.placedPlayer.id
@@ -326,7 +333,7 @@ export function calculateBlockDice(boardState: BoardState, profiles: PlayerProfi
       id: blocker.placedPlayer.id,
       label: blockerLabel,
       teamSide: blocker.placedPlayer.teamSide,
-      strength: blocker.profile.strength,
+      strength: attackerBaseStrength,
       position: blocker.placedPlayer.position,
     },
     target: {
@@ -337,7 +344,7 @@ export function calculateBlockDice(boardState: BoardState, profiles: PlayerProfi
       position: target.placedPlayer.position,
     },
     attackerStrength: {
-      base: blocker.profile.strength,
+      base: attackerBaseStrength,
       assistModifier: offensiveModifier,
       total: attackerStrength,
     },
@@ -352,6 +359,7 @@ export function calculateBlockDice(boardState: BoardState, profiles: PlayerProfi
     explanation: buildExplanation(
       blockerLabel,
       targetLabel,
+      attackerBaseSummary,
       attackerStrength,
       defenderStrength,
       offensiveAssists,
