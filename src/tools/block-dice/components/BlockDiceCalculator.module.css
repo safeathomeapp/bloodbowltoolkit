@@ -25,6 +25,12 @@
   gap: 0.9rem;
 }
 
+.headerActions {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
 .eyebrow {
   margin: 0;
   text-transform: uppercase;
@@ -59,6 +65,63 @@
 .teamToggleRow {
   display: inline-flex;
   gap: 0.4rem;
+}
+
+.menuWrap {
+  position: relative;
+}
+
+.menuButton {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.22rem;
+  width: 2.4rem;
+  min-width: 2.4rem;
+  height: 2.4rem;
+  border: 1px solid rgba(246, 239, 228, 0.18);
+  border-radius: 999px;
+  background: rgba(246, 239, 228, 0.06);
+  color: rgba(246, 239, 228, 0.86);
+}
+
+.menuButtonLine {
+  display: block;
+  width: 0.9rem;
+  height: 0.1rem;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.menuPanel {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 10;
+  min-width: 10.5rem;
+  padding: 0.35rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(246, 239, 228, 0.14);
+  background: rgba(23, 13, 18, 0.96);
+  box-shadow: 0 14px 32px rgba(8, 5, 7, 0.34);
+  display: grid;
+  gap: 0.25rem;
+}
+
+.menuItem {
+  width: 100%;
+  border: 0;
+  border-radius: 0.7rem;
+  padding: 0.7rem 0.8rem;
+  background: rgba(246, 239, 228, 0.04);
+  color: rgba(246, 239, 228, 0.9);
+  text-align: left;
+  font-weight: 700;
+}
+
+.menuItem:disabled {
+  opacity: 0.5;
 }
 
 .teamToggle {
@@ -151,6 +214,13 @@
   padding: 1rem;
   border-radius: 1rem;
   background: rgba(246, 239, 228, 0.06);
+}
+
+.resultHeaderRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.9rem;
 }
 
 .resultHeadline {
@@ -809,9 +879,23 @@
     align-items: center;
   }
 
+  .headerActions {
+    gap: 0.3rem;
+  }
+
   .teamToggle {
     padding: 0.42rem 0.62rem;
     font-size: 0.62rem;
+  }
+
+  .menuButton {
+    width: 2.05rem;
+    min-width: 2.05rem;
+    height: 2.05rem;
+  }
+
+  .menuPanel {
+    min-width: 9.25rem;
   }
 
   .playerCardGrid {

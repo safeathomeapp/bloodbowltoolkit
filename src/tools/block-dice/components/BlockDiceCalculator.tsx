@@ -185,6 +185,7 @@ export function BlockDiceCalculator() {
     persistedState?.selectedBlitzCandidateKey ?? null,
   )
   const [isWhyPanelOpen, setIsWhyPanelOpen] = useState(false)
+  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false)
   const longPressTimerRef = useRef<number | null>(null)
   const suppressClickRef = useRef(false)
 
@@ -543,6 +544,7 @@ export function BlockDiceCalculator() {
     setInvalidatedBlitzCandidates({})
     setSelectedBlitzCandidateKey(null)
     setIsWhyPanelOpen(false)
+    setIsHeaderMenuOpen(false)
 
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(STORAGE_KEY)
@@ -736,30 +738,62 @@ export function BlockDiceCalculator() {
                   {mode}
                 </button>
               ))}
-              <button
-                type="button"
-                className={styles.teamToggle}
-                onClick={resetBoard}
-              >
-                CLEAR
-              </button>
             </div>
-            <div className={styles.teamToggleRow} aria-label="Active team toggle">
-              {(['A', 'B'] as TeamSide[]).map((teamSide) => (
+            <div className={styles.headerActions}>
+              <div className={styles.teamToggleRow} aria-label="Active team toggle">
+                {(['A', 'B'] as TeamSide[]).map((teamSide) => (
+                  <button
+                    key={teamSide}
+                    type="button"
+                    className={
+                      activeTeam === teamSide
+                        ? `${styles.teamToggle} ${teamSide === 'A' ? styles.teamToggleAActive : styles.teamToggleBActive}`
+                        : styles.teamToggle
+                    }
+                    onClick={() => setActiveTeamSelection(teamSide)}
+                    aria-pressed={activeTeam === teamSide}
+                  >
+                    {teamSide === 'A' ? 'BLUE' : 'RED'}
+                  </button>
+                ))}
+              </div>
+              <div className={styles.menuWrap}>
                 <button
-                  key={teamSide}
                   type="button"
-                  className={
-                    activeTeam === teamSide
-                      ? `${styles.teamToggle} ${teamSide === 'A' ? styles.teamToggleAActive : styles.teamToggleBActive}`
-                      : styles.teamToggle
-                  }
-                  onClick={() => setActiveTeamSelection(teamSide)}
-                  aria-pressed={activeTeam === teamSide}
+                  className={styles.menuButton}
+                  onClick={() => setIsHeaderMenuOpen((current) => !current)}
+                  aria-expanded={isHeaderMenuOpen}
+                  aria-controls="header-menu"
+                  aria-label="Open board menu"
                 >
-                  {teamSide === 'A' ? 'BLUE' : 'RED'}
+                  <span className={styles.menuButtonLine} />
+                  <span className={styles.menuButtonLine} />
+                  <span className={styles.menuButtonLine} />
                 </button>
-              ))}
+                {isHeaderMenuOpen ? (
+                  <div id="header-menu" className={styles.menuPanel}>
+                    <button
+                      type="button"
+                      className={styles.menuItem}
+                      onClick={resetBoard}
+                    >
+                      Clear pitch
+                    </button>
+                    <button type="button" className={styles.menuItem} disabled>
+                      Help
+                    </button>
+                    <button type="button" className={styles.menuItem} disabled>
+                      Load teams
+                    </button>
+                    <button type="button" className={styles.menuItem} disabled>
+                      Save pitch
+                    </button>
+                    <button type="button" className={styles.menuItem} disabled>
+                      More soon
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
@@ -1016,9 +1050,10 @@ export function BlockDiceCalculator() {
 
       {appMode === 'CALCULATE' && calculation ? (
         <section className={styles.resultsPanel} aria-labelledby="result-title">
-          <div className={styles.sectionHeading}>
-            <div className={styles.titleRow}>
-              <p id="result-title" className={styles.eyebrow}>Result</p>
+          <div className={styles.resultStack}>
+            <div className={styles.resultCard}>
+              <div className={styles.resultHeaderRow}>
+                <p id="result-title" className={styles.resultHeadline}>{calculation.finalDice.summary}</p>
               <button
                 type="button"
                 className={styles.teamToggle}
@@ -1028,12 +1063,7 @@ export function BlockDiceCalculator() {
               >
                 {isWhyPanelOpen ? 'HIDE WHY' : 'WHY?'}
               </button>
-            </div>
-          </div>
-
-          <div className={styles.resultStack}>
-            <div className={styles.resultCard}>
-              <p className={styles.resultHeadline}>{calculation.finalDice.summary}</p>
+              </div>
               <p className={styles.resultCopy}>
                 Attacker ST {calculation.attackerStrength.total} vs Defender ST {calculation.defenderStrength.total}
               </p>
