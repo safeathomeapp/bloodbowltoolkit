@@ -22,7 +22,10 @@
 
 ## Current Priorities
 
-- Decide whether unreachable squares need stronger iconography or if the current dimmed state is enough
+- Refactor blitz candidate evaluation to support tied top-tier squares instead of a forced single “best” square
+- Simplify candidate visuals and remove misleading `BEST` / `ALT` language where no mathematical distinction exists
+- Re-test the candidate-square flow on a phone after the tie-aware update
+- Perform a broader calculator UI cleanup pass after candidate semantics are corrected
 - Defer merge planning until the revised UX rewrite is stable
 
 ## Deferred Features
