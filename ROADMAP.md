@@ -18,10 +18,10 @@
 - Standard adjacent preview overlays
 - Blitz preview and non-adjacent target overlays
 - Candidate attack squares, square-specific Why, and explicit invalidation
+- Candidate-square readability refinement
 
 ## Current Priorities
 
-- Refine candidate-square readability and interaction feedback
 - Decide whether unreachable squares need stronger iconography or if the current dimmed state is enough
 - Defer merge planning until the revised UX rewrite is stable
 

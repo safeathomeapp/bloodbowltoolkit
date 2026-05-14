@@ -101,6 +101,29 @@ function getProfileSkills(player: PlacedPlayer, profiles: PlayerProfile[]) {
   return profile?.skills ?? []
 }
 
+function getCandidateStatusLabel(
+  status: 'VALID' | 'OCCUPIED' | 'INVALIDATED',
+  options: { isBest: boolean; isSelected: boolean },
+) {
+  if (status === 'OCCUPIED') {
+    return 'OCCUPIED'
+  }
+
+  if (status === 'INVALIDATED') {
+    return 'OFF'
+  }
+
+  if (options.isSelected) {
+    return 'SELECTED'
+  }
+
+  if (options.isBest) {
+    return 'BEST'
+  }
+
+  return 'ALT'
+}
+
 export function BlockDiceCalculator() {
   const persistedState = loadPersistedState()
   const [draft, setDraft] = useState<PlacementDraft>(persistedState?.draft ?? defaultDraft)
@@ -621,9 +644,17 @@ export function BlockDiceCalculator() {
               </p>
             ) : null}
             {previewMode === 'BLITZ' && target ? (
-              <p className={styles.statusNote}>
-                Tap a candidate square to inspect it. Long press a candidate square to open Why. Tap a dimmed square to restore it.
-              </p>
+              <>
+                <p className={styles.statusNote}>
+                  Tap a candidate square to inspect it. Long press a candidate square to open Why. Tap a dimmed square to restore it.
+                </p>
+                <div className={styles.legendRow} aria-label="Blitz candidate legend">
+                  <span className={`${styles.legendChip} ${styles.legendBest}`}>BEST</span>
+                  <span className={`${styles.legendChip} ${styles.legendAlt}`}>ALT</span>
+                  <span className={`${styles.legendChip} ${styles.legendOff}`}>OFF</span>
+                  <span className={`${styles.legendChip} ${styles.legendOccupied}`}>OCCUPIED</span>
+                </div>
+              </>
             ) : null}
           </div>
         )}
@@ -700,6 +731,12 @@ export function BlockDiceCalculator() {
               const candidate = candidateMap.get(candidateKey)
               const isSelectedCandidate = candidate?.key === selectedBlitzCandidateKey
               const isBestCandidate = candidateResult?.bestCandidate?.key === candidate?.key
+              const candidateStatusLabel = candidate
+                ? getCandidateStatusLabel(candidate.status, {
+                    isBest: isBestCandidate,
+                    isSelected: isSelectedCandidate,
+                  })
+                : null
               const cellClassName = [
                 player ? styles.cellOccupied : styles.cell,
                 isEligibleTarget && !isTarget ? styles.cellEligibleTarget : '',
@@ -728,6 +765,13 @@ export function BlockDiceCalculator() {
                   role="gridcell"
                   className={cellClassName}
                   onClick={() => handleGridCellPress({ row, col })}
+                  aria-label={
+                    player
+                      ? undefined
+                      : candidate
+                        ? `Candidate square ${row + 1},${col + 1}, ${candidateStatusLabel ?? 'candidate'}${candidate.diceLabel ? `, ${candidate.diceLabel}` : ''}`
+                        : `Grid square ${row + 1},${col + 1}`
+                  }
                   onPointerDown={() => {
                     startBlockerLongPress(player)
                     startCandidateLongPress({ row, col })
@@ -748,10 +792,12 @@ export function BlockDiceCalculator() {
                       {preview ? <span className={styles.previewBadge}>{preview.diceLabel}</span> : null}
                       {isBlocker ? <span className={styles.tokenRole}>Blocker</span> : null}
                       {isTarget ? <span className={styles.tokenRole}>Target</span> : null}
+                      {candidateStatusLabel ? <span className={styles.candidateTokenBadge}>{candidateStatusLabel}</span> : null}
                     </span>
                   ) : (
-                    <span className={styles.cellHint}>
-                      {candidate?.diceLabel ?? `${row + 1},${col + 1}`}
+                    <span className={styles.cellHintStack}>
+                      <span className={styles.cellHintPrimary}>{candidate?.diceLabel ?? `${row + 1},${col + 1}`}</span>
+                      {candidateStatusLabel ? <span className={styles.cellHintStatus}>{candidateStatusLabel}</span> : null}
                     </span>
                   )}
                 </button>
