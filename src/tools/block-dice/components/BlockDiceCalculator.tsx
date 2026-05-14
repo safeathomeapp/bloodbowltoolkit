@@ -9,6 +9,9 @@ const GRID_SIZE = 7
 const STRENGTH_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8]
 const STORAGE_KEY = 'blood-bowl-toolkit:block-dice'
 const PLAYER_SKILL_OPTIONS: Skill[] = ['GUARD', 'DEFENSIVE', 'DAUNTLESS', 'HORNS']
+// Keep blitz candidate invalidation logic dormant for now.
+// The current MVP hides the explicit action because the UX is too loose for release.
+const SHOW_BLITZ_INVALIDATION_ACTION = false
 type AppMode = 'EDIT' | 'CALCULATE'
 type PreviewMode = 'STANDARD' | 'BLITZ'
 
@@ -1243,7 +1246,7 @@ export function BlockDiceCalculator() {
                 </p>
               ) : null}
               <div className={styles.resultActions}>
-                {previewMode === 'BLITZ' && currentCandidate ? (
+                {SHOW_BLITZ_INVALIDATION_ACTION && previewMode === 'BLITZ' && currentCandidate ? (
                   <button
                     type="button"
                     className={styles.actionButtonSecondary}
