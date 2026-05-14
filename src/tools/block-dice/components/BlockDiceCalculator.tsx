@@ -701,26 +701,6 @@ export function BlockDiceCalculator() {
     }, 450)
   }
 
-  const startCandidateLongPress = (position: Position) => {
-    if (appMode !== 'CALCULATE' || previewMode !== 'BLITZ' || !invalidationSetKey) {
-      return
-    }
-
-    const key = buildPositionKey(position)
-    const candidate = candidateMap.get(key)
-
-    if (!candidate || candidate.status === 'OCCUPIED') {
-      return
-    }
-
-    clearLongPressTimer()
-    longPressTimerRef.current = window.setTimeout(() => {
-      suppressClickRef.current = true
-      setSelectedBlitzCandidateKey(key)
-      setIsWhyPanelOpen(true)
-    }, 450)
-  }
-
   const currentCandidate = selectedCandidate ?? candidateResult?.preferredCandidate ?? null
   const currentCandidatePositionLabel = currentCandidate
     ? `${currentCandidate.position.row + 1},${currentCandidate.position.col + 1}`
@@ -882,7 +862,6 @@ export function BlockDiceCalculator() {
                     onPointerDown={() => {
                       startBlockerLongPress(player)
                       startEditRemoveLongPress(player)
-                      startCandidateLongPress({ row, col })
                     }}
                     onPointerUp={clearLongPressTimer}
                     onPointerLeave={clearLongPressTimer}
@@ -1073,13 +1052,6 @@ export function BlockDiceCalculator() {
           <p className={styles.resultCopy}>
             Attacker ST {calculation.attackerStrength.total} vs Defender ST {calculation.defenderStrength.total}
           </p>
-          {previewMode === 'BLITZ' && target ? (
-            <p className={styles.resultCopy}>
-              {currentCandidatePositionLabel
-                ? `Current preview uses attack square ${currentCandidatePositionLabel}.`
-                : 'No reachable candidate squares remain for this blitz preview.'}
-            </p>
-          ) : null}
           <div className={styles.resultActions}>
             {SHOW_BLITZ_INVALIDATION_ACTION && previewMode === 'BLITZ' && currentCandidate ? (
               <button
@@ -1179,6 +1151,7 @@ export function BlockDiceCalculator() {
                   <li>Potential dice are shown without checking movement legality.</li>
                   <li>If the attacker is already adjacent, the current square blitz dice show on that attacker token.</li>
                   <li>Long press the same active attacker again to leave blitz preview.</li>
+                  <li>Use the `WHY?` button for the current blitz calculation instead of long pressing candidate squares.</li>
                 </ul>
               </div>
 
