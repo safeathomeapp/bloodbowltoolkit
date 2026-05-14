@@ -617,7 +617,7 @@ export function BlockDiceCalculator() {
                     onClick={() => setDraft((currentDraft) => ({ ...currentDraft, teamSide }))}
                     aria-pressed={teamSide === draft.teamSide}
                   >
-                    Team {teamSide}
+                    {teamSide === 'A' ? 'Blue' : 'Red'}
                   </button>
                 ))}
               </div>
