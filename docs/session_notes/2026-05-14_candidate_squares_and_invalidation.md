@@ -1,11 +1,13 @@
-# Session Note: Candidate Squares And Invalidation
+# Session Note: Candidate Squares, Square-Why, And Explicit Invalidation
 
 ## Summary Of Work Completed
 
 - Exposed blitz candidate attack squares around the selected target.
 - Added rules-layer support for enumerating all candidate squares, including occupied and invalidated states.
 - Added tap-to-select for valid candidate squares.
-- Added long-press invalidation for candidate squares and recalculation of the best remaining blitz option.
+- Changed long press on candidate squares to open square-specific Why reasoning.
+- Moved invalidation away from a gesture and into an explicit action tied to the current candidate.
+- Added tap-to-restore for invalidated candidate squares.
 - Updated the result panel to follow the selected candidate or best remaining candidate.
 
 ## Files Created
@@ -28,6 +30,7 @@
 - Keep candidate-square generation in the rules layer so the board UI only renders states and interactions.
 - Key invalidations by `blockerId:targetId` so manual reachability adjustments stay tied to a specific blitz context.
 - Reuse the selected candidate calculation directly for the result and Why panel instead of creating a second detail pathway.
+- Prioritize explanation on the visible candidate squares because it is the more common user need than marking a square unreachable.
 
 ## Rejected Approaches
 
@@ -43,7 +46,7 @@
 
 ## Next Recommended Step
 
-- Bind the Why panel more directly to blitz target and candidate interactions, and refine candidate-square visual communication for mobile readability.
+- Refine candidate-square visual communication for mobile readability and consider whether an inline unreachable icon is worth the added visual noise.
 
 ## Git Branch Used
 
@@ -51,4 +54,4 @@
 
 ## Commit Hashes
 
-- No commit created yet in this session.
+- Pending verification and commit

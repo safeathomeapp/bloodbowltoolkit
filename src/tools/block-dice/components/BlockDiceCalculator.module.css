@@ -121,6 +121,9 @@
 
 .resultActions {
   margin-top: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
 }
 
 .whyButton,

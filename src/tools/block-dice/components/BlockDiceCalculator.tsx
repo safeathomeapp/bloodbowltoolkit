@@ -240,6 +240,33 @@ export function BlockDiceCalculator() {
     }))
   }
 
+  const toggleCandidateInvalidation = (key: string, options?: { selectAfterRestore?: boolean }) => {
+    if (!invalidationSetKey) {
+      return
+    }
+
+    const isCurrentlyInvalidated = invalidatedKeysForSelection.includes(key)
+
+    setInvalidatedBlitzCandidates((current) => {
+      const existing = current[invalidationSetKey] ?? []
+      const next = isCurrentlyInvalidated ? existing.filter((entry) => entry !== key) : [...existing, key]
+
+      return {
+        ...current,
+        [invalidationSetKey]: next,
+      }
+    })
+
+    if (isCurrentlyInvalidated) {
+      if (options?.selectAfterRestore) {
+        setSelectedBlitzCandidateKey(key)
+      }
+      return
+    }
+
+    setSelectedBlitzCandidateKey((currentKey) => (currentKey === key ? null : currentKey))
+  }
+
   const selectPlayer = (player: PlacedPlayer) => {
     setBoardState((currentState) => {
       const currentBlocker = currentState.placedPlayers.find((entry) => entry.id === currentState.blockerId)
@@ -277,6 +304,8 @@ export function BlockDiceCalculator() {
     if (appMode === 'CALCULATE' && previewMode === 'BLITZ' && target && candidate) {
       if (candidate.status === 'VALID') {
         setSelectedBlitzCandidateKey(candidate.key)
+      } else if (candidate.status === 'INVALIDATED') {
+        toggleCandidateInvalidation(candidate.key, { selectAfterRestore: true })
       }
       return
     }
@@ -378,7 +407,7 @@ export function BlockDiceCalculator() {
             : 'Blitz Preview is active. Potential block dice show on opposing players without checking movement legality.'
           : previewMode === 'STANDARD'
             ? 'Preview target selected. Tap another adjacent opposing player to switch the preview, or tap a friendly player to change blocker.'
-            : 'Blitz target selected. Tap a candidate square to inspect that attack position or long press it to mark it unreachable.'
+            : 'Blitz target selected. Tap a candidate square to inspect it, long press it for Why, or use the result action to mark it unreachable.'
   const calculation =
     previewMode === 'BLITZ' && target
       ? selectedCandidate?.calculation ?? candidateResult?.bestCandidate?.calculation ?? activePreview?.calculation ?? null
@@ -423,20 +452,15 @@ export function BlockDiceCalculator() {
     clearLongPressTimer()
     longPressTimerRef.current = window.setTimeout(() => {
       suppressClickRef.current = true
-      setInvalidatedBlitzCandidates((current) => {
-        const existing = current[invalidationSetKey] ?? []
-        const next = existing.includes(key)
-          ? existing.filter((entry) => entry !== key)
-          : [...existing, key]
-
-        return {
-          ...current,
-          [invalidationSetKey]: next,
-        }
-      })
-      setSelectedBlitzCandidateKey((currentKey) => (currentKey === key ? null : currentKey))
+      setSelectedBlitzCandidateKey(key)
+      setIsWhyPanelOpen(true)
     }, 450)
   }
+
+  const currentCandidate = selectedCandidate ?? candidateResult?.bestCandidate ?? null
+  const currentCandidatePositionLabel = currentCandidate
+    ? `${currentCandidate.position.row + 1},${currentCandidate.position.col + 1}`
+    : null
 
   return (
     <div className={styles.layout}>
@@ -578,7 +602,11 @@ export function BlockDiceCalculator() {
                   ? 'Adjacent opposing players show inline dice overlays automatically.'
                   : 'Blitz Preview is active and non-adjacent opposing players can show potential block dice.'}
               </li>
-              <li>Tap an adjacent opposing player only when you want detailed reasoning.</li>
+              <li>
+                {previewMode === 'STANDARD'
+                  ? 'Tap an adjacent opposing player when you want the detailed reasoning.'
+                  : 'Tap a candidate square to inspect that attack position and long press it for Why.'}
+              </li>
             </ul>
             {blocker ? (
               <div className={styles.summaryTagRow}>
@@ -594,7 +622,7 @@ export function BlockDiceCalculator() {
             ) : null}
             {previewMode === 'BLITZ' && target ? (
               <p className={styles.statusNote}>
-                Tap a candidate square to inspect it. Long press a candidate square to mark it unreachable.
+                Tap a candidate square to inspect it. Long press a candidate square to open Why. Tap a dimmed square to restore it.
               </p>
             ) : null}
           </div>
@@ -750,10 +778,8 @@ export function BlockDiceCalculator() {
               <p className={styles.resultCopy}>{calculation.finalDice.summary}</p>
               {previewMode === 'BLITZ' && target ? (
                 <p className={styles.resultCopy}>
-                  {(selectedCandidate ?? candidateResult?.bestCandidate)?.key
-                    ? `Current preview uses attack square ${(selectedCandidate ?? candidateResult?.bestCandidate)!.position.row + 1},${
-                        (selectedCandidate ?? candidateResult?.bestCandidate)!.position.col + 1
-                      }.`
+                  {currentCandidatePositionLabel
+                    ? `Current preview uses attack square ${currentCandidatePositionLabel}.`
                     : 'No reachable candidate squares remain for this blitz preview.'}
                 </p>
               ) : null}
@@ -767,6 +793,15 @@ export function BlockDiceCalculator() {
                 >
                   Why?
                 </button>
+                {previewMode === 'BLITZ' && currentCandidate ? (
+                  <button
+                    type="button"
+                    className={styles.actionButtonSecondary}
+                    onClick={() => toggleCandidateInvalidation(currentCandidate.key)}
+                  >
+                    Mark {currentCandidatePositionLabel} unreachable
+                  </button>
+                ) : null}
               </div>
               <ul className={styles.summaryList}>
                 <li>
@@ -819,7 +854,7 @@ export function BlockDiceCalculator() {
             <div className={styles.resultCard}>
               <p className={styles.resultHeadline}>Next step</p>
               <p className={styles.resultCopy}>
-                Use the bottom-sheet explanation for the full reasoning, or switch back to placement
+                Use the bottom-sheet explanation for the full reasoning, or switch back to edit
                 mode to adjust the board without losing your saved local setup.
               </p>
             </div>

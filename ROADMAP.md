@@ -17,12 +17,12 @@
 - Edit / Calculate mode architecture
 - Standard adjacent preview overlays
 - Blitz preview and non-adjacent target overlays
-- Candidate attack squares and manual invalidation
+- Candidate attack squares, square-specific Why, and explicit invalidation
 
 ## Current Priorities
 
-- Bind the Why panel to selected blitz candidates
 - Refine candidate-square readability and interaction feedback
+- Decide whether unreachable squares need stronger iconography or if the current dimmed state is enough
 - Defer merge planning until the revised UX rewrite is stable
 
 ## Deferred Features
