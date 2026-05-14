@@ -51,3 +51,11 @@ export interface BlockDiceCalculation {
   finalDice: FinalDiceSummary
   explanation: ExplanationSection[]
 }
+
+export interface TargetPreview {
+  blockerId: string
+  targetId: string
+  targetLabel: string
+  diceLabel: string
+  calculation: BlockDiceCalculation
+}

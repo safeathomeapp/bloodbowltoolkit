@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import styles from './BlockDiceCalculator.module.css'
 import type { BoardState, PlayerProfile, PlacedPlayer, Position, Skill, TeamSide } from '../../../shared/types/game'
 import { calculateBlockDice } from '../rules/calculateBlockDice'
+import { calculateAllTargetPreviews } from '../rules/calculateTargetPreviews'
 
 const GRID_SIZE = 7
 const STRENGTH_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8]
 const STORAGE_KEY = 'blood-bowl-toolkit:block-dice'
-type InteractionMode = 'PLACE' | 'SELECT'
+type AppMode = 'EDIT' | 'CALCULATE'
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -40,7 +41,7 @@ interface PersistedCalculatorState {
   playerProfiles: PlayerProfile[]
   boardState: BoardState
   nextNumbers: Record<TeamSide, number>
-  interactionMode: InteractionMode
+  appMode: AppMode
 }
 
 function loadPersistedState(): PersistedCalculatorState | null {
@@ -103,9 +104,7 @@ export function BlockDiceCalculator() {
   const [nextNumbers, setNextNumbers] = useState<Record<TeamSide, number>>(
     persistedState?.nextNumbers ?? { A: 1, B: 1 },
   )
-  const [interactionMode, setInteractionMode] = useState<InteractionMode>(
-    persistedState?.interactionMode ?? 'PLACE',
-  )
+  const [appMode, setAppMode] = useState<AppMode>(persistedState?.appMode ?? 'EDIT')
   const [isWhyPanelOpen, setIsWhyPanelOpen] = useState(false)
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null)
   const [installStatus, setInstallStatus] = useState('PWA ready for install and offline use.')
@@ -121,11 +120,11 @@ export function BlockDiceCalculator() {
       playerProfiles,
       boardState,
       nextNumbers,
-      interactionMode,
+      appMode,
     }
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
-  }, [boardState, draft, interactionMode, nextNumbers, playerProfiles])
+  }, [appMode, boardState, draft, nextNumbers, playerProfiles])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -217,35 +216,9 @@ export function BlockDiceCalculator() {
 
   const selectPlayer = (player: PlacedPlayer) => {
     setBoardState((currentState) => {
-      const currentBlocker = currentState.placedPlayers.find(
-        (entry) => entry.id === currentState.blockerId,
-      )
-      const currentTarget = currentState.placedPlayers.find((entry) => entry.id === currentState.targetId)
+      const currentBlocker = currentState.placedPlayers.find((entry) => entry.id === currentState.blockerId)
 
-      if (!currentBlocker) {
-        return {
-          ...currentState,
-          blockerId: player.id,
-          targetId: null,
-        }
-      }
-
-      if (currentBlocker.id === player.id) {
-        return {
-          ...currentState,
-          blockerId: null,
-          targetId: null,
-        }
-      }
-
-      if (currentTarget?.id === player.id) {
-        return {
-          ...currentState,
-          targetId: null,
-        }
-      }
-
-      if (currentBlocker.teamSide === player.teamSide) {
+      if (player.teamSide === currentBlocker?.teamSide || !currentBlocker) {
         return {
           ...currentState,
           blockerId: player.id,
@@ -267,7 +240,7 @@ export function BlockDiceCalculator() {
   const handleGridCellPress = (position: Position) => {
     const existingPlayer = boardState.placedPlayers.find((player) => isSamePosition(player.position, position))
 
-    if (interactionMode === 'PLACE') {
+    if (appMode === 'EDIT') {
       placePlayer(position)
       return
     }
@@ -282,7 +255,7 @@ export function BlockDiceCalculator() {
     setPlayerProfiles([])
     setBoardState(emptyBoardState)
     setNextNumbers({ A: 1, B: 1 })
-    setInteractionMode('PLACE')
+    setAppMode('EDIT')
     setIsWhyPanelOpen(false)
 
     if (typeof window !== 'undefined') {
@@ -310,130 +283,155 @@ export function BlockDiceCalculator() {
   const teamBCount = boardState.placedPlayers.filter((player) => player.teamSide === 'B').length
   const blocker = boardState.placedPlayers.find((player) => player.id === boardState.blockerId) ?? null
   const target = boardState.placedPlayers.find((player) => player.id === boardState.targetId) ?? null
-  const eligibleTargetIds = blocker
-    ? boardState.placedPlayers
-        .filter(
-          (player) => player.teamSide !== blocker.teamSide && isAdjacent(blocker.position, player.position),
-        )
-        .map((player) => player.id)
-    : []
+  const previews = blocker ? calculateAllTargetPreviews(boardState, playerProfiles, blocker.id) : []
+  const previewMap = new Map(previews.map((preview) => [preview.targetId, preview]))
   const blockerLabel = blocker ? getProfileLabel(blocker, playerProfiles) : 'none'
   const targetLabel = target ? getProfileLabel(target, playerProfiles) : 'none'
   const selectionHint =
-    interactionMode === 'PLACE'
-      ? 'Placement mode is active. Tap an empty square to place the configured player or an occupied square to remove one.'
+    appMode === 'EDIT'
+      ? 'Edit mode is active. Tap an empty square to place the configured player or an occupied square to remove one.'
       : !blocker
-        ? 'Selection mode is active. Tap any player to choose the blocker.'
+        ? 'Calculate mode is active. Tap any player to choose the active blocker.'
         : !target
-          ? 'Tap an adjacent opposing player to choose the target. Tapping another friendly player switches the blocker.'
-          : 'Blocker and target are selected. Tapping the blocker clears both selections, and tapping the target clears only the target.'
+          ? 'Adjacent opposing players now show dice overlays. Tap one of those targets to inspect the detailed result.'
+          : 'Preview target selected. Tap another adjacent opposing player to switch the preview, or tap a friendly player to change blocker.'
   const calculation = blocker && target ? calculateBlockDice(boardState, playerProfiles) : null
 
   return (
     <div className={styles.layout}>
       <section className={styles.controls} aria-labelledby="placement-controls">
         <div className={styles.sectionHeading}>
-          <p className={styles.eyebrow}>Placement Controls</p>
+          <p className={styles.eyebrow}>Mode</p>
           <h3 id="placement-controls" className={styles.title}>
-            Place players on the 7x7 board
+            Edit and calculate
           </h3>
         </div>
 
         <div className={styles.controlGroup}>
-          <span className={styles.label}>Team</span>
+          <span className={styles.label}>Top-level mode</span>
           <div className={styles.toggleRow}>
-            {(['A', 'B'] as TeamSide[]).map((teamSide) => (
+            {(['EDIT', 'CALCULATE'] as AppMode[]).map((mode) => (
               <button
-                key={teamSide}
+                key={mode}
                 type="button"
-                className={teamSide === draft.teamSide ? styles.toggleActive : styles.toggle}
-                onClick={() => setDraft((currentDraft) => ({ ...currentDraft, teamSide }))}
-                aria-pressed={teamSide === draft.teamSide}
+                className={appMode === mode ? styles.toggleActive : styles.toggle}
+                onClick={() => setAppMode(mode)}
+                aria-pressed={appMode === mode}
               >
-                Team {teamSide}
+                {mode}
               </button>
             ))}
           </div>
         </div>
 
-        <div className={styles.controlGroup}>
-          <label className={styles.label} htmlFor="strength-select">
-            Strength
-          </label>
-          <select
-            id="strength-select"
-            className={styles.select}
-            value={draft.strength}
-            onChange={(event) =>
-              setDraft((currentDraft) => ({
-                ...currentDraft,
-                strength: Number(event.target.value),
-              }))
-            }
-          >
-            {STRENGTH_OPTIONS.map((value) => (
-              <option key={value} value={value}>
-                ST {value}
-              </option>
-            ))}
-          </select>
-        </div>
+        {appMode === 'EDIT' ? (
+          <>
+            <div className={styles.controlGroup}>
+              <span className={styles.label}>Team</span>
+              <div className={styles.toggleRow}>
+                {(['A', 'B'] as TeamSide[]).map((teamSide) => (
+                  <button
+                    key={teamSide}
+                    type="button"
+                    className={teamSide === draft.teamSide ? styles.toggleActive : styles.toggle}
+                    onClick={() => setDraft((currentDraft) => ({ ...currentDraft, teamSide }))}
+                    aria-pressed={teamSide === draft.teamSide}
+                  >
+                    Team {teamSide}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        <div className={styles.controlGroup}>
-          <span className={styles.label}>Skills</span>
-          <div className={styles.toggleRow}>
-            {(['GUARD', 'DEFENSIVE'] as Skill[]).map((skill) => (
-              <button
-                key={skill}
-                type="button"
-                className={draft.skills.includes(skill) ? styles.toggleActive : styles.toggle}
-                onClick={() =>
+            <div className={styles.controlGroup}>
+              <label className={styles.label} htmlFor="strength-select">
+                Strength
+              </label>
+              <select
+                id="strength-select"
+                className={styles.select}
+                value={draft.strength}
+                onChange={(event) =>
                   setDraft((currentDraft) => ({
                     ...currentDraft,
-                    skills: toggleSkill(currentDraft.skills, skill),
+                    strength: Number(event.target.value),
                   }))
                 }
-                aria-pressed={draft.skills.includes(skill)}
               >
-                {skill}
-              </button>
-            ))}
-          </div>
-        </div>
+                {STRENGTH_OPTIONS.map((value) => (
+                  <option key={value} value={value}>
+                    ST {value}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        <div className={styles.controlGroup}>
-          <span className={styles.label}>Status</span>
-          <div className={styles.checkRow}>
-            <label className={styles.checkbox}>
-              <input
-                type="checkbox"
-                checked={draft.isStanding}
-                onChange={(event) =>
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    isStanding: event.target.checked,
-                    hasTackleZone: event.target.checked ? currentDraft.hasTackleZone : false,
-                  }))
-                }
-              />
-              Standing
-            </label>
-            <label className={styles.checkbox}>
-              <input
-                type="checkbox"
-                checked={draft.hasTackleZone}
-                disabled={!draft.isStanding}
-                onChange={(event) =>
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    hasTackleZone: event.target.checked,
-                  }))
-                }
-              />
-              Tackle zone
-            </label>
+            <div className={styles.controlGroup}>
+              <span className={styles.label}>Skills</span>
+              <div className={styles.toggleRow}>
+                {(['GUARD', 'DEFENSIVE'] as Skill[]).map((skill) => (
+                  <button
+                    key={skill}
+                    type="button"
+                    className={draft.skills.includes(skill) ? styles.toggleActive : styles.toggle}
+                    onClick={() =>
+                      setDraft((currentDraft) => ({
+                        ...currentDraft,
+                        skills: toggleSkill(currentDraft.skills, skill),
+                      }))
+                    }
+                    aria-pressed={draft.skills.includes(skill)}
+                  >
+                    {skill}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className={styles.controlGroup}>
+              <span className={styles.label}>Status</span>
+              <div className={styles.checkRow}>
+                <label className={styles.checkbox}>
+                  <input
+                    type="checkbox"
+                    checked={draft.isStanding}
+                    onChange={(event) =>
+                      setDraft((currentDraft) => ({
+                        ...currentDraft,
+                        isStanding: event.target.checked,
+                        hasTackleZone: event.target.checked ? currentDraft.hasTackleZone : false,
+                      }))
+                    }
+                  />
+                  Standing
+                </label>
+                <label className={styles.checkbox}>
+                  <input
+                    type="checkbox"
+                    checked={draft.hasTackleZone}
+                    disabled={!draft.isStanding}
+                    onChange={(event) =>
+                      setDraft((currentDraft) => ({
+                        ...currentDraft,
+                        hasTackleZone: event.target.checked,
+                      }))
+                    }
+                  />
+                  Tackle zone
+                </label>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className={styles.summaryCard}>
+            <p className={styles.eyebrow}>Calculate Mode</p>
+            <ul className={styles.summaryList}>
+              <li>Tap one player to make them the active blocker.</li>
+              <li>Adjacent opposing players show inline dice overlays automatically.</li>
+              <li>Tap an adjacent opposing player only when you want detailed reasoning.</li>
+            </ul>
           </div>
-        </div>
+        )}
 
         <div className={styles.summaryCard}>
           <p className={styles.eyebrow}>Local Toolkit</p>
@@ -470,29 +468,12 @@ export function BlockDiceCalculator() {
           </ul>
         </div>
 
-        <div className={styles.controlGroup}>
-          <span className={styles.label}>Interaction mode</span>
-          <div className={styles.toggleRow}>
-            {(['PLACE', 'SELECT'] as InteractionMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                className={interactionMode === mode ? styles.toggleActive : styles.toggle}
-                onClick={() => setInteractionMode(mode)}
-                aria-pressed={interactionMode === mode}
-              >
-                {mode === 'PLACE' ? 'Place / Remove' : 'Select Block'}
-              </button>
-            ))}
-          </div>
-        </div>
-
         <div className={styles.summaryCard}>
-          <p className={styles.eyebrow}>Selection Flow</p>
+          <p className={styles.eyebrow}>Tactical Flow</p>
           <ul className={styles.summaryList}>
             <li>{selectionHint}</li>
-            <li>Only adjacent opposing players can become valid targets.</li>
-            <li>Selection state remains reusable while the board layout stays in place.</li>
+            <li>Standard calculate mode currently previews adjacent blocks only.</li>
+            <li>Blitz preview is intentionally not implemented in this pass.</li>
           </ul>
         </div>
       </section>
@@ -514,7 +495,8 @@ export function BlockDiceCalculator() {
               const skills = player ? getProfileSkills(player, playerProfiles) : []
               const isBlocker = player?.id === boardState.blockerId
               const isTarget = player?.id === boardState.targetId
-              const isEligibleTarget = player ? eligibleTargetIds.includes(player.id) : false
+              const preview = player ? previewMap.get(player.id) : undefined
+              const isEligibleTarget = appMode === 'CALCULATE' && Boolean(preview)
               const cellClassName = [
                 player ? styles.cellOccupied : styles.cell,
                 isEligibleTarget && !isTarget ? styles.cellEligibleTarget : '',
@@ -548,6 +530,7 @@ export function BlockDiceCalculator() {
                         {player.hasTackleZone ? ' · TZ' : ' · No TZ'}
                       </span>
                       {skills.length > 0 ? <span className={styles.tokenMeta}>{skills.join(', ')}</span> : null}
+                      {preview ? <span className={styles.previewBadge}>{preview.diceLabel}</span> : null}
                       {isBlocker ? <span className={styles.tokenRole}>Blocker</span> : null}
                       {isTarget ? <span className={styles.tokenRole}>Target</span> : null}
                     </span>
@@ -645,10 +628,10 @@ export function BlockDiceCalculator() {
           </div>
         ) : (
           <div className={styles.resultCard}>
-            <p className={styles.resultHeadline}>Selection required</p>
+            <p className={styles.resultHeadline}>Preview ready</p>
             <p className={styles.resultCopy}>
-              Place tokens, switch to selection mode, choose a blocker, then choose an adjacent
-              opposing target to calculate block dice.
+              In Calculate Mode, choose a blocker first. Adjacent opposing players will show block
+              dice overlays, and tapping one of those targets will open the detailed result.
             </p>
           </div>
         )}

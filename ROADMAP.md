@@ -14,13 +14,15 @@
 - Mobile UI stabilization and local-only persistence
 - Final MVP cleanup and Codex handoff
 - UX revision review and roadmap reset
+- Edit / Calculate mode architecture
+- Standard adjacent preview overlays
 
 ## Current Priorities
 
-- Introduce `EDIT` / `CALCULATE` mode architecture
-- Replace explicit target selection with adjacent block previews
-- Extend the rules engine for tactical preview generation
-- Defer merge planning until the revised UX rewrite is underway
+- Add Blitz Preview via blocker long press
+- Extend the rules engine for non-adjacent preview generation
+- Add candidate attack square evaluation and manual invalidation
+- Defer merge planning until the revised UX rewrite is stable
 
 ## Deferred Features
 
