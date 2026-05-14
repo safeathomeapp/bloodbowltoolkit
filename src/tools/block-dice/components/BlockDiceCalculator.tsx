@@ -17,20 +17,23 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
 }
 
-interface PlacementDraft {
-  teamSide: TeamSide
+interface TeamDraft {
   strength: number
   skills: Skill[]
   isStanding: boolean
   hasTackleZone: boolean
 }
 
-const defaultDraft: PlacementDraft = {
-  teamSide: 'A',
+const defaultTeamDraft: TeamDraft = {
   strength: 3,
   skills: [],
   isStanding: true,
   hasTackleZone: true,
+}
+
+const defaultTeamDrafts: Record<TeamSide, TeamDraft> = {
+  A: { ...defaultTeamDraft },
+  B: { ...defaultTeamDraft },
 }
 
 const emptyBoardState: BoardState = {
@@ -40,7 +43,8 @@ const emptyBoardState: BoardState = {
 }
 
 interface PersistedCalculatorState {
-  draft: PlacementDraft
+  draft?: TeamDraft & { teamSide?: TeamSide }
+  teamDrafts: Record<TeamSide, TeamDraft>
   playerProfiles: PlayerProfile[]
   boardState: BoardState
   nextNumbers: Record<TeamSide, number>
@@ -48,6 +52,7 @@ interface PersistedCalculatorState {
   appMode: AppMode
   previewMode: PreviewMode
   focusSelectedDefender: boolean
+  selectedEditPlayerIds: Record<TeamSide, string | null>
   invalidatedBlitzCandidates: Record<string, string[]>
   selectedBlitzCandidateKey: string | null
 }
@@ -147,9 +152,27 @@ function toDiceLabel(count: number, chooser: 'ATTACKER' | 'DEFENDER' | 'NONE') {
   return '1D'
 }
 
+function getTeamName(teamSide: TeamSide) {
+  return teamSide === 'A' ? 'Blue' : 'Red'
+}
+
 export function BlockDiceCalculator() {
   const persistedState = loadPersistedState()
-  const [draft, setDraft] = useState<PlacementDraft>(persistedState?.draft ?? defaultDraft)
+  const [teamDrafts, setTeamDrafts] = useState<Record<TeamSide, TeamDraft>>(() => {
+    if (persistedState?.teamDrafts) {
+      return persistedState.teamDrafts
+    }
+
+    if (persistedState?.draft) {
+      const fallbackTeam = persistedState.draft.teamSide ?? 'A'
+      return {
+        A: fallbackTeam === 'A' ? { ...defaultTeamDraft, ...persistedState.draft } : { ...defaultTeamDraft },
+        B: fallbackTeam === 'B' ? { ...defaultTeamDraft, ...persistedState.draft } : { ...defaultTeamDraft },
+      }
+    }
+
+    return defaultTeamDrafts
+  })
   const [playerProfiles, setPlayerProfiles] = useState<PlayerProfile[]>(persistedState?.playerProfiles ?? [])
   const [boardState, setBoardState] = useState<BoardState>(persistedState?.boardState ?? emptyBoardState)
   const [nextNumbers, setNextNumbers] = useState<Record<TeamSide, number>>(
@@ -171,6 +194,9 @@ export function BlockDiceCalculator() {
   const [focusSelectedDefender, setFocusSelectedDefender] = useState(
     persistedState?.focusSelectedDefender ?? false,
   )
+  const [selectedEditPlayerIds, setSelectedEditPlayerIds] = useState<Record<TeamSide, string | null>>(
+    persistedState?.selectedEditPlayerIds ?? { A: null, B: null },
+  )
   const [invalidatedBlitzCandidates, setInvalidatedBlitzCandidates] = useState<Record<string, string[]>>(
     persistedState?.invalidatedBlitzCandidates ?? {},
   )
@@ -190,7 +216,7 @@ export function BlockDiceCalculator() {
     }
 
     const payload: PersistedCalculatorState = {
-      draft,
+      teamDrafts,
       playerProfiles,
       boardState,
       nextNumbers,
@@ -198,6 +224,7 @@ export function BlockDiceCalculator() {
       appMode,
       previewMode,
       focusSelectedDefender,
+      selectedEditPlayerIds,
       invalidatedBlitzCandidates,
       selectedBlitzCandidateKey,
     }
@@ -207,12 +234,13 @@ export function BlockDiceCalculator() {
     appMode,
     activeTeam,
     boardState,
-    draft,
+    teamDrafts,
     focusSelectedDefender,
     invalidatedBlitzCandidates,
     nextNumbers,
     playerProfiles,
     previewMode,
+    selectedEditPlayerIds,
     selectedBlitzCandidateKey,
   ])
 
@@ -241,24 +269,45 @@ export function BlockDiceCalculator() {
     }
   }, [])
 
+  const removePlayer = (playerId: string) => {
+    const existingPlayer = boardState.placedPlayers.find((player) => player.id === playerId)
+
+    if (!existingPlayer) {
+      return
+    }
+
+    setBoardState((currentState) => ({
+      ...currentState,
+      placedPlayers: currentState.placedPlayers.filter((player) => player.id !== existingPlayer.id),
+      blockerId: currentState.blockerId === existingPlayer.id ? null : currentState.blockerId,
+      targetId: currentState.targetId === existingPlayer.id ? null : currentState.targetId,
+    }))
+    setPlayerProfiles((currentProfiles) =>
+      currentProfiles.filter((profile) => profile.id !== existingPlayer.profileId),
+    )
+    setSelectedEditPlayerIds((current) => ({
+      ...current,
+      [existingPlayer.teamSide]: current[existingPlayer.teamSide] === existingPlayer.id ? null : current[existingPlayer.teamSide],
+    }))
+  }
+
   const placePlayer = (position: Position) => {
     const existingPlayer = boardState.placedPlayers.find((player) => isSamePosition(player.position, position))
 
     if (existingPlayer) {
-      setBoardState((currentState) => ({
-        ...currentState,
-        placedPlayers: currentState.placedPlayers.filter((player) => player.id !== existingPlayer.id),
-        blockerId: currentState.blockerId === existingPlayer.id ? null : currentState.blockerId,
-        targetId: currentState.targetId === existingPlayer.id ? null : currentState.targetId,
-      }))
-      setPlayerProfiles((currentProfiles) =>
-        currentProfiles.filter((profile) => profile.id !== existingPlayer.profileId),
-      )
+      if (appMode === 'EDIT') {
+        setSelectedEditPlayerIds((current) => ({
+          ...current,
+          [existingPlayer.teamSide]: existingPlayer.id,
+        }))
+        setActiveTeam(existingPlayer.teamSide)
+      }
       return
     }
 
-    const nextNumber = nextNumbers[draft.teamSide]
-    const tokenId = buildTokenId(draft.teamSide, nextNumber)
+    const draft = teamDrafts[activeTeam]
+    const nextNumber = nextNumbers[activeTeam]
+    const tokenId = buildTokenId(activeTeam, nextNumber)
     const profileId = `profile-${tokenId}`
 
     const nextProfile: PlayerProfile = {
@@ -272,7 +321,7 @@ export function BlockDiceCalculator() {
     const nextPlacedPlayer: PlacedPlayer = {
       id: tokenId,
       profileId,
-      teamSide: draft.teamSide,
+      teamSide: activeTeam,
       position,
       isStanding: draft.isStanding,
       hasTackleZone: draft.isStanding && draft.hasTackleZone,
@@ -285,7 +334,11 @@ export function BlockDiceCalculator() {
     }))
     setNextNumbers((currentNumbers) => ({
       ...currentNumbers,
-      [draft.teamSide]: currentNumbers[draft.teamSide] + 1,
+      [activeTeam]: currentNumbers[activeTeam] + 1,
+    }))
+    setSelectedEditPlayerIds((current) => ({
+      ...current,
+      [activeTeam]: nextPlacedPlayer.id,
     }))
   }
 
@@ -328,6 +381,91 @@ export function BlockDiceCalculator() {
           : profile,
       ),
     )
+  }
+
+  const updatePlacedPlayerStatus = (
+    player: PlacedPlayer | null,
+    updates: Partial<Pick<PlacedPlayer, 'isStanding' | 'hasTackleZone'>>,
+  ) => {
+    if (!player) {
+      return
+    }
+
+    setBoardState((currentState) => ({
+      ...currentState,
+      placedPlayers: currentState.placedPlayers.map((entry) =>
+        entry.id === player.id
+          ? {
+              ...entry,
+              ...updates,
+            }
+          : entry,
+      ),
+    }))
+  }
+
+  const updatePlacedPlayerStrength = (player: PlacedPlayer | null, strength: number) => {
+    if (!player?.profileId) {
+      return
+    }
+
+    setPlayerProfiles((currentProfiles) =>
+      currentProfiles.map((profile) =>
+        profile.id === player.profileId ? { ...profile, strength } : profile,
+      ),
+    )
+  }
+
+  const updateTeamDraft = (teamSide: TeamSide, updates: Partial<TeamDraft>) => {
+    setTeamDrafts((current) => ({
+      ...current,
+      [teamSide]: {
+        ...current[teamSide],
+        ...updates,
+      },
+    }))
+  }
+
+  const applyEditorStrength = (teamSide: TeamSide, player: PlacedPlayer | null, strength: number) => {
+    if (player) {
+      updatePlacedPlayerStrength(player, strength)
+      return
+    }
+
+    updateTeamDraft(teamSide, { strength })
+  }
+
+  const applyEditorSkill = (teamSide: TeamSide, player: PlacedPlayer | null, skills: Skill[], skill: Skill) => {
+    if (player) {
+      togglePlayerSkill(player, skill)
+      return
+    }
+
+    updateTeamDraft(teamSide, { skills: toggleSkill(skills, skill) })
+  }
+
+  const applyEditorStanding = (teamSide: TeamSide, player: PlacedPlayer | null, isStanding: boolean, hasTackleZone: boolean) => {
+    if (player) {
+      updatePlacedPlayerStatus(player, {
+        isStanding: !isStanding,
+        hasTackleZone: !isStanding ? hasTackleZone : false,
+      })
+      return
+    }
+
+    updateTeamDraft(teamSide, {
+      isStanding: !isStanding,
+      hasTackleZone: !isStanding ? hasTackleZone : false,
+    })
+  }
+
+  const applyEditorTackleZone = (teamSide: TeamSide, player: PlacedPlayer | null, hasTackleZone: boolean) => {
+    if (player) {
+      updatePlacedPlayerStatus(player, { hasTackleZone: !hasTackleZone })
+      return
+    }
+
+    updateTeamDraft(teamSide, { hasTackleZone: !hasTackleZone })
   }
 
   const setActiveTeamSelection = (nextTeam: TeamSide) => {
@@ -430,13 +568,14 @@ export function BlockDiceCalculator() {
   }
 
   const resetBoard = () => {
-    setDraft(defaultDraft)
+    setTeamDrafts(defaultTeamDrafts)
     setPlayerProfiles([])
     setBoardState(emptyBoardState)
     setNextNumbers({ A: 1, B: 1 })
     setAppMode('EDIT')
     setPreviewMode('STANDARD')
     setFocusSelectedDefender(false)
+    setSelectedEditPlayerIds({ A: null, B: null })
     setInvalidatedBlitzCandidates({})
     setSelectedBlitzCandidateKey(null)
     setIsWhyPanelOpen(false)
@@ -465,6 +604,12 @@ export function BlockDiceCalculator() {
   const teamACount = boardState.placedPlayers.filter((player) => player.teamSide === 'A').length
   const teamBCount = boardState.placedPlayers.filter((player) => player.teamSide === 'B').length
   const defendingTeam: TeamSide = activeTeam === 'A' ? 'B' : 'A'
+  const selectedEditPlayerA =
+    boardState.placedPlayers.find((player) => player.id === selectedEditPlayerIds.A) ?? null
+  const selectedEditPlayerB =
+    boardState.placedPlayers.find((player) => player.id === selectedEditPlayerIds.B) ?? null
+  const selectedEditProfileA = getProfileForPlayer(selectedEditPlayerA, playerProfiles)
+  const selectedEditProfileB = getProfileForPlayer(selectedEditPlayerB, playerProfiles)
   const blocker = boardState.placedPlayers.find((player) => player.id === boardState.blockerId) ?? null
   const target = boardState.placedPlayers.find((player) => player.id === boardState.targetId) ?? null
   const invalidationSetKey = blocker && target ? `${blocker.id}:${target.id}` : null
@@ -512,6 +657,24 @@ export function BlockDiceCalculator() {
   const targetProfile = getProfileForPlayer(target, playerProfiles)
   const blockerSkills = blockerProfile?.skills ?? []
   const targetSkills = targetProfile?.skills ?? []
+  const editCardStates = (['A', 'B'] as TeamSide[]).map((teamSide) => {
+    const selectedPlayer = teamSide === 'A' ? selectedEditPlayerA : selectedEditPlayerB
+    const selectedProfile = teamSide === 'A' ? selectedEditProfileA : selectedEditProfileB
+    const draft = teamDrafts[teamSide]
+
+    return {
+      teamSide,
+      selectedPlayer,
+      selectedProfile,
+      name: selectedPlayer
+        ? `Player ${getProfileTokenNumber(selectedPlayer, playerProfiles)}`
+        : 'New player',
+      strength: selectedProfile?.strength ?? draft.strength,
+      skills: selectedProfile?.skills ?? draft.skills,
+      isStanding: selectedPlayer?.isStanding ?? draft.isStanding,
+      hasTackleZone: selectedPlayer?.hasTackleZone ?? draft.hasTackleZone,
+    }
+  })
   const attackerCardStrength = blockerProfile
     ? (() => {
         const hornsModifier = previewMode === 'BLITZ' && blockerSkills.includes('HORNS') ? 1 : 0
@@ -584,6 +747,18 @@ export function BlockDiceCalculator() {
     }, 450)
   }
 
+  const startEditRemoveLongPress = (player: PlacedPlayer | undefined) => {
+    if (appMode !== 'EDIT' || !player) {
+      return
+    }
+
+    clearLongPressTimer()
+    longPressTimerRef.current = window.setTimeout(() => {
+      suppressClickRef.current = true
+      removePlayer(player.id)
+    }, 450)
+  }
+
   const startCandidateLongPress = (position: Position) => {
     if (appMode !== 'CALCULATE' || previewMode !== 'BLITZ' || !invalidationSetKey) {
       return
@@ -613,132 +788,21 @@ export function BlockDiceCalculator() {
     <div className={styles.layout}>
       <section className={styles.controls} aria-labelledby="placement-controls">
         <div className={styles.sectionHeading}>
-          <p className={styles.eyebrow}>Mode</p>
+          <p className={styles.eyebrow}>Toolkit</p>
           <h3 id="placement-controls" className={styles.title}>
-            Edit and calculate
+            Session Controls
           </h3>
         </div>
 
-        <div className={styles.controlGroup}>
-          <span className={styles.label}>Top-level mode</span>
-          <div className={styles.toggleRow}>
-            {(['EDIT', 'CALCULATE'] as AppMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                className={appMode === mode ? styles.toggleActive : styles.toggle}
-                onClick={() => {
-                  setAppMode(mode)
-                  if (mode === 'EDIT') {
-                    setPreviewMode('STANDARD')
-                  }
-                }}
-                aria-pressed={appMode === mode}
-              >
-                {mode}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {appMode === 'EDIT' ? (
-          <>
-            <div className={styles.controlGroup}>
-              <span className={styles.label}>Team</span>
-              <div className={styles.toggleRow}>
-                {(['A', 'B'] as TeamSide[]).map((teamSide) => (
-                  <button
-                    key={teamSide}
-                    type="button"
-                    className={teamSide === draft.teamSide ? styles.toggleActive : styles.toggle}
-                    onClick={() => setDraft((currentDraft) => ({ ...currentDraft, teamSide }))}
-                    aria-pressed={teamSide === draft.teamSide}
-                  >
-                    {teamSide === 'A' ? 'Blue' : 'Red'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className={styles.controlGroup}>
-              <label className={styles.label} htmlFor="strength-select">
-                Strength
-              </label>
-              <select
-                id="strength-select"
-                className={styles.select}
-                value={draft.strength}
-                onChange={(event) =>
-                  setDraft((currentDraft) => ({
-                    ...currentDraft,
-                    strength: Number(event.target.value),
-                  }))
-                }
-              >
-                {STRENGTH_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    ST {value}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className={styles.controlGroup}>
-              <span className={styles.label}>New player skills</span>
-              <div className={styles.toggleRow}>
-                {(['GUARD', 'DEFENSIVE', 'DAUNTLESS', 'HORNS'] as Skill[]).map((skill) => (
-                  <button
-                    key={skill}
-                    type="button"
-                    className={draft.skills.includes(skill) ? styles.toggleActive : styles.toggle}
-                    onClick={() =>
-                      setDraft((currentDraft) => ({
-                        ...currentDraft,
-                        skills: toggleSkill(currentDraft.skills, skill),
-                      }))
-                    }
-                    aria-pressed={draft.skills.includes(skill)}
-                  >
-                    {skill}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className={styles.controlGroup}>
-              <span className={styles.label}>Status</span>
-              <div className={styles.toggleRow}>
-                <button
-                  type="button"
-                  className={draft.isStanding ? styles.toggleActive : styles.toggle}
-                  onClick={() =>
-                    setDraft((currentDraft) => ({
-                      ...currentDraft,
-                      isStanding: !currentDraft.isStanding,
-                      hasTackleZone: !currentDraft.isStanding ? currentDraft.hasTackleZone : false,
-                    }))
-                  }
-                  aria-pressed={draft.isStanding}
-                >
-                  Standing
-                </button>
-                <button
-                  type="button"
-                  className={draft.hasTackleZone ? styles.toggleActive : styles.toggle}
-                  onClick={() =>
-                    setDraft((currentDraft) => ({
-                      ...currentDraft,
-                      hasTackleZone: !currentDraft.hasTackleZone,
-                    }))
-                  }
-                  disabled={!draft.isStanding}
-                  aria-pressed={draft.hasTackleZone}
-                >
-                  Tackle zone
-                </button>
-              </div>
-            </div>
-          </>
+          <div className={styles.summaryCard}>
+            <p className={styles.eyebrow}>Edit Mode</p>
+            <ul className={styles.summaryList}>
+              <li>Tap an empty square to place a player for the currently active side.</li>
+              <li>Tap an occupied square to select that player for editing in the team card below.</li>
+              <li>Long press an occupied square to remove that player from the grid.</li>
+            </ul>
+          </div>
         ) : (
           <div className={styles.summaryCard}>
             <p className={styles.eyebrow}>Calculate Mode</p>
@@ -851,14 +915,26 @@ export function BlockDiceCalculator() {
         </div>
       </section>
 
-      <section className={styles.boardPanel} aria-labelledby="board-title">
+      <section className={styles.boardPanel} aria-label="Board panel">
         <div className={styles.sectionHeading}>
           <div className={styles.titleRow}>
-            <div>
-              <p className={styles.eyebrow}>Board</p>
-              <h3 id="board-title" className={styles.title}>
-                Tactical Grid
-              </h3>
+            <div className={styles.toggleRow}>
+              {(['EDIT', 'CALCULATE'] as AppMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={appMode === mode ? styles.toggleActive : styles.toggle}
+                  onClick={() => {
+                    setAppMode(mode)
+                    if (mode === 'EDIT') {
+                      setPreviewMode('STANDARD')
+                    }
+                  }}
+                  aria-pressed={appMode === mode}
+                >
+                  {mode}
+                </button>
+              ))}
             </div>
             <div className={styles.teamToggleRow} aria-label="Active team toggle">
               {(['A', 'B'] as TeamSide[]).map((teamSide) => (
@@ -947,6 +1023,7 @@ export function BlockDiceCalculator() {
                     }
                     onPointerDown={() => {
                       startBlockerLongPress(player)
+                      startEditRemoveLongPress(player)
                       startCandidateLongPress({ row, col })
                     }}
                     onPointerUp={clearLongPressTimer}
@@ -998,66 +1075,142 @@ export function BlockDiceCalculator() {
           </div>
 
           <div className={styles.playerCardGrid} aria-label="Selected player cards">
-          <article
-            className={`${styles.playerCard} ${
-              activeTeam === 'A' ? styles.playerCardTeamA : styles.playerCardTeamB
-            }`}
-          >
-            <div className={styles.playerCardHeader}>
-              <div className={styles.playerCardHeading}>
-                <p className={styles.playerCardLabel}>Attacker</p>
-                <p className={styles.playerCardName}>{blockerNumberLabel !== 'none' ? blockerNumberLabel : 'No attacker selected'}</p>
-              </div>
-              <p className={styles.playerCardStrength}>
-                {attackerCardStrength !== null ? `ST ${attackerCardStrength}` : 'ST -'}
-              </p>
-            </div>
-            <div className={styles.playerCardToggleRow}>
-              {PLAYER_SKILL_OPTIONS.map((skill) => (
-                <button
-                  key={skill}
-                  type="button"
-                  className={blockerSkills.includes(skill) ? styles.playerToggleActive : styles.playerToggle}
-                  onClick={() => togglePlayerSkill(blocker, skill)}
-                  disabled={!blocker}
-                  aria-pressed={blockerSkills.includes(skill)}
-                >
-                  {skill}
-                </button>
-              ))}
-            </div>
-          </article>
+            {appMode === 'EDIT'
+              ? editCardStates.map((card) => (
+                  <article
+                    key={card.teamSide}
+                    className={`${styles.playerCard} ${
+                      card.teamSide === 'A' ? styles.playerCardTeamA : styles.playerCardTeamB
+                    }`}
+                  >
+                    <div className={styles.playerCardHeader}>
+                      <div className={styles.playerCardHeading}>
+                        <p className={styles.playerCardLabel}>{getTeamName(card.teamSide)}</p>
+                        <p className={styles.playerCardName}>{card.name}</p>
+                      </div>
+                    </div>
+                    <div className={styles.controlGroup}>
+                      <label className={styles.label} htmlFor={`edit-strength-${card.teamSide}`}>
+                        Strength
+                      </label>
+                      <select
+                        id={`edit-strength-${card.teamSide}`}
+                        className={styles.select}
+                        value={card.strength}
+                        onChange={(event) => applyEditorStrength(card.teamSide, card.selectedPlayer, Number(event.target.value))}
+                      >
+                        {STRENGTH_OPTIONS.map((value) => (
+                          <option key={value} value={value}>
+                            ST {value}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className={styles.playerCardToggleRow}>
+                      {PLAYER_SKILL_OPTIONS.map((skill) => (
+                        <button
+                          key={skill}
+                          type="button"
+                          className={card.skills.includes(skill) ? styles.playerToggleActive : styles.playerToggle}
+                          onClick={() => applyEditorSkill(card.teamSide, card.selectedPlayer, card.skills, skill)}
+                          aria-pressed={card.skills.includes(skill)}
+                        >
+                          {skill}
+                        </button>
+                      ))}
+                    </div>
+                    <div className={styles.playerCardToggleRow}>
+                      <button
+                        type="button"
+                        className={card.isStanding ? styles.playerToggleActive : styles.playerToggle}
+                        onClick={() =>
+                          applyEditorStanding(
+                            card.teamSide,
+                            card.selectedPlayer,
+                            card.isStanding,
+                            card.hasTackleZone,
+                          )
+                        }
+                        aria-pressed={card.isStanding}
+                      >
+                        Standing
+                      </button>
+                      <button
+                        type="button"
+                        className={card.hasTackleZone ? styles.playerToggleActive : styles.playerToggle}
+                        onClick={() => applyEditorTackleZone(card.teamSide, card.selectedPlayer, card.hasTackleZone)}
+                        disabled={!card.isStanding}
+                        aria-pressed={card.hasTackleZone}
+                      >
+                        Tackle zone
+                      </button>
+                    </div>
+                  </article>
+                ))
+              : (
+                <>
+                  <article
+                    className={`${styles.playerCard} ${
+                      activeTeam === 'A' ? styles.playerCardTeamA : styles.playerCardTeamB
+                    }`}
+                  >
+                    <div className={styles.playerCardHeader}>
+                      <div className={styles.playerCardHeading}>
+                        <p className={styles.playerCardLabel}>Attacker</p>
+                        <p className={styles.playerCardName}>{blockerNumberLabel !== 'none' ? blockerNumberLabel : 'No attacker selected'}</p>
+                      </div>
+                      <p className={styles.playerCardStrength}>
+                        {attackerCardStrength !== null ? `ST ${attackerCardStrength}` : 'ST -'}
+                      </p>
+                    </div>
+                    <div className={styles.playerCardToggleRow}>
+                      {PLAYER_SKILL_OPTIONS.map((skill) => (
+                        <button
+                          key={skill}
+                          type="button"
+                          className={blockerSkills.includes(skill) ? styles.playerToggleActive : styles.playerToggle}
+                          onClick={() => togglePlayerSkill(blocker, skill)}
+                          disabled={!blocker}
+                          aria-pressed={blockerSkills.includes(skill)}
+                        >
+                          {skill}
+                        </button>
+                      ))}
+                    </div>
+                  </article>
 
-          <article
-            className={`${styles.playerCard} ${
-              defendingTeam === 'A' ? styles.playerCardTeamA : styles.playerCardTeamB
-            }`}
-          >
-            <div className={styles.playerCardHeader}>
-              <div className={styles.playerCardHeading}>
-                <p className={styles.playerCardLabel}>Defender</p>
-                <p className={styles.playerCardName}>{targetNumberLabel !== 'none' ? targetNumberLabel : 'No defender selected'}</p>
-              </div>
-              <p className={styles.playerCardStrength}>
-                {defenderCardStrength !== null ? `ST ${defenderCardStrength}` : 'ST -'}
-              </p>
-            </div>
-            <div className={styles.playerCardToggleRow}>
-              {PLAYER_SKILL_OPTIONS.map((skill) => (
-                <button
-                  key={skill}
-                  type="button"
-                  className={targetSkills.includes(skill) ? styles.playerToggleActive : styles.playerToggle}
-                  onClick={() => togglePlayerSkill(target, skill)}
-                  disabled={!target}
-                  aria-pressed={targetSkills.includes(skill)}
-                >
-                  {skill}
-                </button>
-              ))}
-            </div>
-          </article>
-        </div>
+                  <article
+                    className={`${styles.playerCard} ${
+                      defendingTeam === 'A' ? styles.playerCardTeamA : styles.playerCardTeamB
+                    }`}
+                  >
+                    <div className={styles.playerCardHeader}>
+                      <div className={styles.playerCardHeading}>
+                        <p className={styles.playerCardLabel}>Defender</p>
+                        <p className={styles.playerCardName}>{targetNumberLabel !== 'none' ? targetNumberLabel : 'No defender selected'}</p>
+                      </div>
+                      <p className={styles.playerCardStrength}>
+                        {defenderCardStrength !== null ? `ST ${defenderCardStrength}` : 'ST -'}
+                      </p>
+                    </div>
+                    <div className={styles.playerCardToggleRow}>
+                      {PLAYER_SKILL_OPTIONS.map((skill) => (
+                        <button
+                          key={skill}
+                          type="button"
+                          className={targetSkills.includes(skill) ? styles.playerToggleActive : styles.playerToggle}
+                          onClick={() => togglePlayerSkill(target, skill)}
+                          disabled={!target}
+                          aria-pressed={targetSkills.includes(skill)}
+                        >
+                          {skill}
+                        </button>
+                      ))}
+                    </div>
+                  </article>
+                </>
+              )}
+          </div>
         </div>
       </section>
 

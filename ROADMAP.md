@@ -21,11 +21,11 @@
 - Candidate-square readability refinement
 - Tie-aware blitz candidate ranking
 - Player cards and contextual attacker controls
+- Board-header mode switch and edit-card refactor
 
 ## Current Priorities
 
-- Finish active-side and role-marker cleanup around the revised board-header team toggle
-- Re-test the active-team calculate flow on a phone after the explicit side-selection update
+- Re-test the new board-header mode switch and edit-card flow on a phone
 - Re-test the new inline result / Why flow on a phone
 - Expand rules coverage and usability around selected-player skill editing after the Guard surface update
 - Expand functional rules coverage and scenario utility on top of the new player-card control surface
