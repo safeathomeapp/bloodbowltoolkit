@@ -25,11 +25,10 @@
 
 ## Current Priorities
 
-- Re-test the new board-header mode switch and edit-card flow on a phone
-- Re-test the new inline result / Why flow on a phone
-- Expand rules coverage and usability around selected-player skill editing after the Guard surface update
-- Expand functional rules coverage and scenario utility on top of the new player-card control surface
-- Defer merge planning until the revised UX rewrite is stable
+- Beta test the MVP on real devices and real scenarios
+- Verify edge cases for `Guard`, `Defensive`, `Horns`, `Dauntless`, and blitz previews
+- Fix only concrete bugs or clarity issues found during testing
+- Merge `feature/blitz-why-panel` when the current testing round is satisfactory
 
 ## Deferred Features
 
@@ -37,7 +36,7 @@
 - Saved rosters
 - Probability helpers
 - Additional toolkit modules
-- Merge/integration branch strategy until post-rewrite stabilization
+- Post-MVP expansions beyond block-dice help
 
 ## Rejected Features
 
@@ -54,4 +53,4 @@ The MVP succeeds only if it quickly determines and explains Blood Bowl block dic
 
 ## Revision Note
 
-The original blocker-target interaction flow has been superseded by the revised tactical UX direction documented in `/c/Users/kevth/Downloads/blood_bowl_toolkit_final_mvp_revision.md`. Existing implementation remains useful foundation work, but the roadmap now prioritizes the interaction rewrite over merge preparation.
+The original blocker-target interaction flow was superseded by the revised tactical UX direction, and that rewrite has now been implemented. The roadmap priority has therefore moved on from architecture changes to beta testing, small bug fixes, and MVP merge readiness.
