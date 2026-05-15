@@ -75,8 +75,15 @@
   gap: 6px;
 }
 
+.toggleField {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
 .field span,
-.compactField span {
+.compactField span,
+.toggleField span {
   color: #6b4f43;
   font-size: 0.8rem;
   font-weight: 700;
@@ -88,6 +95,7 @@
 .field select,
 .compactField input,
 .compactField select,
+.toggleField input,
 .teamNameInput,
 .inlineInput,
 .numberInput {
@@ -97,6 +105,17 @@
   background: var(--suite-surface-strong);
   color: var(--suite-ink);
   padding: 10px 12px;
+}
+
+.toggleField input {
+  width: auto;
+  justify-self: start;
+  accent-color: var(--suite-accent);
+}
+
+.toggleField small {
+  color: var(--suite-muted);
+  font-size: 0.85rem;
 }
 
 .teamNameInput {
@@ -273,7 +292,7 @@
 
 .controlGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -385,6 +404,21 @@
   display: grid;
   grid-template-columns: 1.4fr 0.9fr;
   gap: 14px;
+}
+
+.warningPanel {
+  background: rgba(159, 29, 23, 0.08);
+  border: 1px solid rgba(159, 29, 23, 0.18);
+  border-radius: 22px;
+  padding: 18px;
+}
+
+.warningList {
+  margin: 0;
+  padding-left: 20px;
+  color: #6a2f23;
+  display: grid;
+  gap: 6px;
 }
 
 .placeholder {

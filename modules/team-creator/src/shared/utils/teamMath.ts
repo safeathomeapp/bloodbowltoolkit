@@ -1,5 +1,12 @@
 import type { PositionTemplate, RosterTemplate, SavedTeam } from '../types/team'
 
+const ASSISTANT_COACH_COST = 10_000
+const CHEERLEADER_COST = 10_000
+const APOTHECARY_COST = 50_000
+const DEDICATED_FAN_STEP_COST = 5_000
+const MINIMUM_TEAM_SIZE = 11
+const MAXIMUM_TEAM_SIZE = 16
+
 export function calculatePlayerValue(team: SavedTeam) {
   return team.players.reduce((total, player) => total + player.currentValue, 0)
 }
@@ -8,8 +15,79 @@ export function calculateRerollValue(team: SavedTeam, template: RosterTemplate) 
   return team.rerollCount * template.rerollCost
 }
 
+export function calculateAssistantCoachValue(team: SavedTeam) {
+  return team.assistantCoachCount * ASSISTANT_COACH_COST
+}
+
+export function calculateCheerleaderValue(team: SavedTeam) {
+  return team.cheerleaderCount * CHEERLEADER_COST
+}
+
+export function calculateDedicatedFansValue(team: SavedTeam) {
+  return Math.max(0, team.dedicatedFans - 1) * DEDICATED_FAN_STEP_COST
+}
+
+export function calculateApothecaryValue(team: SavedTeam) {
+  return team.apothecaryPurchased ? APOTHECARY_COST : 0
+}
+
+export function calculateSidelineValue(team: SavedTeam) {
+  return (
+    calculateAssistantCoachValue(team) +
+    calculateCheerleaderValue(team) +
+    calculateDedicatedFansValue(team) +
+    calculateApothecaryValue(team)
+  )
+}
+
 export function calculateTeamValue(team: SavedTeam, template: RosterTemplate) {
-  return calculatePlayerValue(team) + calculateRerollValue(team, template)
+  return calculatePlayerValue(team) + calculateRerollValue(team, template) + calculateSidelineValue(team)
+}
+
+export function calculateTreasury(team: SavedTeam, template: RosterTemplate) {
+  return team.draftBudget - calculateTeamValue(team, template)
+}
+
+export function calculateMinimumTeamSize(template: RosterTemplate) {
+  return template.positions.reduce((total, position) => total + position.minQty, 0)
+}
+
+export function getDraftWarnings(team: SavedTeam, template: RosterTemplate) {
+  const warnings: string[] = []
+
+  if (team.players.length < Math.max(MINIMUM_TEAM_SIZE, calculateMinimumTeamSize(template))) {
+    warnings.push('Draft list needs at least 11 players.')
+  }
+
+  if (team.players.length > MAXIMUM_TEAM_SIZE) {
+    warnings.push('Draft list cannot exceed 16 players.')
+  }
+
+  if (team.rerollCount > 8) {
+    warnings.push('Draft list cannot purchase more than 8 team rerolls.')
+  }
+
+  if (team.assistantCoachCount > 6) {
+    warnings.push('Draft list cannot purchase more than 6 assistant coaches.')
+  }
+
+  if (team.cheerleaderCount > 12) {
+    warnings.push('Draft list cannot purchase more than 12 cheerleaders.')
+  }
+
+  if (team.dedicatedFans < 1 || team.dedicatedFans > 7) {
+    warnings.push('Dedicated fans must stay between 1 and 7 during drafting.')
+  }
+
+  if (team.apothecaryPurchased && template.apothecary === 'NO') {
+    warnings.push('This roster cannot draft an apothecary.')
+  }
+
+  if (calculateTreasury(team, template) < 0) {
+    warnings.push('Draft spending exceeds the current draft budget.')
+  }
+
+  return warnings
 }
 
 export function countPlayersByPosition(team: SavedTeam) {

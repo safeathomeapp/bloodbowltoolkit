@@ -4,11 +4,17 @@ import styles from './TeamCreator.module.css'
 import { BrowserLocalStorageStore, MemoryKeyValueStore } from '../../../shared/storage/keyValueStore'
 import { LocalTeamRepository } from '../../../shared/repositories/localTeamRepository'
 import {
+  calculateApothecaryValue,
+  calculateAssistantCoachValue,
+  calculateCheerleaderValue,
+  calculateDedicatedFansValue,
   calculatePlayerValue,
   calculateRerollValue,
   calculateTeamValue,
+  calculateTreasury,
   countPlayersByPosition,
   countPlayersInSharedGroup,
+  getDraftWarnings,
 } from '../../../shared/utils/teamMath'
 import type { RosterTemplate, SavedTeam, SavedTeamSummary } from '../../../shared/types/team'
 import { createTeam, createTeamPlayer } from '../utils/teamFactory'
@@ -102,6 +108,14 @@ export function TeamCreator() {
 
     return activeTemplate.positions.reduce((total, position) => total + position.maxQty, 0)
   }, [activeTemplate])
+
+  const draftWarnings = useMemo(() => {
+    if (!activeTeam || !activeTemplate) {
+      return []
+    }
+
+    return getDraftWarnings(activeTeam, activeTemplate)
+  }, [activeTeam, activeTemplate])
 
   function refreshState() {
     const nextTemplates = repository.listRosterTemplatesSync()
@@ -226,6 +240,30 @@ export function TeamCreator() {
     updateActiveTeam((team) => ({ ...team, rerollCount }))
   }
 
+  function handleDraftBudgetChange(value: string) {
+    const draftBudget = Math.max(0, Number(value) || 0)
+    updateActiveTeam((team) => ({ ...team, draftBudget }))
+  }
+
+  function handleAssistantCoachChange(value: string) {
+    const assistantCoachCount = Math.max(0, Number(value) || 0)
+    updateActiveTeam((team) => ({ ...team, assistantCoachCount }))
+  }
+
+  function handleCheerleaderChange(value: string) {
+    const cheerleaderCount = Math.max(0, Number(value) || 0)
+    updateActiveTeam((team) => ({ ...team, cheerleaderCount }))
+  }
+
+  function handleDedicatedFansChange(value: string) {
+    const dedicatedFans = Math.max(1, Number(value) || 1)
+    updateActiveTeam((team) => ({ ...team, dedicatedFans }))
+  }
+
+  function handleApothecaryPurchasedChange(checked: boolean) {
+    updateActiveTeam((team) => ({ ...team, apothecaryPurchased: checked }))
+  }
+
   async function handleSaveTeam() {
     if (!activeTeam) {
       return
@@ -339,11 +377,11 @@ export function TeamCreator() {
                 <small>{activeTemplate.specialRules.length > 0 ? activeTemplate.specialRules.join(' • ') : 'No special rules'}</small>
               </article>
               <article className={styles.summaryCard}>
-                <span>Roster Count</span>
+                <span>Draft Budget</span>
                 <strong>
-                  {activeTeam.players.length}/{activeTemplatePlayerLimit}
+                  {formatGold(activeTeam.draftBudget)} gp
                 </strong>
-                <small>Current registered players</small>
+                <small>{formatGold(calculateTreasury(activeTeam, activeTemplate))} gp treasury remaining</small>
               </article>
               <article className={styles.summaryCard}>
                 <span>Player Value</span>
@@ -351,9 +389,11 @@ export function TeamCreator() {
                 <small>Purchased player total</small>
               </article>
               <article className={styles.summaryCard}>
-                <span>Reroll Spend</span>
-                <strong>{formatGold(calculateRerollValue(activeTeam, activeTemplate))} gp</strong>
-                <small>{activeTeam.rerollCount} rerolls at {formatGold(activeTemplate.rerollCost)} gp</small>
+                <span>Draft Status</span>
+                <strong>{draftWarnings.length === 0 ? 'Ready' : 'Needs fixes'}</strong>
+                <small>
+                  {activeTeam.players.length}/{activeTemplatePlayerLimit} registered players
+                </small>
               </article>
             </section>
 
@@ -367,6 +407,16 @@ export function TeamCreator() {
                 </div>
 
                 <div className={styles.controlGrid}>
+                  <label className={styles.compactField}>
+                    <span>Draft Budget</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="5000"
+                      value={activeTeam.draftBudget}
+                      onChange={(event) => handleDraftBudgetChange(event.target.value)}
+                    />
+                  </label>
                   <label className={styles.compactField}>
                     <span>Status</span>
                     <select value={activeTeam.status} onChange={(event) => handleStatusChange(event.target.value as SavedTeam['status'])}>
@@ -384,9 +434,53 @@ export function TeamCreator() {
                       onChange={(event) => handleRerollChange(event.target.value)}
                     />
                   </label>
-                  <div className={styles.infoCard}>
+                  <label className={styles.compactField}>
+                    <span>Assistant Coaches</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={activeTeam.assistantCoachCount}
+                      onChange={(event) => handleAssistantCoachChange(event.target.value)}
+                    />
+                  </label>
+                  <label className={styles.compactField}>
+                    <span>Cheerleaders</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={activeTeam.cheerleaderCount}
+                      onChange={(event) => handleCheerleaderChange(event.target.value)}
+                    />
+                  </label>
+                  <label className={styles.compactField}>
+                    <span>Dedicated Fans</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="7"
+                      value={activeTeam.dedicatedFans}
+                      onChange={(event) => handleDedicatedFansChange(event.target.value)}
+                    />
+                  </label>
+                  <label className={styles.toggleField}>
                     <span>Apothecary</span>
-                    <strong>{activeTemplate.apothecary}</strong>
+                    <input
+                      type="checkbox"
+                      checked={activeTeam.apothecaryPurchased}
+                      disabled={activeTemplate.apothecary === 'NO'}
+                      onChange={(event) => handleApothecaryPurchasedChange(event.target.checked)}
+                    />
+                    <small>
+                      {activeTemplate.apothecary === 'NO'
+                        ? 'Not available for this roster'
+                        : activeTemplate.apothecary === 'OPTIONAL'
+                          ? 'Optional purchase during draft'
+                          : 'Available during draft'}
+                    </small>
+                  </label>
+                  <div className={styles.infoCard}>
+                    <span>Treasury</span>
+                    <strong>{formatGold(calculateTreasury(activeTeam, activeTemplate))} gp</strong>
                   </div>
                   <div className={styles.infoCard}>
                     <span>Source</span>
@@ -424,10 +518,59 @@ export function TeamCreator() {
                   </button>
                 </div>
                 <p className={styles.helperText}>
-                  Quantity limits and shared big-guy restrictions are enforced from the roster template.
+                  Quantity limits, shared big-guy restrictions, and draft budgeting are enforced from the roster template.
                 </p>
               </section>
             </section>
+
+            <section className={styles.summaryGrid}>
+              <article className={styles.summaryCard}>
+                <span>Rerolls</span>
+                <strong>{formatGold(calculateRerollValue(activeTeam, activeTemplate))} gp</strong>
+                <small>{activeTeam.rerollCount} rerolls at {formatGold(activeTemplate.rerollCost)} gp</small>
+              </article>
+              <article className={styles.summaryCard}>
+                <span>Sideline Staff</span>
+                <strong>
+                  {formatGold(
+                    calculateAssistantCoachValue(activeTeam) +
+                      calculateCheerleaderValue(activeTeam) +
+                      calculateApothecaryValue(activeTeam),
+                  )}{' '}
+                  gp
+                </strong>
+                <small>
+                  {activeTeam.assistantCoachCount} AC • {activeTeam.cheerleaderCount} CL •{' '}
+                  {activeTeam.apothecaryPurchased ? 'Apothecary bought' : 'No apothecary'}
+                </small>
+              </article>
+              <article className={styles.summaryCard}>
+                <span>Dedicated Fans</span>
+                <strong>{formatGold(calculateDedicatedFansValue(activeTeam))} gp</strong>
+                <small>{activeTeam.dedicatedFans} starting fans</small>
+              </article>
+              <article className={styles.summaryCard}>
+                <span>Team Value</span>
+                <strong>{formatGold(calculateTeamValue(activeTeam, activeTemplate))} gp</strong>
+                <small>Players, rerolls, staff, fans, and apothecary</small>
+              </article>
+            </section>
+
+            {draftWarnings.length > 0 ? (
+              <section className={styles.warningPanel}>
+                <div className={styles.panelHeader}>
+                  <div>
+                    <p className={styles.sectionKicker}>Draft Checks</p>
+                    <h2 className={styles.panelHeadline}>Roster Needs Attention</h2>
+                  </div>
+                </div>
+                <ul className={styles.warningList}>
+                  {draftWarnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
 
             <section className={styles.panel}>
               <div className={styles.panelHeader}>

@@ -34,7 +34,11 @@ export interface SavedTeam {
   rosterTemplateId: string
   name: string
   status: 'DRAFT' | 'ACTIVE' | 'RETIRED'
+  draftBudget: number
   rerollCount: number
+  assistantCoachCount: number
+  cheerleaderCount: number
+  dedicatedFans: number
   apothecaryPurchased: boolean
   createdAt: string
   updatedAt: string

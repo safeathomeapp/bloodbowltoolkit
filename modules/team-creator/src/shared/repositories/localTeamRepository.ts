@@ -10,6 +10,26 @@ function cloneTeam(team: SavedTeam) {
   return structuredClone(team)
 }
 
+function normalizeTeam(team: SavedTeam): SavedTeam {
+  return {
+    ...team,
+    draftBudget: team.draftBudget ?? 1_000_000,
+    rerollCount: team.rerollCount ?? 0,
+    assistantCoachCount: team.assistantCoachCount ?? 0,
+    cheerleaderCount: team.cheerleaderCount ?? 0,
+    dedicatedFans: team.dedicatedFans ?? 1,
+    apothecaryPurchased: team.apothecaryPurchased ?? false,
+    players: team.players.map((player) => ({
+      ...player,
+      shirtNumber: player.shirtNumber ?? null,
+      spp: player.spp ?? 0,
+      nigglingInjuries: player.nigglingInjuries ?? 0,
+      extraSkills: player.extraSkills ?? [],
+      statAdjustments: player.statAdjustments ?? {},
+    })),
+  }
+}
+
 function buildTemplateMap(templates: RosterTemplate[]) {
   return new Map(templates.map((template) => [template.id, template]))
 }
@@ -93,7 +113,7 @@ export class LocalTeamRepository implements TeamRepository {
 
     try {
       const parsedValue = JSON.parse(rawValue) as SavedTeam[]
-      return Array.isArray(parsedValue) ? parsedValue : []
+      return Array.isArray(parsedValue) ? parsedValue.map(normalizeTeam) : []
     } catch {
       return []
     }

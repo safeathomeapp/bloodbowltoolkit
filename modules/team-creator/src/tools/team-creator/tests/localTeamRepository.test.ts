@@ -10,7 +10,11 @@ function createTeam(): SavedTeam {
     rosterTemplateId: 'amazon',
     name: 'Temple Harpies',
     status: 'DRAFT',
+    draftBudget: 1000000,
     rerollCount: 1,
+    assistantCoachCount: 0,
+    cheerleaderCount: 0,
+    dedicatedFans: 1,
     apothecaryPurchased: false,
     createdAt: '2026-05-15T00:00:00.000Z',
     updatedAt: '2026-05-15T00:00:00.000Z',
@@ -60,5 +64,35 @@ describe('LocalTeamRepository', () => {
     await repository.deleteTeam(team.id)
 
     expect(await repository.getTeam(team.id)).toBeNull()
+  })
+
+  it('normalizes older saved teams that predate draft fields', async () => {
+    const store = new MemoryKeyValueStore()
+    store.setItem(
+      'blood-bowl-toolkit:team-creator:teams',
+      JSON.stringify([
+        {
+          id: 'team-legacy',
+          rosterTemplateId: 'amazon',
+          name: 'Legacy Harpies',
+          status: 'DRAFT',
+          rerollCount: 0,
+          apothecaryPurchased: false,
+          createdAt: '2026-05-15T00:00:00.000Z',
+          updatedAt: '2026-05-15T00:00:00.000Z',
+          players: [],
+        },
+      ]),
+    )
+
+    const repository = new LocalTeamRepository(store)
+    const loadedTeam = await repository.getTeam('team-legacy')
+
+    expect(loadedTeam).toMatchObject({
+      draftBudget: 1000000,
+      assistantCoachCount: 0,
+      cheerleaderCount: 0,
+      dedicatedFans: 1,
+    })
   })
 })
