@@ -66,6 +66,7 @@
   - standings
 - Separate reusable profile data from competition-specific team state
 - Document the backend data model before building broad UI on top of it
+- Keep roster-template data separate from saved team/player state so 20+ team types can share one creator flow
 
 ### Phase 4: Roster Builder
 
@@ -73,6 +74,7 @@
 - Build CRUD for rosters
 - Support adding players to rosters with role, stats, skills, and cost fields
 - Support creating teams from rosters
+- make the creator template-driven rather than building around a single hardcoded team
 - Decide whether roster content is:
   - freeform user-defined first
   - seeded from Blood Bowl reference data first
