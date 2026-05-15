@@ -34,10 +34,10 @@
 
 ### Phase 1: Mainline And Repository Hygiene
 
-- Merge the MVP PR into the repository mainline
-- Replace the current historical default branch with a stable mainline branch
-- Preserve `modules/block-dice-calculator/` as the working module boundary
-- Keep root docs aligned with the suite/module structure
+- merged the MVP PR into `main`
+- replaced the historical default branch with `main`
+- preserved `modules/block-dice-calculator/` as the working module boundary
+- aligned root docs with the suite/module structure
 
 ### Phase 2: Backend Foundation
 

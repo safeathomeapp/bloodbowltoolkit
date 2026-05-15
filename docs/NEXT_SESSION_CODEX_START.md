@@ -22,8 +22,9 @@ The active planning context is now suite expansion around that module boundary.
 - Future module root: `modules/`
 - Package manager in the current module: `npm`
 - Current module stack: React, TypeScript, Vite, `vite-plugin-pwa`, Vitest
-- Active working branch at handoff: `feature/blitz-why-panel`
+- Active working branch at handoff: `main`
 - MVP status: complete and preserved as the first suite module
+- GitHub default branch: `main`
 
 ## What Is Complete
 

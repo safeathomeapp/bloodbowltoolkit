@@ -8,13 +8,15 @@ Canonical Git remote:
 
 Current suite baseline branch:
 
-- `feature/blitz-why-panel`
+- `main`
 
 The current finished working software is:
 
 - `modules/block-dice-calculator/`
 
 That directory contains the stable MVP/PWA block-dice helper that has already been beta tested and is the baseline to integrate with later suite modules.
+
+The historical feature-branch stack has been merged and retired. `main` is now the stable suite line and GitHub default branch.
 
 ## Current Module Status
 
