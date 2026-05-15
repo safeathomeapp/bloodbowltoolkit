@@ -1,0 +1,62 @@
+{
+  "id": "black-orc",
+  "name": "Black Orc",
+  "source": "Blood Bowl rulebook screengrab: Black Orc.png",
+  "leagues": ["Badlands Brawl"],
+  "specialRules": ["Brawlin’ Brutes", "Bribery and Corruption"],
+  "rerollCost": 60000,
+  "apothecary": "YES",
+  "positions": [
+    {
+      "id": "black-orc-goblin-bruiser",
+      "rosterTemplateId": "black-orc",
+      "name": "Goblin Bruiser",
+      "role": "Lineman",
+      "minQty": 0,
+      "maxQty": 16,
+      "cost": 45000,
+      "movement": 6,
+      "strength": 2,
+      "agility": "3+",
+      "passing": "4+",
+      "armour": "8+",
+      "startingSkills": ["Dodge", "Right Stuff", "Stunty", "Thick Skull"],
+      "primaryCategories": ["A", "D"],
+      "secondaryCategories": ["G", "P", "S"]
+    },
+    {
+      "id": "black-orc-black-orc",
+      "rosterTemplateId": "black-orc",
+      "name": "Black Orc",
+      "role": "Blocker",
+      "minQty": 0,
+      "maxQty": 6,
+      "cost": 90000,
+      "movement": 4,
+      "strength": 4,
+      "agility": "4+",
+      "passing": "5+",
+      "armour": "10+",
+      "startingSkills": ["Brawler", "Grab"],
+      "primaryCategories": ["G", "S"],
+      "secondaryCategories": ["A", "D"]
+    },
+    {
+      "id": "black-orc-trained-troll",
+      "rosterTemplateId": "black-orc",
+      "name": "Trained Troll",
+      "role": "Big Guy",
+      "minQty": 0,
+      "maxQty": 1,
+      "cost": 115000,
+      "movement": 4,
+      "strength": 5,
+      "agility": "5+",
+      "passing": "5+",
+      "armour": "10+",
+      "startingSkills": ["Always Hungry", "Mighty Blow", "Projectile Vomit", "Really Stupid", "Regeneration", "Throw Team-mate"],
+      "primaryCategories": ["S"],
+      "secondaryCategories": ["A", "G", "P"]
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "id": "ogre",
+  "name": "Ogre",
+  "source": "Blood Bowl rulebook screengrab: Ogre.png",
+  "leagues": ["Badlands Brawl", "Worlds Edge Superleague"],
+  "specialRules": ["Brawlin’ Brutes", "Low Cost Linemen"],
+  "rerollCost": 70000,
+  "apothecary": "YES",
+  "positions": [
+    {
+      "id": "ogre-gnoblar-lineman",
+      "rosterTemplateId": "ogre",
+      "name": "Gnoblar Lineman",
+      "role": "Lineman",
+      "minQty": 0,
+      "maxQty": 16,
+      "cost": 15000,
+      "movement": 5,
+      "strength": 1,
+      "agility": "3+",
+      "passing": "4+",
+      "armour": "6+",
+      "startingSkills": ["Dodge", "Right Stuff", "Sidestep", "Stunty", "Titchy"],
+      "primaryCategories": ["A", "D"],
+      "secondaryCategories": ["G"]
+    },
+    {
+      "id": "ogre-ogre-blocker",
+      "rosterTemplateId": "ogre",
+      "name": "Ogre Blocker",
+      "role": "Big Guy",
+      "minQty": 0,
+      "maxQty": 5,
+      "cost": 140000,
+      "movement": 5,
+      "strength": 5,
+      "agility": "4+",
+      "passing": "5+",
+      "armour": "10+",
+      "startingSkills": ["Bone Head", "Mighty Blow", "Thick Skull", "Throw Team-mate"],
+      "primaryCategories": ["S"],
+      "secondaryCategories": ["A", "D", "G", "P"]
+    },
+    {
+      "id": "ogre-ogre-runt-punter",
+      "rosterTemplateId": "ogre",
+      "name": "Ogre Runt Punter",
+      "role": "Thrower",
+      "minQty": 0,
+      "maxQty": 1,
+      "cost": 145000,
+      "movement": 5,
+      "strength": 5,
+      "agility": "4+",
+      "passing": "4+",
+      "armour": "10+",
+      "startingSkills": ["Bone Head", "Kick Team-mate", "Mighty Blow", "Thick Skull"],
+      "primaryCategories": ["P", "S"],
+      "secondaryCategories": ["A", "D", "G"]
+    }
+  ]
+}

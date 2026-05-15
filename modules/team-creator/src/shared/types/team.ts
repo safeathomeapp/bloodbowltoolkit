@@ -25,6 +25,8 @@ export interface PositionTemplate {
   startingSkills: string[]
   primaryCategories: string[]
   secondaryCategories: string[]
+  sharedLimitGroup?: string
+  sharedLimitMax?: number
 }
 
 export interface SavedTeam {

@@ -16,12 +16,17 @@ Local-first Blood Bowl team creator module.
 The current local scaffold includes rule-source-backed templates from the uploaded rulebook screengrabs:
 
 - Amazon
+- Black Orc
 - Dark Elf
 - Dwarf
+- Goblin
+- Halfling
 - Human
 - Lizardmen
+- Ogre
 - Orc
 - Skaven
+- Underworld Denizens
 - Wood Elf
 
 More templates should be added from authoritative roster sources, not guessed.

@@ -3,7 +3,13 @@ import { useMemo, useState } from 'react'
 import styles from './TeamCreator.module.css'
 import { BrowserLocalStorageStore, MemoryKeyValueStore } from '../../../shared/storage/keyValueStore'
 import { LocalTeamRepository } from '../../../shared/repositories/localTeamRepository'
-import { calculatePlayerValue, calculateRerollValue, calculateTeamValue, countPlayersByPosition } from '../../../shared/utils/teamMath'
+import {
+  calculatePlayerValue,
+  calculateRerollValue,
+  calculateTeamValue,
+  countPlayersByPosition,
+  countPlayersInSharedGroup,
+} from '../../../shared/utils/teamMath'
 import type { RosterTemplate, SavedTeam, SavedTeamSummary } from '../../../shared/types/team'
 import { createTeam, createTeamPlayer } from '../utils/teamFactory'
 
@@ -28,7 +34,14 @@ function getRemainingSlots(team: SavedTeam, template: RosterTemplate, positionId
     return 0
   }
 
-  return Math.max(0, position.maxQty - (counts[positionId] ?? 0))
+  const positionRemaining = position.maxQty - (counts[positionId] ?? 0)
+
+  if (!position.sharedLimitGroup || position.sharedLimitMax === undefined) {
+    return Math.max(0, positionRemaining)
+  }
+
+  const sharedRemaining = position.sharedLimitMax - countPlayersInSharedGroup(team, template, position)
+  return Math.max(0, Math.min(positionRemaining, sharedRemaining))
 }
 
 export function TeamCreator() {
