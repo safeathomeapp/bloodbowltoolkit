@@ -13,10 +13,16 @@ Local-first Blood Bowl team creator module.
 
 ## Current Seed Data
 
-The first local scaffold includes only rule-source-backed templates from the material currently provided in the repository session:
+The current local scaffold includes rule-source-backed templates from the uploaded rulebook screengrabs:
 
 - Amazon
+- Dark Elf
+- Dwarf
+- Human
+- Lizardmen
 - Orc
+- Skaven
+- Wood Elf
 
 More templates should be added from authoritative roster sources, not guessed.
 
