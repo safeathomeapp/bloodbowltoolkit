@@ -5,6 +5,7 @@ This directory contains distinct suite modules.
 ## Current Module
 
 - `block-dice-calculator/`: stable working module and current integration baseline
+- `team-creator/`: local-first prototype for saved team creation
 
 ## Rule For The Next Module
 

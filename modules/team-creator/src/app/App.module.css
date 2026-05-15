@@ -1,0 +1,15 @@
+.shell {
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.workspace {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+}
+
+@media (max-width: 720px) {
+  .shell {
+    padding: 14px;
+  }
+}

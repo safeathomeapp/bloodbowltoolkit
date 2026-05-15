@@ -8,10 +8,12 @@
 - `docs/roadmap/`: supporting roadmap notes and historical planning passes
 - `modules/`: suite modules
 - `modules/block-dice-calculator/`: current finished working software and source-of-truth runnable module
+- `modules/team-creator/`: local-first saved-team creation module
 
 ## Source Of Truth
 
 - stable block-dice application module: `modules/block-dice-calculator/`
+- local-first team creation prototype: `modules/team-creator/`
 - block-dice feature logic: `modules/block-dice-calculator/src/tools/block-dice/rules/`
 - block-dice tests: `modules/block-dice-calculator/src/tools/block-dice/tests/`
 - block-dice module status and integration boundary: `modules/block-dice-calculator/MODULE_STATUS.md`

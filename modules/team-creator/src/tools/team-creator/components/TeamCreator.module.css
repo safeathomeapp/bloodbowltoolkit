@@ -1,0 +1,307 @@
+.layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.sidebar,
+.editor {
+  display: grid;
+  gap: 16px;
+}
+
+.sidebarHeader,
+.panel,
+.placeholder,
+.summaryCard {
+  background: rgba(255, 252, 247, 0.86);
+  border: 1px solid rgba(115, 29, 19, 0.14);
+  border-radius: 22px;
+  box-shadow: 0 18px 45px rgba(70, 39, 29, 0.08);
+}
+
+.sidebarHeader,
+.panel,
+.placeholder {
+  padding: 18px;
+}
+
+.kicker {
+  margin: 0 0 6px;
+  color: #8b2b20;
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  color: #8f1e17;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  line-height: 1;
+}
+
+.copy {
+  margin: 10px 0 0;
+  color: #5f4c40;
+}
+
+.panelTitle {
+  margin: 0 0 12px;
+  color: #6d261e;
+  font-size: 1.05rem;
+}
+
+.field,
+.compactField {
+  display: grid;
+  gap: 6px;
+}
+
+.field span,
+.compactField span {
+  color: #6b4f43;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.field input,
+.field select,
+.compactField input,
+.compactField select,
+.teamNameInput,
+.inlineInput,
+.numberInput {
+  width: 100%;
+  border: 1px solid rgba(120, 47, 37, 0.22);
+  border-radius: 12px;
+  background: #fffdf9;
+  color: #2b201a;
+  padding: 10px 12px;
+}
+
+.teamNameInput {
+  font-size: clamp(1.9rem, 4vw, 3.25rem);
+  font-style: italic;
+  font-weight: 700;
+  border-radius: 18px;
+}
+
+.primaryButton,
+.deleteButton,
+.rowButton,
+.teamCardButton {
+  border: 0;
+  cursor: pointer;
+}
+
+.primaryButton {
+  border-radius: 999px;
+  background: linear-gradient(135deg, #9a2219 0%, #7f1713 100%);
+  color: #fff8f2;
+  padding: 11px 18px;
+  font-weight: 700;
+}
+
+.deleteButton,
+.rowButton {
+  border-radius: 999px;
+  background: rgba(130, 36, 23, 0.1);
+  color: #7f1713;
+  padding: 8px 12px;
+}
+
+.teamList {
+  display: grid;
+  gap: 10px;
+}
+
+.teamCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.teamCardButton {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  background: rgba(153, 34, 23, 0.05);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.teamCardButton strong {
+  color: #3d261f;
+}
+
+.teamCardButton span {
+  color: #6b5547;
+  font-size: 0.92rem;
+}
+
+.emptyState,
+.feedback,
+.metaLine,
+.placeholder p {
+  color: #685447;
+}
+
+.editorHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: start;
+}
+
+.editorActions {
+  display: grid;
+  gap: 10px;
+  min-width: 190px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summaryCard {
+  padding: 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.summaryCard span {
+  color: #725c4d;
+  text-transform: uppercase;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+}
+
+.summaryCard strong {
+  color: #3b261f;
+  font-size: 1.2rem;
+}
+
+.toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 980px;
+}
+
+.table thead th {
+  background: #9f1d17;
+  color: #fff7ef;
+  padding: 10px 8px;
+  text-align: left;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.table tbody td {
+  padding: 10px 8px;
+  border-bottom: 1px solid rgba(137, 65, 51, 0.12);
+  vertical-align: top;
+}
+
+.table tbody tr:nth-child(odd) {
+  background: rgba(148, 51, 34, 0.04);
+}
+
+.inlineInput {
+  min-width: 180px;
+  margin-bottom: 8px;
+}
+
+.numberInput {
+  max-width: 92px;
+}
+
+.emptyTableCell {
+  color: #7a6455;
+  text-align: center;
+}
+
+.breakdownGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.breakdownCard {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(121, 42, 31, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 250, 244, 0.9);
+  padding: 14px;
+}
+
+.breakdownCard strong {
+  color: #452922;
+}
+
+.breakdownCard span {
+  color: #6a5447;
+}
+
+.placeholder {
+  min-height: 420px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+
+.placeholder h2 {
+  margin: 0 0 8px;
+  color: #7f1713;
+}
+
+.feedback {
+  font-size: 0.92rem;
+}
+
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .summaryGrid,
+  .breakdownGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .editorHeader {
+    flex-direction: column;
+  }
+
+  .editorActions {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .summaryGrid,
+  .breakdownGrid {
+    grid-template-columns: 1fr;
+  }
+}
