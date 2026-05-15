@@ -1,7 +1,8 @@
 {
-  "name": "blood-bowl-toolkit",
+  "name": "block-dice-calculator",
   "private": true,
   "version": "0.0.0",
+  "description": "Stable Blood Bowl block-dice calculator module for the toolkit suite.",
   "type": "module",
   "scripts": {
     "dev": "vite",

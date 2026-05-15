@@ -17,6 +17,7 @@ The revised UX rewrite documents are now historical context, not the active impl
 
 - Repository: `blood-bowl-toolkit`
 - Working directory: `C:\Users\kevth\Desktop\Projects\blood-bowl-toolkit`
+- Current working software directory: `modules/block-dice-calculator`
 - Package manager: `npm`
 - Stack: React, TypeScript, Vite, `vite-plugin-pwa`, Vitest
 - Active working branch at handoff: `feature/blitz-why-panel`
@@ -59,6 +60,7 @@ The revised UX rewrite documents are now historical context, not the active impl
 1. Read the latest handoff and roadmap docs above.
 2. Check `git status`.
 3. Run:
+   - `cd modules/block-dice-calculator`
    - `npm run test -- --run`
    - `npm run lint`
    - `npm run build`
@@ -66,7 +68,8 @@ The revised UX rewrite documents are now historical context, not the active impl
 5. Only then decide whether the next step is:
    - a targeted bug fix
    - a small UI tidy
-   - or merge preparation
+   - merge preparation
+   - or suite-integration planning around the stable module boundary
 
 ## Merge Guidance
 
@@ -79,5 +82,6 @@ The revised UX rewrite documents are now historical context, not the active impl
 - Keep all shell commands Git Bash compatible.
 - Document every meaningful pass in `docs/session_notes/`.
 - Push each completed pass to GitHub.
+- Treat `modules/block-dice-calculator/` as the current known-good working software.
 - Do not guess on uncertain Blood Bowl rules.
 - Do not expand scope beyond block-dice help unless explicitly requested.
