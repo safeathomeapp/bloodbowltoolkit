@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import styles from './BlockDiceCalculator.module.css'
 import type { BoardState, PlayerProfile, PlacedPlayer, Position, Skill, TeamSide } from '../../../shared/types/game'
+import { getNextSelectionState } from './getNextSelectionState'
 import { calculateBlockDice } from '../rules/calculateBlockDice'
 import { buildPositionKey, calculatePotentialBlockCandidates } from '../rules/calculatePotentialBlockCandidates'
 import { calculateAllTargetPreviews } from '../rules/calculateTargetPreviews'
@@ -487,32 +488,21 @@ export function BlockDiceCalculator() {
   }
 
   const selectPlayer = (player: PlacedPlayer) => {
-    setBoardState((currentState) => {
-      const currentBlocker = currentState.placedPlayers.find((entry) => entry.id === currentState.blockerId)
-
-      if (player.teamSide === activeTeam) {
-        return {
-          ...currentState,
-          blockerId: player.id,
-          targetId: null,
-        }
-      }
-
-      if (!currentBlocker || currentBlocker.teamSide !== activeTeam) {
-        return currentState
-      }
-
-      const previewIsAdjacent = isAdjacent(currentBlocker.position, player.position)
-
-      if (previewMode === 'STANDARD' && !previewIsAdjacent) {
-        return currentState
-      }
-
-      return {
-        ...currentState,
-        targetId: player.id,
-      }
+    const nextSelectionState = getNextSelectionState({
+      currentState: boardState,
+      player,
+      activeTeam,
+      previewMode,
+      selectedBlitzCandidateKey,
     })
+
+    if (nextSelectionState.boardState !== boardState) {
+      setBoardState(nextSelectionState.boardState)
+    }
+
+    if (nextSelectionState.selectedBlitzCandidateKey !== selectedBlitzCandidateKey) {
+      setSelectedBlitzCandidateKey(nextSelectionState.selectedBlitzCandidateKey)
+    }
   }
 
   const handleGridCellPress = (position: Position) => {
