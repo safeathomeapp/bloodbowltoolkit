@@ -17,11 +17,17 @@ The current local scaffold includes rule-source-backed templates from the upload
 
 - Amazon
 - Black Orc
+- Bretonnian
+- Chaos Chosen
+- Chaos Dwarf
 - Dark Elf
 - Dwarf
+- Elven Union
 - Goblin
 - Halfling
 - Human
+- Imperial Nobility
+- Khorne
 - Lizardmen
 - Ogre
 - Orc

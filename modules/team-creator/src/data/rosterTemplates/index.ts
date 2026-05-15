@@ -1,10 +1,16 @@
 import amazonTemplate from './amazon.json'
 import blackOrcTemplate from './black-orc.json'
+import bretonnianTemplate from './bretonnian.json'
+import chaosChosenTemplate from './chaos-chosen.json'
+import chaosDwarfTemplate from './chaos-dwarf.json'
 import darkElfTemplate from './dark-elf.json'
 import dwarfTemplate from './dwarf.json'
+import elvenUnionTemplate from './elven-union.json'
 import goblinTemplate from './goblin.json'
 import halflingTemplate from './halfling.json'
 import humanTemplate from './human.json'
+import imperialNobilityTemplate from './imperial-nobility.json'
+import khorneTemplate from './khorne.json'
 import lizardmenTemplate from './lizardmen.json'
 import ogreTemplate from './ogre.json'
 import orcTemplate from './orc.json'
@@ -28,11 +34,17 @@ function normalizeTemplate(template: TemplateSeed): RosterTemplate {
 export const rosterTemplates: RosterTemplate[] = [
   normalizeTemplate(amazonTemplate),
   normalizeTemplate(blackOrcTemplate),
+  normalizeTemplate(bretonnianTemplate),
+  normalizeTemplate(chaosChosenTemplate),
+  normalizeTemplate(chaosDwarfTemplate),
   normalizeTemplate(darkElfTemplate),
   normalizeTemplate(dwarfTemplate),
+  normalizeTemplate(elvenUnionTemplate),
   normalizeTemplate(goblinTemplate),
   normalizeTemplate(halflingTemplate),
   normalizeTemplate(humanTemplate),
+  normalizeTemplate(imperialNobilityTemplate),
+  normalizeTemplate(khorneTemplate),
   normalizeTemplate(lizardmenTemplate),
   normalizeTemplate(ogreTemplate),
   normalizeTemplate(orcTemplate),
