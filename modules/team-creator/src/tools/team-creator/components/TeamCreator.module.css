@@ -5,12 +5,13 @@
   align-items: start;
 }
 
-.sidebar,
-.editor {
+.libraryLayout,
+.editorLayout {
   display: grid;
-  gap: 16px;
+  gap: 20px;
 }
 
+.libraryHero,
 .sidebarHeader,
 .panel,
 .placeholder,
@@ -19,6 +20,105 @@
   border: 1px solid var(--suite-line);
   border-radius: 22px;
   box-shadow: var(--suite-shadow);
+}
+
+.libraryHero {
+  display: grid;
+  grid-template-columns: 1.5fr 0.9fr;
+  gap: 18px;
+  padding: 24px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.58), rgba(255, 246, 239, 0.82)),
+    linear-gradient(90deg, rgba(31, 71, 120, 0.08), rgba(159, 29, 23, 0.06));
+}
+
+.libraryHeroCopy {
+  display: grid;
+  gap: 10px;
+}
+
+.libraryTitle {
+  margin: 0;
+  color: var(--suite-accent);
+  font-size: clamp(2.4rem, 5vw, 4rem);
+  line-height: 0.96;
+}
+
+.libraryStats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.libraryDeck {
+  display: grid;
+  grid-template-columns: 0.9fr 1.4fr;
+  gap: 18px;
+}
+
+.createTeamGrid {
+  display: grid;
+  gap: 14px;
+}
+
+.libraryList {
+  display: grid;
+  gap: 12px;
+}
+
+.libraryCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.libraryCardButton {
+  border: 0;
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(159, 29, 23, 0.05));
+  border-radius: 18px;
+  padding: 16px;
+  border: 1px solid rgba(159, 29, 23, 0.1);
+}
+
+.libraryCardHeader,
+.libraryMetaRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.libraryCardButton strong {
+  color: #3d261f;
+  font-size: 1.06rem;
+}
+
+.libraryCardButton span {
+  color: #6b5547;
+  font-size: 0.94rem;
+}
+
+.libraryStatus {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.editorTopbar {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.sidebar,
+.editor {
+  display: grid;
+  gap: 16px;
 }
 
 .sidebarHeader,
@@ -129,9 +229,11 @@
 }
 
 .primaryButton,
+.secondaryButton,
 .deleteButton,
 .rowButton,
-.teamCardButton {
+.teamCardButton,
+.libraryCardButton {
   border: 0;
   cursor: pointer;
 }
@@ -143,6 +245,15 @@
   padding: 11px 18px;
   font-weight: 700;
   box-shadow: 0 12px 26px rgba(126, 20, 15, 0.2);
+}
+
+.secondaryButton {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--suite-blue);
+  padding: 10px 16px;
+  border: 1px solid rgba(31, 71, 120, 0.2);
+  font-weight: 700;
 }
 
 .deleteButton,
@@ -439,6 +550,8 @@
 }
 
 @media (max-width: 1100px) {
+  .libraryHero,
+  .libraryDeck,
   .layout {
     grid-template-columns: 1fr;
   }
@@ -453,6 +566,10 @@
 }
 
 @media (max-width: 720px) {
+  .libraryStats {
+    grid-template-columns: 1fr;
+  }
+
   .hero {
     flex-direction: column;
     align-items: start;
