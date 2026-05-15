@@ -2,6 +2,14 @@
 
 This repository now acts as the suite-level home for multiple Blood Bowl tools and supporting documentation.
 
+Canonical Git remote:
+
+- `origin`: `https://github.com/safeathomeapp/bloodbowltoolkit.git`
+
+Current suite baseline branch:
+
+- `feature/blitz-why-panel`
+
 The current finished working software is:
 
 - `modules/block-dice-calculator/`
@@ -33,6 +41,7 @@ npm run build
 
 - [ROADMAP.md](./ROADMAP.md)
 - [REPOSITORY_MAP.md](./REPOSITORY_MAP.md)
+- [modules/README.md](./modules/README.md)
 - `docs/session_notes/`
 - `docs/architecture/`
 - `docs/rules_references/`
@@ -40,3 +49,13 @@ npm run build
 ## Important Integration Note
 
 Before adding roster, league, competition, or other suite functionality, treat `modules/block-dice-calculator/` as the known-good working module. Integrate around it deliberately instead of casually rewriting it from the repository root.
+
+## Next Module Rule
+
+Create the next suite tool as a sibling under `modules/`.
+
+Do not start the next tool:
+
+- in the repository root
+- inside `modules/block-dice-calculator/`
+- or by mixing shared backend work into the existing frontend module
