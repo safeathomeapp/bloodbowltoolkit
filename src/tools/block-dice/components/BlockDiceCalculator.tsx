@@ -16,6 +16,7 @@ const DEFENDER_CARD_SKILL_OPTIONS: Skill[] = ['GUARD', 'DEFENSIVE']
 const SHOW_BLITZ_INVALIDATION_ACTION = false
 type AppMode = 'EDIT' | 'CALCULATE'
 type PreviewMode = 'STANDARD' | 'BLITZ'
+type HelpTopic = 'GUIDE' | 'INSTALL'
 
 interface TeamDraft {
   strength: number
@@ -209,6 +210,7 @@ export function BlockDiceCalculator() {
   const [isWhyPanelOpen, setIsWhyPanelOpen] = useState(false)
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false)
   const [isHelpOpen, setIsHelpOpen] = useState(false)
+  const [helpTopic, setHelpTopic] = useState<HelpTopic>('GUIDE')
   const longPressTimerRef = useRef<number | null>(null)
   const suppressClickRef = useRef(false)
 
@@ -563,6 +565,12 @@ export function BlockDiceCalculator() {
     }
   }
 
+  const openHelpSheet = (topic: HelpTopic) => {
+    setIsHeaderMenuOpen(false)
+    setHelpTopic(topic)
+    setIsHelpOpen(true)
+  }
+
   const defendingTeam: TeamSide = activeTeam === 'A' ? 'B' : 'A'
   const selectedEditPlayerA =
     boardState.placedPlayers.find((player) => player.id === selectedEditPlayerIds.A) ?? null
@@ -774,10 +782,14 @@ export function BlockDiceCalculator() {
                     <button
                       type="button"
                       className={styles.menuItem}
-                      onClick={() => {
-                        setIsHeaderMenuOpen(false)
-                        setIsHelpOpen(true)
-                      }}
+                      onClick={() => openHelpSheet('INSTALL')}
+                    >
+                      Install
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.menuItem}
+                      onClick={() => openHelpSheet('GUIDE')}
                     >
                       Help
                     </button>
@@ -1105,8 +1117,10 @@ export function BlockDiceCalculator() {
           >
             <div className={styles.bottomSheetHeader}>
               <div>
-                <p className={styles.eyebrow}>Help</p>
-                <p id="help-sheet-title" className={styles.resultHeadline}>Block Dice Guide</p>
+                <p className={styles.eyebrow}>{helpTopic === 'INSTALL' ? 'Install' : 'Help'}</p>
+                <p id="help-sheet-title" className={styles.resultHeadline}>
+                  {helpTopic === 'INSTALL' ? 'Install On Your Phone' : 'Block Dice Guide'}
+                </p>
               </div>
               <button
                 type="button"
@@ -1118,6 +1132,16 @@ export function BlockDiceCalculator() {
             </div>
 
             <div className={styles.explanationStack}>
+              <div className={styles.explanationCard}>
+                <p className={styles.resultHeadline}>Install</p>
+                <ul className={styles.summaryList}>
+                  <li>On iPhone or iPad in Safari, open the Share menu and choose `Add to Home Screen`.</li>
+                  <li>On Android in Chrome, use the browser menu and choose `Install app` or `Add to Home screen`.</li>
+                  <li>If the browser offers an install banner, accept it. If not, use the browser menu manually.</li>
+                  <li>Once installed, the toolkit opens like a normal app and keeps working offline after the first load.</li>
+                </ul>
+              </div>
+
               <div className={styles.explanationCard}>
                 <p className={styles.resultHeadline}>Edit Mode</p>
                 <ul className={styles.summaryList}>
