@@ -1,38 +1,61 @@
-# Blood Bowl Toolkit
+# Blood Bowl Toolkit Suite
 
-Mobile-first PWA toolkit for Blood Bowl tactical helpers.
+This repository now acts as the suite-level home for multiple Blood Bowl tools and supporting documentation.
 
-The MVP includes one tool only:
+Canonical Git remote:
 
-- Block Dice Calculator
+- `origin`: `https://github.com/safeathomeapp/bloodbowltoolkit.git`
 
-The MVP does not include a full game engine, roster management, dice resolution, or online play. Its only goal is to quickly determine and explain Blood Bowl block dice.
+Current suite baseline branch:
 
-## Stack
+- `feature/blitz-why-panel`
 
-- React
-- TypeScript
-- Vite
-- `vite-plugin-pwa`
-- Vitest
+The current finished working software is:
 
-## Commands
+- `modules/block-dice-calculator/`
+
+That directory contains the stable MVP/PWA block-dice helper that has already been beta tested and is the baseline to integrate with later suite modules.
+
+## Current Module Status
+
+- `modules/block-dice-calculator/`: stable working software, ready to be treated as the reference integration target
+
+## Running The Current Working Module
 
 ```bash
+cd modules/block-dice-calculator
 npm install
 npm run dev
-npm run build
-npm run test
-npm run lint
 ```
 
-## Documentation
+Verification:
+
+```bash
+cd modules/block-dice-calculator
+npm run test -- --run
+npm run lint
+npm run build
+```
+
+## Repository-Level Documents
 
 - [ROADMAP.md](./ROADMAP.md)
 - [REPOSITORY_MAP.md](./REPOSITORY_MAP.md)
+- [modules/README.md](./modules/README.md)
 - `docs/session_notes/`
+- `docs/architecture/`
 - `docs/rules_references/`
 
-## Rules Source Of Truth
+## Important Integration Note
 
-Current MVP rules references are documented in `docs/rules_references/2026-05-13_mvp_rules_source.md`.
+Before adding roster, league, competition, or other suite functionality, treat `modules/block-dice-calculator/` as the known-good working module. Integrate around it deliberately instead of casually rewriting it from the repository root.
+
+## Next Module Rule
+
+Create the next suite tool as a sibling under `modules/`.
+
+Do not start the next tool:
+
+- in the repository root
+- inside `modules/block-dice-calculator/`
+- or by mixing shared backend work into the existing frontend module

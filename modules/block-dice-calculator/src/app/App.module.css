@@ -1,0 +1,21 @@
+.shell {
+  min-height: 100vh;
+  padding: 1.25rem;
+  color: #f6efe4;
+}
+
+.workspace {
+  padding: 0;
+}
+
+@media (max-width: 47.99rem) {
+  .shell {
+    padding: 0.3rem;
+  }
+}
+
+@media (min-width: 48rem) {
+  .shell {
+    padding: 2rem;
+  }
+}
