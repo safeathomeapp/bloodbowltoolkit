@@ -672,8 +672,12 @@ export function BlockDiceCalculator() {
   const defenderCardStrength = targetProfile?.strength ?? null
   const calculation =
     previewMode === 'BLITZ' && target
-      ? selectedCandidate?.calculation ?? candidateResult?.preferredCandidate?.calculation ?? activePreview?.calculation ?? null
+      ? selectedCandidate?.calculation ?? currentSquareBlitzCalculation ?? null
       : activePreview?.calculation ?? (blocker && target ? calculateBlockDice(boardState, playerProfiles, { isBlitz: false }) : null)
+  const canOpenWhy =
+    previewMode === 'BLITZ'
+      ? Boolean(selectedCandidate?.calculation ?? currentSquareBlitzCalculation)
+      : Boolean(calculation)
 
   const clearLongPressTimer = () => {
     if (longPressTimerRef.current !== null) {
@@ -692,6 +696,7 @@ export function BlockDiceCalculator() {
       suppressClickRef.current = true
       setPreviewMode((currentMode) => (currentMode === 'STANDARD' ? 'BLITZ' : 'STANDARD'))
       setSelectedBlitzCandidateKey(null)
+      setIsWhyPanelOpen(false)
       setBoardState((currentState) => ({
         ...currentState,
         targetId: null,
@@ -1047,7 +1052,14 @@ export function BlockDiceCalculator() {
               <button
                 type="button"
                 className={styles.teamToggle}
-                onClick={() => setIsWhyPanelOpen((current) => !current)}
+                onClick={() => {
+                  if (!canOpenWhy) {
+                    return
+                  }
+
+                  setIsWhyPanelOpen((current) => !current)
+                }}
+                disabled={!canOpenWhy}
                 aria-expanded={isWhyPanelOpen}
                 aria-controls="why-panel-inline"
               >
