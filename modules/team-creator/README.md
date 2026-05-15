@@ -37,8 +37,12 @@ The current local scaffold includes rule-source-backed templates from the upload
 - Ogre
 - Old World Alliance
 - Orc
+- Shambling Undead
 - Skaven
+- Snotlings
+- Tomb Kings
 - Underworld Denizens
+- Vampire
 - Wood Elf
 
 More templates should be added from authoritative roster sources, not guessed.

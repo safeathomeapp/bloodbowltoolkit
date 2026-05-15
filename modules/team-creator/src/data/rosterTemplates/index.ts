@@ -20,8 +20,12 @@ import nurgleTemplate from './nurgle.json'
 import ogreTemplate from './ogre.json'
 import oldWorldAllianceTemplate from './old-world-alliance.json'
 import orcTemplate from './orc.json'
+import shamblingUndeadTemplate from './shambling-undead.json'
 import skavenTemplate from './skaven.json'
+import snotlingsTemplate from './snotlings.json'
+import tombKingsTemplate from './tomb-kings.json'
 import underworldDenizensTemplate from './underworld-denizens.json'
+import vampireTemplate from './vampire.json'
 import woodElfTemplate from './wood-elf.json'
 
 import type { RosterTemplate } from '../../shared/types/team'
@@ -60,7 +64,11 @@ export const rosterTemplates: RosterTemplate[] = [
   normalizeTemplate(ogreTemplate),
   normalizeTemplate(oldWorldAllianceTemplate),
   normalizeTemplate(orcTemplate),
+  normalizeTemplate(shamblingUndeadTemplate),
   normalizeTemplate(skavenTemplate),
+  normalizeTemplate(snotlingsTemplate),
+  normalizeTemplate(tombKingsTemplate),
   normalizeTemplate(underworldDenizensTemplate),
+  normalizeTemplate(vampireTemplate),
   normalizeTemplate(woodElfTemplate),
 ]
