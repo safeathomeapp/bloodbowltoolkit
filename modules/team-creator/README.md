@@ -20,16 +20,22 @@ The current local scaffold includes rule-source-backed templates from the upload
 - Bretonnian
 - Chaos Chosen
 - Chaos Dwarf
+- Chaos Renegade
 - Dark Elf
 - Dwarf
 - Elven Union
+- Gnome
 - Goblin
 - Halfling
 - Human
 - Imperial Nobility
 - Khorne
 - Lizardmen
+- Necromantic Horror
+- Norse
+- Nurgle
 - Ogre
+- Old World Alliance
 - Orc
 - Skaven
 - Underworld Denizens
