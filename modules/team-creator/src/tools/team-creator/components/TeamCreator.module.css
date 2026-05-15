@@ -1,7 +1,7 @@
 .layout {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
-  gap: 20px;
+  gap: 24px;
   align-items: start;
 }
 
@@ -15,10 +15,10 @@
 .panel,
 .placeholder,
 .summaryCard {
-  background: rgba(255, 252, 247, 0.86);
-  border: 1px solid rgba(115, 29, 19, 0.14);
+  background: var(--suite-surface);
+  border: 1px solid var(--suite-line);
   border-radius: 22px;
-  box-shadow: 0 18px 45px rgba(70, 39, 29, 0.08);
+  box-shadow: var(--suite-shadow);
 }
 
 .sidebarHeader,
@@ -29,7 +29,7 @@
 
 .kicker {
   margin: 0 0 6px;
-  color: #8b2b20;
+  color: var(--suite-accent);
   font-size: 0.78rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -37,20 +37,36 @@
 
 .title {
   margin: 0;
-  color: #8f1e17;
+  color: var(--suite-accent);
   font-size: clamp(2rem, 4vw, 2.8rem);
   line-height: 1;
 }
 
 .copy {
   margin: 10px 0 0;
-  color: #5f4c40;
+  color: var(--suite-muted);
 }
 
-.panelTitle {
-  margin: 0 0 12px;
-  color: #6d261e;
-  font-size: 1.05rem;
+.panelHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.sectionKicker {
+  margin: 0 0 6px;
+  color: var(--suite-blue);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.panelHeadline {
+  margin: 0;
+  color: #4b2b22;
+  font-size: 1.2rem;
 }
 
 .field,
@@ -76,18 +92,21 @@
 .inlineInput,
 .numberInput {
   width: 100%;
-  border: 1px solid rgba(120, 47, 37, 0.22);
+  border: 1px solid var(--suite-line-strong);
   border-radius: 12px;
-  background: #fffdf9;
-  color: #2b201a;
+  background: var(--suite-surface-strong);
+  color: var(--suite-ink);
   padding: 10px 12px;
 }
 
 .teamNameInput {
-  font-size: clamp(1.9rem, 4vw, 3.25rem);
+  font-size: clamp(2.2rem, 5vw, 4rem);
   font-style: italic;
   font-weight: 700;
   border-radius: 18px;
+  background: transparent;
+  border: 0;
+  padding: 0;
 }
 
 .primaryButton,
@@ -100,17 +119,18 @@
 
 .primaryButton {
   border-radius: 999px;
-  background: linear-gradient(135deg, #9a2219 0%, #7f1713 100%);
+  background: linear-gradient(135deg, var(--suite-accent) 0%, var(--suite-accent-dark) 100%);
   color: #fff8f2;
   padding: 11px 18px;
   font-weight: 700;
+  box-shadow: 0 12px 26px rgba(126, 20, 15, 0.2);
 }
 
 .deleteButton,
 .rowButton {
   border-radius: 999px;
-  background: rgba(130, 36, 23, 0.1);
-  color: #7f1713;
+  background: var(--suite-accent-soft);
+  color: var(--suite-accent-dark);
   padding: 8px 12px;
 }
 
@@ -131,9 +151,10 @@
   gap: 4px;
   width: 100%;
   text-align: left;
-  background: rgba(153, 34, 23, 0.05);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.45), rgba(159, 29, 23, 0.04));
   border-radius: 16px;
   padding: 14px;
+  border: 1px solid rgba(159, 29, 23, 0.08);
 }
 
 .teamCardButton strong {
@@ -149,20 +170,74 @@
 .feedback,
 .metaLine,
 .placeholder p {
-  color: #685447;
+  color: var(--suite-muted);
 }
 
-.editorHeader {
+.hero {
   display: flex;
   justify-content: space-between;
-  gap: 18px;
-  align-items: start;
+  gap: 24px;
+  align-items: end;
+  padding: 28px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.52), rgba(255, 245, 238, 0.76)),
+    linear-gradient(90deg, rgba(31, 71, 120, 0.08), rgba(159, 29, 23, 0.06));
+  border: 1px solid var(--suite-line);
+  border-radius: 28px;
+  box-shadow: var(--suite-shadow);
 }
 
-.editorActions {
-  display: grid;
+.heroCopy {
+  min-width: 0;
+}
+
+.heroMeta {
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
-  min-width: 190px;
+  margin-top: 12px;
+}
+
+.heroPill {
+  border: 1px solid rgba(31, 71, 120, 0.18);
+  background: rgba(255, 255, 255, 0.72);
+  color: #304d6d;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.heroAside {
+  display: grid;
+  gap: 12px;
+  min-width: 240px;
+}
+
+.heroValuePanel {
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(159, 29, 23, 0.97), rgba(126, 20, 15, 0.97));
+  color: #fff6ef;
+}
+
+.heroValuePanel span {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.heroValuePanel strong {
+  font-size: 1.7rem;
+}
+
+.editorDeck {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 14px;
 }
 
 .summaryGrid {
@@ -175,6 +250,9 @@
   padding: 16px;
   display: grid;
   gap: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.22)),
+    var(--suite-surface);
 }
 
 .summaryCard span {
@@ -189,11 +267,47 @@
   font-size: 1.2rem;
 }
 
+.summaryCard small {
+  color: var(--suite-muted);
+}
+
+.controlGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.infoCard {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid rgba(31, 71, 120, 0.08);
+}
+
+.infoCard span {
+  color: var(--suite-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.infoCard strong {
+  color: #3d261f;
+}
+
 .toolbar {
   display: flex;
   gap: 12px;
   align-items: end;
   flex-wrap: wrap;
+}
+
+.helperText {
+  margin: 10px 0 0;
+  color: var(--suite-muted);
+  font-size: 0.9rem;
 }
 
 .tableWrap {
@@ -207,7 +321,7 @@
 }
 
 .table thead th {
-  background: #9f1d17;
+  background: var(--suite-accent);
   color: #fff7ef;
   padding: 10px 8px;
   text-align: left;
@@ -242,7 +356,7 @@
 
 .breakdownGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -251,7 +365,7 @@
   gap: 6px;
   border: 1px solid rgba(121, 42, 31, 0.12);
   border-radius: 16px;
-  background: rgba(255, 250, 244, 0.9);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 250, 244, 0.92));
   padding: 14px;
 }
 
@@ -263,6 +377,16 @@
   color: #6a5447;
 }
 
+.breakdownCard small {
+  color: var(--suite-blue);
+}
+
+.bottomDeck {
+  display: grid;
+  grid-template-columns: 1.4fr 0.9fr;
+  gap: 14px;
+}
+
 .placeholder {
   min-height: 420px;
   display: grid;
@@ -272,11 +396,12 @@
 
 .placeholder h2 {
   margin: 0 0 8px;
-  color: #7f1713;
+  color: var(--suite-accent-dark);
 }
 
 .feedback {
   font-size: 0.92rem;
+  padding: 0 6px;
 }
 
 @media (max-width: 1100px) {
@@ -284,6 +409,9 @@
     grid-template-columns: 1fr;
   }
 
+  .editorDeck,
+  .bottomDeck,
+  .controlGrid,
   .summaryGrid,
   .breakdownGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -291,15 +419,19 @@
 }
 
 @media (max-width: 720px) {
-  .editorHeader {
+  .hero {
     flex-direction: column;
+    align-items: start;
   }
 
-  .editorActions {
+  .heroAside {
     min-width: 0;
     width: 100%;
   }
 
+  .editorDeck,
+  .bottomDeck,
+  .controlGrid,
   .summaryGrid,
   .breakdownGrid {
     grid-template-columns: 1fr;

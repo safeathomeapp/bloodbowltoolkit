@@ -1,10 +1,25 @@
 :root {
   font-family: Georgia, 'Times New Roman', serif;
+  --suite-bg: #efe5d5;
+  --suite-bg-soft: rgba(255, 251, 245, 0.86);
+  --suite-surface: rgba(255, 252, 247, 0.9);
+  --suite-surface-strong: #fffdf9;
+  --suite-ink: #231915;
+  --suite-muted: #685447;
+  --suite-accent: #9f1d17;
+  --suite-accent-dark: #7e140f;
+  --suite-accent-soft: rgba(159, 29, 23, 0.08);
+  --suite-line: rgba(115, 29, 19, 0.14);
+  --suite-line-strong: rgba(115, 29, 19, 0.24);
+  --suite-blue: #1f4778;
+  --suite-gold: #c48b2f;
+  --suite-shadow: 0 18px 45px rgba(70, 39, 29, 0.08);
   line-height: 1.5;
   font-weight: 400;
-  color: #231915;
+  color: var(--suite-ink);
   background:
     radial-gradient(circle at top left, rgba(150, 35, 20, 0.08), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(31, 71, 120, 0.08), transparent 36%),
     linear-gradient(180deg, #f6f0e7 0%, #efe5d5 100%);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -18,7 +33,7 @@
 
 html {
   min-height: 100%;
-  background: #efe5d5;
+  background: var(--suite-bg);
 }
 
 body {
@@ -36,6 +51,7 @@ textarea {
 
 a {
   color: inherit;
+  text-decoration-thickness: 1px;
 }
 
 #root {

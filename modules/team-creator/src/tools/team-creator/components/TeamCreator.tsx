@@ -22,6 +22,10 @@ function formatGold(value: number) {
   return value.toLocaleString('en-GB')
 }
 
+function formatCategories(categories: string[]) {
+  return categories.length > 0 ? categories.join('') : '-'
+}
+
 function findPosition(template: RosterTemplate, positionId: string) {
   return template.positions.find((position) => position.id === positionId) ?? null
 }
@@ -73,6 +77,31 @@ export function TeamCreator() {
     selectedPositionId && selectablePositions.some((position) => position.id === selectedPositionId)
       ? selectedPositionId
       : (selectablePositions[0]?.id ?? '')
+
+  const rosterPositionGroups = useMemo(() => {
+    if (!activeTemplate || !activeTeam) {
+      return []
+    }
+
+    return activeTemplate.positions.map((position) => {
+      const used = teamCounts[position.id] ?? 0
+      const remaining = getRemainingSlots(activeTeam, activeTemplate, position.id)
+
+      return {
+        position,
+        used,
+        remaining,
+      }
+    })
+  }, [activeTeam, activeTemplate, teamCounts])
+
+  const activeTemplatePlayerLimit = useMemo(() => {
+    if (!activeTemplate) {
+      return 0
+    }
+
+    return activeTemplate.positions.reduce((total, position) => total + position.maxQty, 0)
+  }, [activeTemplate])
 
   function refreshState() {
     const nextTemplates = repository.listRosterTemplatesSync()
@@ -276,28 +305,27 @@ export function TeamCreator() {
           </div>
         ) : (
           <>
-            <header className={styles.editorHeader}>
-              <div>
-                <p className={styles.kicker}>{activeTemplate.name} roster</p>
+            <header className={styles.hero}>
+              <div className={styles.heroCopy}>
+                <p className={styles.kicker}>Blood Bowl Toolkit Suite</p>
                 <input
                   className={styles.teamNameInput}
                   value={activeTeam.name}
                   onChange={(event) => handleTeamNameChange(event.target.value)}
                   aria-label="Team name"
                 />
-                <p className={styles.metaLine}>
-                  {activeTemplate.source} • Apothecary: {activeTemplate.apothecary}
-                </p>
+                <div className={styles.heroMeta}>
+                  <span className={styles.heroPill}>{activeTemplate.name}</span>
+                  <span className={styles.heroPill}>{activeTeam.players.length} players</span>
+                  <span className={styles.heroPill}>{activeTeam.status.toLowerCase()}</span>
+                </div>
+                <p className={styles.metaLine}>{activeTemplate.leagues.join(' / ') || 'League not listed'}</p>
               </div>
-              <div className={styles.editorActions}>
-                <label className={styles.compactField}>
-                  <span>Status</span>
-                  <select value={activeTeam.status} onChange={(event) => handleStatusChange(event.target.value as SavedTeam['status'])}>
-                    <option value="DRAFT">Draft</option>
-                    <option value="ACTIVE">Active</option>
-                    <option value="RETIRED">Retired</option>
-                  </select>
-                </label>
+              <div className={styles.heroAside}>
+                <div className={styles.heroValuePanel}>
+                  <span>Total Team Value</span>
+                  <strong>{formatGold(calculateTeamValue(activeTeam, activeTemplate))} gp</strong>
+                </div>
                 <button className={styles.primaryButton} onClick={() => void handleSaveTeam()} type="button">
                   Save Team
                 </button>
@@ -306,51 +334,107 @@ export function TeamCreator() {
 
             <section className={styles.summaryGrid}>
               <article className={styles.summaryCard}>
-                <span>Players</span>
-                <strong>{activeTeam.players.length}</strong>
+                <span>Roster Type</span>
+                <strong>{activeTemplate.name}</strong>
+                <small>{activeTemplate.specialRules.length > 0 ? activeTemplate.specialRules.join(' • ') : 'No special rules'}</small>
+              </article>
+              <article className={styles.summaryCard}>
+                <span>Roster Count</span>
+                <strong>
+                  {activeTeam.players.length}/{activeTemplatePlayerLimit}
+                </strong>
+                <small>Current registered players</small>
               </article>
               <article className={styles.summaryCard}>
                 <span>Player Value</span>
                 <strong>{formatGold(calculatePlayerValue(activeTeam))} gp</strong>
+                <small>Purchased player total</small>
               </article>
               <article className={styles.summaryCard}>
-                <span>Rerolls</span>
+                <span>Reroll Spend</span>
                 <strong>{formatGold(calculateRerollValue(activeTeam, activeTemplate))} gp</strong>
-              </article>
-              <article className={styles.summaryCard}>
-                <span>Total Value</span>
-                <strong>{formatGold(calculateTeamValue(activeTeam, activeTemplate))} gp</strong>
+                <small>{activeTeam.rerollCount} rerolls at {formatGold(activeTemplate.rerollCost)} gp</small>
               </article>
             </section>
 
-            <section className={styles.panel}>
-              <div className={styles.toolbar}>
-                <label className={styles.compactField}>
-                  <span>Rerolls</span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={activeTeam.rerollCount}
-                    onChange={(event) => handleRerollChange(event.target.value)}
-                  />
-                </label>
-                <label className={styles.compactField}>
-                  <span>Add Position</span>
-                  <select value={effectiveSelectedPositionId} onChange={(event) => setSelectedPositionId(event.target.value)}>
-                    {activeTemplate.positions.map((position) => {
-                      const used = teamCounts[position.id] ?? 0
+            <section className={styles.editorDeck}>
+              <section className={styles.panel}>
+                <div className={styles.panelHeader}>
+                  <div>
+                    <p className={styles.sectionKicker}>Control Desk</p>
+                    <h2 className={styles.panelHeadline}>Team Ledger</h2>
+                  </div>
+                </div>
 
-                      return (
-                        <option key={position.id} value={position.id} disabled={used >= position.maxQty}>
-                          {position.name} {used}/{position.maxQty}
-                        </option>
-                      )
-                    })}
-                  </select>
-                </label>
-                <button className={styles.primaryButton} onClick={handleAddPlayer} type="button">
-                  Add Player
-                </button>
+                <div className={styles.controlGrid}>
+                  <label className={styles.compactField}>
+                    <span>Status</span>
+                    <select value={activeTeam.status} onChange={(event) => handleStatusChange(event.target.value as SavedTeam['status'])}>
+                      <option value="DRAFT">Draft</option>
+                      <option value="ACTIVE">Active</option>
+                      <option value="RETIRED">Retired</option>
+                    </select>
+                  </label>
+                  <label className={styles.compactField}>
+                    <span>Rerolls</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={activeTeam.rerollCount}
+                      onChange={(event) => handleRerollChange(event.target.value)}
+                    />
+                  </label>
+                  <div className={styles.infoCard}>
+                    <span>Apothecary</span>
+                    <strong>{activeTemplate.apothecary}</strong>
+                  </div>
+                  <div className={styles.infoCard}>
+                    <span>Source</span>
+                    <strong>{activeTemplate.source.replace('Blood Bowl rulebook screengrab: ', '')}</strong>
+                  </div>
+                </div>
+              </section>
+
+              <section className={styles.panel}>
+                <div className={styles.panelHeader}>
+                  <div>
+                    <p className={styles.sectionKicker}>Roster Tools</p>
+                    <h2 className={styles.panelHeadline}>Add Players</h2>
+                  </div>
+                </div>
+
+                <div className={styles.toolbar}>
+                  <label className={styles.compactField}>
+                    <span>Position</span>
+                    <select value={effectiveSelectedPositionId} onChange={(event) => setSelectedPositionId(event.target.value)}>
+                      {activeTemplate.positions.map((position) => {
+                        const used = teamCounts[position.id] ?? 0
+                        const remaining = getRemainingSlots(activeTeam, activeTemplate, position.id)
+
+                        return (
+                          <option key={position.id} value={position.id} disabled={remaining <= 0}>
+                            {position.name} {used}/{position.maxQty}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </label>
+                  <button className={styles.primaryButton} onClick={handleAddPlayer} type="button">
+                    Add Player
+                  </button>
+                </div>
+                <p className={styles.helperText}>
+                  Quantity limits and shared big-guy restrictions are enforced from the roster template.
+                </p>
+              </section>
+            </section>
+
+            <section className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <div>
+                  <p className={styles.sectionKicker}>Main Roster</p>
+                  <h2 className={styles.panelHeadline}>Player Register</h2>
+                </div>
               </div>
 
               <div className={styles.tableWrap}>
@@ -431,23 +515,79 @@ export function TeamCreator() {
               </div>
             </section>
 
-            <section className={styles.panel}>
-              <h2 className={styles.panelTitle}>Roster Breakdown</h2>
-              <div className={styles.breakdownGrid}>
-                {activeTemplate.positions.map((position) => {
-                  const used = teamCounts[position.id] ?? 0
+            <section className={styles.bottomDeck}>
+              <section className={styles.panel}>
+                <div className={styles.panelHeader}>
+                  <div>
+                    <p className={styles.sectionKicker}>Template View</p>
+                    <h2 className={styles.panelHeadline}>Roster Template</h2>
+                  </div>
+                </div>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Qty</th>
+                        <th>Position</th>
+                        <th>Cost</th>
+                        <th>MA</th>
+                        <th>ST</th>
+                        <th>AG</th>
+                        <th>PA</th>
+                        <th>AV</th>
+                        <th>Skills</th>
+                        <th>Primary</th>
+                        <th>Secondary</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeTemplate.positions.map((position) => {
+                        const used = teamCounts[position.id] ?? 0
 
-                  return (
+                        return (
+                          <tr key={position.id}>
+                            <td>
+                              {used}/{position.maxQty}
+                            </td>
+                            <td>{position.name}</td>
+                            <td>{formatGold(position.cost)}</td>
+                            <td>{position.movement}</td>
+                            <td>{position.strength}</td>
+                            <td>{position.agility}</td>
+                            <td>{position.passing ?? '-'}</td>
+                            <td>{position.armour}</td>
+                            <td>{position.startingSkills.length > 0 ? position.startingSkills.join(', ') : 'None'}</td>
+                            <td>{formatCategories(position.primaryCategories)}</td>
+                            <td>{formatCategories(position.secondaryCategories)}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section className={styles.panel}>
+                <div className={styles.panelHeader}>
+                  <div>
+                    <p className={styles.sectionKicker}>Composition</p>
+                    <h2 className={styles.panelHeadline}>Roster Breakdown</h2>
+                  </div>
+                </div>
+
+                <div className={styles.breakdownGrid}>
+                  {rosterPositionGroups.map(({ position, used, remaining }) => (
                     <article key={position.id} className={styles.breakdownCard}>
                       <strong>{position.name}</strong>
                       <span>
-                        {used}/{position.maxQty}
+                        {used}/{position.maxQty} rostered
                       </span>
                       <span>{formatGold(position.cost)} gp</span>
+                      <small>{remaining > 0 ? `${remaining} slot${remaining === 1 ? '' : 's'} open` : 'Full'}</small>
                     </article>
-                  )
-                })}
-              </div>
+                  ))}
+                </div>
+              </section>
             </section>
           </>
         )}
