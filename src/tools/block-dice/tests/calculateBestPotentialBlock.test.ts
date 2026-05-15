@@ -58,6 +58,30 @@ describe('calculateBestPotentialBlock', () => {
     expect(preview?.diceLabel).toBe('2D')
   })
 
+  it('applies Horns when scoring blitz preview candidates', () => {
+    const blocker = createPlayer('A1', 'A', { row: 0, col: 0 }, { strength: 3, skills: ['HORNS'] })
+    const target = createPlayer('B1', 'B', { row: 3, col: 3 }, { strength: 4 })
+    const { boardState, profiles } = buildState([blocker, target])
+
+    const preview = calculateBestPotentialBlock(boardState, profiles, 'A1', 'B1')
+
+    expect(preview).not.toBeNull()
+    expect(preview?.diceLabel).toBe('1D')
+    expect(preview?.calculation.attackerStrength.base).toBe(4)
+  })
+
+  it('applies Dauntless after Horns when scoring blitz preview candidates', () => {
+    const blocker = createPlayer('A1', 'A', { row: 0, col: 0 }, { strength: 3, skills: ['DAUNTLESS', 'HORNS'] })
+    const target = createPlayer('B1', 'B', { row: 3, col: 3 }, { strength: 5 })
+    const { boardState, profiles } = buildState([blocker, target])
+
+    const preview = calculateBestPotentialBlock(boardState, profiles, 'A1', 'B1')
+
+    expect(preview).not.toBeNull()
+    expect(preview?.diceLabel).toBe('1D')
+    expect(preview?.calculation.attackerStrength.base).toBe(5)
+  })
+
   it('returns null when all adjacent attack squares are occupied', () => {
     const blocker = createPlayer('A1', 'A', { row: 0, col: 0 }, { strength: 3 })
     const target = createPlayer('B1', 'B', { row: 3, col: 3 }, { strength: 3 })
