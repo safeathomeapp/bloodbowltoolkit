@@ -22,48 +22,105 @@
 - Tie-aware blitz candidate ranking
 - Player cards and contextual attacker controls
 - Board-header mode switch and edit-card refactor
+- Stable module packaging of the block-dice app under `modules/block-dice-calculator/`
 
-## Current Priorities
+## Current State
 
-- Preserve `modules/block-dice-calculator/` as the stable working software baseline
-- Merge the current MVP branch into the repository mainline and stabilize the GitHub branch strategy
-- Document and enforce the suite/module boundary before adding new tooling
+- `modules/block-dice-calculator/` is the stable working software and current source of truth
+- PostgreSQL is available locally and is the intended persistence layer for the next phase
+- No backend service exists in the repository yet
 
-## Post-MVP Next Track
+## Execution Order
 
-- Keep the block-dice app in `modules/block-dice-calculator/` as the finished integration target
-- Define whether roster, league, and competition tools belong inside the same PWA toolkit or in a separate adjacent product surface
-- Design persistent domain models for player profiles, rosters, teams, leagues, fixtures, and standings before implementation
-- Decide the order of expansion:
-  - saved player profiles and rosters first
-  - then league and competition generation
-  - then reporting or schedule helpers if still justified
+### Phase 1: Mainline And Repository Hygiene
 
-## Deferred Features
+- Merge the MVP PR into the repository mainline
+- Replace the current historical default branch with a stable mainline branch
+- Preserve `modules/block-dice-calculator/` as the working module boundary
+- Keep root docs aligned with the suite/module structure
 
-- Saved player profiles
-- Saved rosters
-- League generation helpers
-- Competition or fixture generation helpers
+### Phase 2: Backend Foundation
+
+- Create a backend service under `services/api/`
+- Use `Node + TypeScript`
+- Add a web framework:
+  - preferred default: `Fastify`
+- Connect to PostgreSQL
+- Add database migrations
+- Add environment-variable handling
+- Add schema validation for request and response payloads
+- Add baseline health and version endpoints
+
+### Phase 3: Core Domain Model
+
+- Define persistent entities for:
+  - player profiles
+  - rosters
+  - roster players
+  - teams
+  - team players
+  - leagues
+  - competitions
+  - fixtures
+  - results
+  - standings
+- Separate reusable profile data from competition-specific team state
+- Document the backend data model before building broad UI on top of it
+
+### Phase 4: Roster Builder
+
+- Build CRUD for player profiles
+- Build CRUD for rosters
+- Support adding players to rosters with role, stats, skills, and cost fields
+- Support creating teams from rosters
+- Decide whether roster content is:
+  - freeform user-defined first
+  - seeded from Blood Bowl reference data first
+- Add import/export for roster data if still justified after CRUD is stable
+
+### Phase 5: League And Competition Creator
+
+- Build CRUD for leagues
+- Build CRUD for competitions inside leagues
+- Define supported competition formats:
+  - round robin
+  - knockout
+  - swiss
+  - or configurable later if justified
+- Build fixture generation
+- Build result entry
+- Build standings calculation
+
+### Phase 6: Integration Back Into The Block-Dice Module
+
+- Allow `modules/block-dice-calculator/` to retrieve saved players, rosters, and teams
+- Keep the existing local tactical workflow usable even before remote data is selected
+- Avoid coupling block-dice calculation logic to league-management concerns
+- Treat backend integration as a data-source enhancement, not a rewrite of the module
+
+### Phase 7: Operational Hardening
+
+- Add authentication only if multi-user access is a real requirement
+- Add audit/history only if league administration needs it
+- Add deployment and backup notes
+- Add seed scripts and local developer setup docs
+
+## Active Next Step
+
+- Start Phase 2 by scaffolding `services/api/` and connecting it to the local PostgreSQL instance
+
+## Deferred Until Proven Necessary
+
 - Probability helpers
-- Additional toolkit modules
-- Post-MVP expansions beyond block-dice help
-
-## Rejected Features
-
-- Full pitch simulation
+- Full game simulation
 - Turn sequencing
-- Dice resolution
 - Online play
-- Authentication
-- Database-backed persistence
+- Advanced permissions model
+- Background job infrastructure
+- Microservice split
 
 ## Scope Boundary
 
-The MVP succeeds only if it quickly determines and explains Blood Bowl block dice. Any feature that does not directly support that flow stays out of scope.
-
-The current repository structure now treats that shipped block-dice scope as a module-level baseline for future suite integration.
-
-## Revision Note
-
-The original blocker-target interaction flow was superseded by the revised tactical UX direction, and that rewrite has now been implemented. The roadmap priority has therefore moved on from architecture changes to beta testing, small bug fixes, and MVP merge readiness.
+- The existing block-dice module remains stable working software
+- New backend and suite work must integrate with that module instead of destabilizing it
+- Roster, league, and competition tooling should be built in deliberate phases, not mixed into one oversized pass

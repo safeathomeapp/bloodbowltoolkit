@@ -6,22 +6,24 @@ Use this document at the start of the next Codex session.
 
 1. `docs/blood_bowl_toolkit_codex_master_brief.md`
 2. `ROADMAP.md`
-3. `docs/session_notes/2026-05-14_merge_readiness_and_next_session_handoff.md`
-4. `docs/session_notes/2026-05-14_help_popup_from_menu.md`
-5. `docs/session_notes/2026-05-14_fix_edit_vs_calculate_skill_sets.md`
-6. `docs/session_notes/2026-05-14_hide_unused_menu_placeholders.md`
+3. `docs/session_notes/2026-05-15_backend_roster_league_roadmap_reset.md`
+4. `docs/roadmap/2026-05-15_backend_roster_league_execution_plan.md`
+5. `docs/architecture/2026-05-15_suite_clean_canvas_for_next_module.md`
+6. `modules/block-dice-calculator/MODULE_STATUS.md`
 
-The revised UX rewrite documents are now historical context, not the active implementation plan.
+The MVP block-dice app is complete and remains the stable working module.
+The active planning context is now suite expansion around that module boundary.
 
 ## Project State
 
 - Repository: `blood-bowl-toolkit`
 - Working directory: `C:\Users\kevth\Desktop\Projects\blood-bowl-toolkit`
-- Current working software directory: `modules/block-dice-calculator`
-- Package manager: `npm`
-- Stack: React, TypeScript, Vite, `vite-plugin-pwa`, Vitest
+- Current stable module: `modules/block-dice-calculator`
+- Future module root: `modules/`
+- Package manager in the current module: `npm`
+- Current module stack: React, TypeScript, Vite, `vite-plugin-pwa`, Vitest
 - Active working branch at handoff: `feature/blitz-why-panel`
-- MVP status: functionally complete against the original brief, pending beta testing and merge
+- MVP status: complete and preserved as the first suite module
 
 ## What Is Complete
 
@@ -38,8 +40,17 @@ The revised UX rewrite documents are now historical context, not the active impl
 - inline `WHY?` explanation flow
 - mobile-first UI and local-only PWA behavior
 - help popup and compact header menu
+- suite-level repo structure with the block-dice app packaged under `modules/`
 
-## Important Rules/Product Decisions Already Made
+## Important Repository Decisions Already Made
+
+- The repository root is suite coordination space, not the live app root.
+- `modules/block-dice-calculator/` is the source-of-truth runnable module.
+- New suite work should be added beside that module, not mixed into it by default.
+- Shared docs stay at the repository root under `docs/`.
+- If a future backend is needed for multiple modules, it should live outside the block-dice module.
+
+## Important Product Decisions Already Made
 
 - `Dauntless` stays deterministic and manual for MVP.
   The user rolls physically and turns it on only if it succeeds.
@@ -50,38 +61,39 @@ The revised UX rewrite documents are now historical context, not the active impl
 
 ## What Still Needs Doing
 
-1. Beta test real scenarios on phone and desktop widths.
-2. Verify edge cases for `Guard`, `Defensive`, `Horns`, `Dauntless`, and blitz previews.
-3. Fix any real bugs found during testing in small branches or small follow-up commits.
-4. Merge `feature/blitz-why-panel` once the current test round is satisfactory.
+1. Keep the block-dice module stable as a reference integration target.
+2. Create the next suite capability in a separate directory boundary.
+3. Only add shared infrastructure when more than one module genuinely needs it.
+4. Keep backend and persistence work separate from the finished module unless integration is deliberate.
 
 ## Recommended Session Start If Work Continues
 
 1. Read the latest handoff and roadmap docs above.
 2. Check `git status`.
-3. Run:
+3. Verify the stable module still passes:
    - `cd modules/block-dice-calculator`
    - `npm run test -- --run`
    - `npm run lint`
    - `npm run build`
-4. Review the latest user feedback notes from `docs/session_notes/2026-05-14_*.md`.
-5. Only then decide whether the next step is:
-   - a targeted bug fix
-   - a small UI tidy
-   - merge preparation
-   - or suite-integration planning around the stable module boundary
+4. Decide whether the next work item is:
+   - a new standalone module under `modules/`
+   - a shared backend under `services/`
+   - or a narrow bug fix inside `modules/block-dice-calculator/`
+5. Do not start the next module inside the block-dice directory unless it is intentionally part of that module.
 
-## Merge Guidance
+## Clean Canvas Guidance
 
-- This branch is at a safe merge point.
-- Prefer merging now rather than reopening major UX work.
-- Any post-MVP issues should be handled as focused follow-up changes, not as another broad rewrite.
+- Treat `modules/block-dice-calculator/` as frozen except for real fixes.
+- Add the next module as a sibling directory under `modules/`.
+- Give each module its own package, entrypoint, and local docs as needed.
+- Keep cross-module policy and planning at the repository root.
 
 ## Instruction Reminder For Next Session
 
-- Keep all shell commands Git Bash compatible.
+- Keep all shell commands Git Bash compatible where possible.
 - Document every meaningful pass in `docs/session_notes/`.
 - Push each completed pass to GitHub.
 - Treat `modules/block-dice-calculator/` as the current known-good working software.
+- Keep new suite work structurally separate until intentional integration is requested.
 - Do not guess on uncertain Blood Bowl rules.
-- Do not expand scope beyond block-dice help unless explicitly requested.
+- Do not destabilize the finished block-dice module while opening the canvas for the next module.
