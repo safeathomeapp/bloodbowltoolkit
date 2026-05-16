@@ -304,66 +304,52 @@ export function TeamCreator() {
 
   if (!activeTeam || !activeTemplate) {
     return (
-      <div className={styles.libraryLayout}>
-        <header className={styles.libraryHero}>
-          <div className={styles.libraryHeroCopy}>
-            <p className={styles.kicker}>Blood Bowl Toolkit Suite</p>
-            <h1 className={styles.libraryTitle}>Team Vault</h1>
-            <p className={styles.copy}>
-              Load a saved draft or start a new club from an official roster template. Each team keeps its current
-              team value ready for the rest of the suite.
-            </p>
+      <div className={styles.appShell}>
+        <header className={styles.appChrome}>
+          <div className={styles.brandRow}>
+            <span className={styles.burger}>|||</span>
+            <strong>BB Roster</strong>
           </div>
-          <div className={styles.libraryStats}>
-            <article className={styles.summaryCard}>
-              <span>Saved Teams</span>
-              <strong>{teams.length}</strong>
-              <small>Local browser records</small>
-            </article>
-            <article className={styles.summaryCard}>
-              <span>Roster Templates</span>
-              <strong>{templates.length}</strong>
-              <small>Seeded from rulebook sources</small>
-            </article>
-          </div>
+          <div className={styles.accountDot} aria-hidden="true" />
         </header>
 
-        <nav className={styles.libraryNav} aria-label="Team vault workflows">
-          <button
-            className={libraryView === 'CREATE' ? styles.libraryNavButtonActive : styles.libraryNavButton}
-            onClick={() => setLibraryView('CREATE')}
-            type="button"
-          >
-            Create Team
-          </button>
-          <button
-            className={libraryView === 'LOAD' ? styles.libraryNavButtonActive : styles.libraryNavButton}
-            onClick={() => setLibraryView('LOAD')}
-            type="button"
-          >
-            Load Saved Team
-          </button>
-        </nav>
+        <div className={styles.pageFrame}>
+          <div className={styles.centerTitleBlock}>
+            <h1 className={styles.pageTitle}>{libraryView === 'CREATE' ? 'Create New Team' : 'Load Saved Team'}</h1>
+          </div>
 
-        {libraryView === 'CREATE' ? (
-          <section className={styles.librarySinglePane}>
-            <section className={styles.panel}>
-              <div className={styles.panelHeader}>
-                <div>
-                  <p className={styles.sectionKicker}>Start Here</p>
-                  <h2 className={styles.panelHeadline}>Create New Team</h2>
+          <nav className={styles.libraryNav} aria-label="Team vault workflows">
+            <button
+              className={libraryView === 'CREATE' ? styles.libraryNavButtonActive : styles.libraryNavButton}
+              onClick={() => setLibraryView('CREATE')}
+              type="button"
+            >
+              Create Team
+            </button>
+            <button
+              className={libraryView === 'LOAD' ? styles.libraryNavButtonActive : styles.libraryNavButton}
+              onClick={() => setLibraryView('LOAD')}
+              type="button"
+            >
+              Load Saved Team
+            </button>
+          </nav>
+
+          {libraryView === 'CREATE' ? (
+            <section className={styles.librarySinglePane}>
+              <section className={styles.clonePickerPanel}>
+                <div className={styles.cloneFilterRow}>
+                  <label className={styles.cloneSearchLabel}>
+                    <span>Search</span>
+                    <input
+                      value={templateSearch}
+                      onChange={(event) => setTemplateSearch(event.target.value)}
+                      placeholder="Team type"
+                    />
+                  </label>
                 </div>
-              </div>
-              <div className={styles.createTeamGrid}>
-                <label className={styles.field}>
-                  <span>Search Rosters</span>
-                  <input
-                    value={templateSearch}
-                    onChange={(event) => setTemplateSearch(event.target.value)}
-                    placeholder="Search team type"
-                  />
-                </label>
-                <div className={styles.templatePicker}>
+
+                <div className={styles.cloneChipField}>
                   {filteredTemplates.map((template) => (
                     <button
                       key={template.id}
@@ -376,21 +362,21 @@ export function TeamCreator() {
                   ))}
                 </div>
 
-                {!selectedTemplate ? null : (
-                  <section className={styles.templatePreview}>
-                    <div className={styles.templatePreviewHeader}>
-                      <div>
-                        <p className={styles.sectionKicker}>Roster Preview</p>
-                        <h3 className={styles.templatePreviewTitle}>{selectedTemplate.name}</h3>
-                      </div>
-                      <div className={styles.templatePreviewMeta}>
-                        <span>{selectedTemplate.leagues.join(' / ') || 'League not listed'}</span>
-                        <span>Rerolls {formatGold(selectedTemplate.rerollCost)} gp</span>
-                      </div>
-                    </div>
+                <p className={styles.cloneLeagueLine}>
+                  Team League: {selectedTemplate?.leagues.join(' / ') || 'Not listed'}
+                </p>
+              </section>
 
-                    <div className={styles.templatePreviewTableWrap}>
-                      <table className={styles.templatePreviewTable}>
+              <button className={styles.cloneCreateButton} onClick={handleCreateTeam} type="button">
+                Create
+              </button>
+
+              {!selectedTemplate ? null : (
+                <section className={styles.clonePreviewStack}>
+                  <section>
+                    <div className={styles.cloneSectionTitle}>{selectedTemplate.name} Team Players</div>
+                    <div className={styles.tableWrap}>
+                      <table className={styles.table}>
                         <thead>
                           <tr>
                             <th>Qty</th>
@@ -409,9 +395,7 @@ export function TeamCreator() {
                         <tbody>
                           {selectedTemplate.positions.map((position) => (
                             <tr key={position.id}>
-                              <td>
-                                {position.minQty}-{position.maxQty}
-                              </td>
+                              <td>{position.minQty}/{position.maxQty}</td>
                               <td>{position.name}</td>
                               <td>{formatGold(position.cost)}</td>
                               <td>{position.movement}</td>
@@ -427,51 +411,34 @@ export function TeamCreator() {
                         </tbody>
                       </table>
                     </div>
-
-                    <div className={styles.templatePreviewFooter}>
-                      <label className={styles.field}>
-                        <span>Team Name</span>
-                        <input
-                          value={newTeamName}
-                          onChange={(event) => setNewTeamName(event.target.value)}
-                          placeholder={`Enter ${selectedTemplate.name} team name`}
-                        />
-                      </label>
-                      <button className={styles.primaryButton} onClick={handleCreateTeam} type="button">
-                        Create Team
-                      </button>
-                    </div>
                   </section>
-                )}
-              </div>
-            </section>
-          </section>
-        ) : (
-          <section className={styles.librarySinglePane}>
-            <section className={styles.panel}>
-              <div className={styles.panelHeader}>
-                <div>
-                  <p className={styles.sectionKicker}>Load Existing</p>
-                  <h2 className={styles.panelHeadline}>Saved Teams</h2>
-                </div>
-              </div>
 
-              <div className={styles.libraryList}>
+                  <section className={styles.cloneNameBar}>
+                    <label className={styles.field}>
+                      <span>Team Name</span>
+                      <input
+                        value={newTeamName}
+                        onChange={(event) => setNewTeamName(event.target.value)}
+                        placeholder={`Enter ${selectedTemplate.name} team name`}
+                      />
+                    </label>
+                  </section>
+                </section>
+              )}
+            </section>
+          ) : (
+            <section className={styles.librarySinglePane}>
+              <div className={styles.loadSheet}>
                 {teams.length === 0 ? (
                   <p className={styles.emptyState}>No saved teams yet.</p>
                 ) : (
                   teams.map((team) => (
-                    <article key={team.id} className={styles.libraryCard}>
-                      <button className={styles.libraryCardButton} onClick={() => void handleOpenTeam(team.id)} type="button">
-                        <div className={styles.libraryCardHeader}>
-                          <strong>{team.name}</strong>
-                          <span className={styles.libraryStatus}>{team.status.toLowerCase()}</span>
-                        </div>
+                    <article key={team.id} className={styles.loadRow}>
+                      <button className={styles.loadRowButton} onClick={() => void handleOpenTeam(team.id)} type="button">
+                        <span>{team.name}</span>
                         <span>{templates.find((template) => template.id === team.rosterTemplateId)?.name ?? 'Unknown roster'}</span>
-                        <div className={styles.libraryMetaRow}>
-                          <span>{team.playerCount} players</span>
-                          <span>Team Value {formatGold(team.totalValue)} gp</span>
-                        </div>
+                        <span>{team.playerCount} players</span>
+                        <span>Team Value {formatGold(team.totalValue)} gp</span>
                       </button>
                       <button className={styles.deleteButton} onClick={() => void handleDeleteTeam(team.id)} type="button">
                         Delete
@@ -481,16 +448,25 @@ export function TeamCreator() {
                 )}
               </div>
             </section>
-          </section>
-        )}
+          )}
 
-        <footer className={styles.feedback}>{feedback || 'Choose a team to load or create a fresh draft.'}</footer>
+          <footer className={styles.feedback}>{feedback || 'Choose a team to load or create a fresh draft.'}</footer>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className={styles.editorLayout}>
+    <div className={styles.appShell}>
+      <header className={styles.appChrome}>
+        <div className={styles.brandRow}>
+          <span className={styles.burger}>|||</span>
+          <strong>BB Roster</strong>
+        </div>
+        <div className={styles.accountDot} aria-hidden="true" />
+      </header>
+
+      <div className={styles.pageFrame}>
       <section className={styles.editor}>
         <>
           <div className={styles.editorTopbar}>
@@ -498,27 +474,19 @@ export function TeamCreator() {
               Back To Team Vault
             </button>
           </div>
-          <header className={styles.hero}>
+          <header className={styles.cloneHero}>
             <div className={styles.heroCopy}>
-              <p className={styles.kicker}>Blood Bowl Toolkit Suite</p>
               <input
-                className={styles.teamNameInput}
+                className={styles.cloneTeamName}
                 value={activeTeam.name}
                 onChange={(event) => handleTeamNameChange(event.target.value)}
                 aria-label="Team name"
               />
-              <div className={styles.heroMeta}>
-                <span className={styles.heroPill}>{activeTemplate.name}</span>
-                <span className={styles.heroPill}>{activeTeam.players.length} players</span>
-                <span className={styles.heroPill}>{activeTeam.status.toLowerCase()}</span>
-              </div>
-              <p className={styles.metaLine}>{activeTemplate.leagues.join(' / ') || 'League not listed'}</p>
+              <p className={styles.cloneHeroMeta}>
+                {activeTemplate.name} Team &nbsp; {activeTeam.players.length}s &nbsp; {activeTemplate.leagues[0] ?? 'League'}
+              </p>
             </div>
             <div className={styles.heroAside}>
-              <div className={styles.heroValuePanel}>
-                <span>Total Team Value</span>
-                <strong>{formatGold(calculateTeamValue(activeTeam, activeTemplate))} gp</strong>
-              </div>
               <button className={styles.primaryButton} onClick={() => void handleSaveTeam()} type="button">
                 Save Team
               </button>
@@ -876,6 +844,7 @@ export function TeamCreator() {
 
         <footer className={styles.feedback}>{feedback || 'Local-first repository active. Saved teams stay in this browser for now.'}</footer>
       </section>
+      </div>
     </div>
   )
 }

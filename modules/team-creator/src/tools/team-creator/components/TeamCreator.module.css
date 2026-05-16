@@ -1,329 +1,192 @@
-.layout {
+.appShell {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
-  gap: 24px;
-  align-items: start;
+  gap: 0;
 }
 
-.libraryLayout,
-.editorLayout {
-  display: grid;
-  gap: 20px;
+.appChrome {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #fffdfa;
+  border-bottom: 2px solid #244a7a;
 }
 
-.libraryHero,
-.sidebarHeader,
-.panel,
-.placeholder,
-.summaryCard {
-  background: var(--suite-surface);
-  border: 1px solid var(--suite-line);
-  border-radius: 22px;
-  box-shadow: var(--suite-shadow);
-}
-
-.libraryHero {
-  display: grid;
-  grid-template-columns: 1.5fr 0.9fr;
-  gap: 18px;
-  padding: 24px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.58), rgba(255, 246, 239, 0.82)),
-    linear-gradient(90deg, rgba(31, 71, 120, 0.08), rgba(159, 29, 23, 0.06));
-}
-
-.libraryHeroCopy {
-  display: grid;
+.brandRow {
+  display: flex;
+  align-items: center;
   gap: 10px;
+  color: #971d17;
 }
 
-.libraryTitle {
-  margin: 0;
-  color: var(--suite-accent);
-  font-size: clamp(2.4rem, 5vw, 4rem);
-  line-height: 0.96;
+.brandRow strong {
+  font-size: 1.08rem;
 }
 
-.libraryStats {
+.burger {
+  letter-spacing: -0.12em;
+  color: #262626;
+}
+
+.accountDot {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 2px solid #31425a;
+}
+
+.pageFrame {
+  width: min(1280px, calc(100vw - 48px));
+  margin: 24px auto 40px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  align-content: start;
-}
-
-.libraryDeck {
-  display: grid;
-  grid-template-columns: 0.9fr 1.4fr;
   gap: 18px;
 }
 
-.librarySinglePane {
+.centerTitleBlock {
+  text-align: center;
+}
+
+.pageTitle {
+  margin: 0;
+  color: #971d17;
+  font-size: clamp(2rem, 4vw, 3rem);
+}
+
+.librarySinglePane,
+.editor {
   display: grid;
+  gap: 18px;
 }
 
 .libraryNav {
   display: flex;
+  justify-content: center;
   gap: 12px;
   flex-wrap: wrap;
 }
 
 .libraryNavButton,
+.libraryNavButtonActive,
+.primaryButton,
+.secondaryButton,
+.deleteButton,
+.rowButton,
+.templateChip,
+.templateChipActive,
+.cloneCreateButton,
+.inlineAddButton,
+.loadRowButton {
+  cursor: pointer;
+}
+
+.libraryNavButton,
 .libraryNavButtonActive {
   border-radius: 999px;
-  padding: 10px 18px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 120ms ease, background 120ms ease, color 120ms ease;
-}
-
-.libraryNavButton {
-  border: 1px solid rgba(31, 71, 120, 0.28);
-  background: rgba(255, 255, 255, 0.76);
-  color: var(--suite-blue);
+  padding: 8px 16px;
+  border: 2px solid #244a7a;
+  background: #fff;
+  color: #244a7a;
 }
 
 .libraryNavButtonActive {
-  border: 1px solid var(--suite-accent);
-  background: linear-gradient(135deg, var(--suite-accent) 0%, var(--suite-accent-dark) 100%);
-  color: #fff7ef;
-  box-shadow: 0 12px 24px rgba(126, 20, 15, 0.18);
+  background: #244a7a;
+  color: #fff;
 }
 
-.createTeamGrid {
-  display: grid;
-  gap: 14px;
+.clonePickerPanel {
+  background: #ececec;
+  border-radius: 14px;
+  padding: 14px 12px 18px;
 }
 
-.templatePicker {
+.cloneFilterRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.cloneSearchLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.cloneSearchLabel input,
+.field input,
+.field select,
+.compactField input,
+.compactField select,
+.inlineDraftSelectWrap select,
+.staffControlRow input,
+.cloneTeamName {
+  font: inherit;
+}
+
+.cloneSearchLabel input {
+  width: min(260px, 100%);
+  border: 1px solid #b8b8b8;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 10px;
+}
+
+.cloneChipField {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  padding: 14px;
-  border-radius: 18px;
-  background: rgba(120, 84, 61, 0.06);
+  padding-top: 14px;
 }
 
 .templateChip,
 .templateChipActive {
   border-radius: 999px;
-  padding: 10px 14px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 120ms ease, background 120ms ease, color 120ms ease;
-}
-
-.templateChip {
-  border: 1px solid rgba(31, 71, 120, 0.35);
-  background: rgba(255, 255, 255, 0.75);
-  color: var(--suite-blue);
+  border: 2px solid #244a7a;
+  background: #fff;
+  color: #244a7a;
+  padding: 7px 14px;
 }
 
 .templateChipActive {
-  border: 1px solid var(--suite-accent);
-  background: linear-gradient(135deg, var(--suite-accent) 0%, var(--suite-accent-dark) 100%);
-  color: #fff7ef;
-  box-shadow: 0 12px 24px rgba(126, 20, 15, 0.18);
+  background: #244a7a;
+  color: #fff;
 }
 
-.templateChip:hover,
-.templateChipActive:hover,
-.libraryNavButton:hover,
-.libraryNavButtonActive:hover,
-.editorStageButton:hover,
-.editorStageButtonActive:hover,
-.libraryCardButton:hover,
-.teamCardButton:hover,
-.secondaryButton:hover,
-.primaryButton:hover {
-  transform: translateY(-1px);
+.cloneLeagueLine {
+  margin: 12px 0 0;
+  color: #303030;
 }
 
-.templatePreview {
+.cloneCreateButton {
+  width: fit-content;
+  border: 2px solid #244a7a;
+  background: #fff;
+  color: #244a7a;
+  border-radius: 12px;
+  padding: 8px 14px;
+}
+
+.clonePreviewStack {
   display: grid;
-  gap: 14px;
-  padding: 18px;
-  border-radius: 20px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.48), rgba(255, 248, 241, 0.82)),
-    rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(159, 29, 23, 0.12);
-}
-
-.templatePreviewHeader {
-  display: flex;
-  justify-content: space-between;
   gap: 18px;
-  align-items: end;
 }
 
-.templatePreviewTitle {
-  margin: 0;
-  color: #412821;
-  font-size: 1.5rem;
-}
-
-.templatePreviewMeta {
-  display: grid;
-  gap: 4px;
-  justify-items: end;
-  color: var(--suite-muted);
-  font-size: 0.92rem;
-}
-
-.templatePreviewTableWrap {
-  overflow-x: auto;
-}
-
-.templatePreviewTable {
-  width: 100%;
-  min-width: 900px;
-  border-collapse: collapse;
-}
-
-.templatePreviewTable thead th {
-  background: var(--suite-accent);
-  color: #fff7ef;
-  padding: 9px 8px;
-  text-align: left;
-  font-size: 0.76rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.templatePreviewTable tbody td {
-  padding: 9px 8px;
-  border-bottom: 1px solid rgba(137, 65, 51, 0.12);
-  vertical-align: top;
-}
-
-.templatePreviewTable tbody tr:nth-child(odd) {
-  background: rgba(148, 51, 34, 0.04);
-}
-
-.templatePreviewFooter {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: end;
-}
-
-.libraryList {
-  display: grid;
-  gap: 12px;
-}
-
-.libraryCard {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-}
-
-.libraryCardButton {
-  border: 0;
-  cursor: pointer;
-  display: grid;
-  gap: 6px;
-  width: 100%;
-  text-align: left;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(159, 29, 23, 0.05));
-  border-radius: 18px;
-  padding: 16px;
-  border: 1px solid rgba(159, 29, 23, 0.1);
-}
-
-.libraryCardHeader,
-.libraryMetaRow {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.libraryCardButton strong {
-  color: #3d261f;
-  font-size: 1.06rem;
-}
-
-.libraryCardButton span {
-  color: #6b5547;
-  font-size: 0.94rem;
-}
-
-.libraryStatus {
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.editorTopbar {
-  display: flex;
-  justify-content: flex-start;
-}
-
-.sidebar,
-.editor {
-  display: grid;
-  gap: 16px;
-}
-
-.sidebarHeader,
-.panel,
-.placeholder {
-  padding: 18px;
-}
-
-.kicker {
+.cloneSectionTitle {
   margin: 0 0 6px;
-  color: var(--suite-accent);
-  font-size: 0.78rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  color: #292929;
+  font-weight: 700;
 }
 
-.title {
-  margin: 0;
-  color: var(--suite-accent);
-  font-size: clamp(2rem, 4vw, 2.8rem);
-  line-height: 1;
-}
-
-.copy {
-  margin: 10px 0 0;
-  color: var(--suite-muted);
-}
-
-.panelHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.sectionKicker {
-  margin: 0 0 6px;
-  color: var(--suite-blue);
-  font-size: 0.72rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.panelHeadline {
-  margin: 0;
-  color: #4b2b22;
-  font-size: 1.2rem;
+.cloneNameBar {
+  width: min(420px, 100%);
 }
 
 .field,
-.compactField {
-  display: grid;
-  gap: 6px;
-}
-
+.compactField,
 .toggleField {
   display: grid;
-  gap: 8px;
-  align-content: start;
+  gap: 6px;
 }
 
 .field span,
@@ -339,174 +202,130 @@
 .field input,
 .field select,
 .compactField input,
-.compactField select,
-.toggleField input,
-.teamNameInput,
-.inlineInput,
-.numberInput {
+.compactField select {
   width: 100%;
-  border: 1px solid var(--suite-line-strong);
-  border-radius: 12px;
-  background: var(--suite-surface-strong);
-  color: var(--suite-ink);
+  border: 1px solid rgba(115, 29, 19, 0.24);
+  border-radius: 10px;
+  background: #fffdf9;
+  color: #231915;
   padding: 10px 12px;
 }
 
-.toggleField input {
-  width: auto;
-  justify-self: start;
-  accent-color: var(--suite-accent);
-}
-
-.toggleField small {
-  color: var(--suite-muted);
-  font-size: 0.85rem;
-}
-
-.teamNameInput {
-  font-size: clamp(2.2rem, 5vw, 4rem);
-  font-style: italic;
-  font-weight: 700;
-  border-radius: 18px;
+.panel {
   background: transparent;
   border: 0;
+  border-radius: 0;
+  box-shadow: none;
   padding: 0;
 }
 
-.primaryButton,
-.secondaryButton,
-.deleteButton,
-.rowButton,
-.teamCardButton,
-.libraryCardButton {
-  border: 0;
-  cursor: pointer;
+.panelHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+  margin-bottom: 8px;
 }
 
-.primaryButton {
-  border-radius: 999px;
-  background: linear-gradient(135deg, var(--suite-accent) 0%, var(--suite-accent-dark) 100%);
-  color: #fff8f2;
-  padding: 11px 18px;
-  font-weight: 700;
-  box-shadow: 0 12px 26px rgba(126, 20, 15, 0.2);
+.sectionKicker {
+  margin: 0 0 4px;
+  color: #244a7a;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.panelHeadline {
+  margin: 0;
+  color: #31231e;
+  font-size: 1.1rem;
+}
+
+.feedback,
+.emptyState,
+.helperText,
+.metaLine {
+  color: #685447;
+}
+
+.loadSheet {
+  display: grid;
+  gap: 12px;
+}
+
+.loadRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.loadRowButton {
+  border: 1px solid rgba(137, 65, 51, 0.16);
+  background: #fff;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 0.8fr 1fr;
+  gap: 12px;
+  text-align: left;
+}
+
+.editorTopbar {
+  display: flex;
+  justify-content: flex-start;
 }
 
 .secondaryButton {
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  color: var(--suite-blue);
+  background: #fff;
+  color: #244a7a;
   padding: 10px 16px;
-  border: 1px solid rgba(31, 71, 120, 0.2);
+  border: 2px solid #244a7a;
   font-weight: 700;
 }
 
-.deleteButton,
-.rowButton {
-  border-radius: 999px;
-  background: var(--suite-accent-soft);
-  color: var(--suite-accent-dark);
-  padding: 8px 12px;
-}
-
-.teamList {
+.cloneHero {
   display: grid;
-  gap: 10px;
-}
-
-.teamCard {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-}
-
-.teamCardButton {
-  display: grid;
-  gap: 4px;
-  width: 100%;
-  text-align: left;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.45), rgba(159, 29, 23, 0.04));
-  border-radius: 16px;
-  padding: 14px;
-  border: 1px solid rgba(159, 29, 23, 0.08);
-}
-
-.teamCardButton strong {
-  color: #3d261f;
-}
-
-.teamCardButton span {
-  color: #6b5547;
-  font-size: 0.92rem;
-}
-
-.emptyState,
-.feedback,
-.metaLine,
-.placeholder p {
-  color: var(--suite-muted);
-}
-
-.hero {
-  display: flex;
-  justify-content: space-between;
-  gap: 24px;
-  align-items: end;
-  padding: 28px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.52), rgba(255, 245, 238, 0.76)),
-    linear-gradient(90deg, rgba(31, 71, 120, 0.08), rgba(159, 29, 23, 0.06));
-  border: 1px solid var(--suite-line);
-  border-radius: 28px;
-  box-shadow: var(--suite-shadow);
+  justify-items: center;
+  gap: 6px;
+  padding-top: 6px;
 }
 
 .heroCopy {
-  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
 }
 
-.heroMeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 12px;
+.cloneTeamName {
+  border: 0;
+  background: transparent;
+  color: #6e737b;
+  font-size: clamp(2.8rem, 5vw, 4.3rem);
+  font-style: italic;
+  font-weight: 700;
+  text-align: center;
+  padding: 0;
 }
 
-.heroPill {
-  border: 1px solid rgba(31, 71, 120, 0.18);
-  background: rgba(255, 255, 255, 0.72);
-  color: #304d6d;
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+.cloneHeroMeta {
+  margin: 0;
+  color: #2d2d2d;
+  font-weight: 600;
 }
 
 .heroAside {
-  display: grid;
-  gap: 12px;
-  min-width: 240px;
+  display: flex;
+  justify-content: center;
 }
 
-.heroValuePanel {
-  display: grid;
-  gap: 4px;
-  padding: 16px 18px;
-  border-radius: 20px;
-  background: linear-gradient(180deg, rgba(159, 29, 23, 0.97), rgba(126, 20, 15, 0.97));
-  color: #fff6ef;
-}
-
-.heroValuePanel span {
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.heroValuePanel strong {
-  font-size: 1.7rem;
+.primaryButton {
+  border-radius: 999px;
+  background: #244a7a;
+  color: #fff;
+  padding: 10px 18px;
+  border: 2px solid #244a7a;
+  font-weight: 700;
 }
 
 .summaryGrid {
@@ -516,12 +335,12 @@
 }
 
 .summaryCard {
-  padding: 16px;
+  padding: 16px 18px;
   display: grid;
   gap: 8px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.22)),
-    var(--suite-surface);
+  background: #fffdf9;
+  border: 1px solid rgba(194, 153, 117, 0.28);
+  border-radius: 18px;
 }
 
 .summaryCard span {
@@ -537,49 +356,17 @@
 }
 
 .summaryCard small {
-  color: var(--suite-muted);
-}
-
-.controlGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.infoCard {
-  display: grid;
-  gap: 6px;
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.56);
-  border: 1px solid rgba(31, 71, 120, 0.08);
-}
-
-.infoCard span {
-  color: var(--suite-muted);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.infoCard strong {
-  color: #3d261f;
-}
-
-.toolbar {
-  display: flex;
-  gap: 12px;
-  align-items: end;
-  flex-wrap: wrap;
+  color: #685447;
 }
 
 .inlineDraftRow {
   display: grid;
-  grid-template-columns: 1fr auto minmax(280px, 420px) 1fr;
+  grid-template-columns: 1fr auto minmax(280px, 430px) 1fr;
   gap: 14px;
   align-items: center;
-  padding: 14px 0 16px;
-  border-bottom: 1px solid rgba(137, 65, 51, 0.14);
+  padding: 6px 0 14px;
+  border-top: 1px solid rgba(137, 65, 51, 0.18);
+  border-bottom: 1px solid rgba(137, 65, 51, 0.18);
 }
 
 .inlineDraftCellMuted {
@@ -591,56 +378,38 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #4a2b21;
 }
 
 .inlineAddButton {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: 999px;
-  border: 1px solid rgba(31, 71, 120, 0.3);
-  background: linear-gradient(135deg, var(--suite-blue) 0%, #274f83 100%);
+  border: 0;
+  background: #244a7a;
   color: #fff;
-  font-size: 1.2rem;
+  font-size: 1.05rem;
   font-weight: 700;
-  cursor: pointer;
-}
-
-.inlineDraftSelectWrap {
-  display: grid;
 }
 
 .inlineDraftSelectWrap select {
   width: 100%;
-  border: 1px solid var(--suite-line-strong);
-  border-radius: 12px;
-  background: var(--suite-surface-strong);
-  color: var(--suite-ink);
-  padding: 10px 12px;
+  border: 1px solid rgba(115, 29, 19, 0.24);
+  border-radius: 10px;
+  background: #fffdf9;
+  color: #231915;
+  padding: 9px 12px;
 }
 
 .inlineDraftHint {
-  color: var(--suite-muted);
+  color: #685447;
   font-size: 0.9rem;
-}
-
-.visuallyHidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }
 
 .inlineWarnings,
 .inlineSuccess {
-  margin-top: 14px;
-  border-radius: 18px;
-  padding: 14px 16px;
+  margin-top: 10px;
+  border-radius: 14px;
+  padding: 12px 14px;
 }
 
 .inlineWarnings {
@@ -660,10 +429,11 @@
   color: #254464;
 }
 
-.helperText {
-  margin: 10px 0 0;
-  color: var(--suite-muted);
-  font-size: 0.9rem;
+.warningList {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
 }
 
 .tableWrap {
@@ -672,37 +442,55 @@
 
 .table {
   width: 100%;
+  min-width: 900px;
   border-collapse: collapse;
-  min-width: 980px;
 }
 
 .table thead th {
-  background: var(--suite-accent);
-  color: #fff7ef;
-  padding: 10px 8px;
+  background: #aa140f;
+  color: #fff;
+  padding: 9px 8px;
   text-align: left;
   font-size: 0.78rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 
 .table tbody td {
-  padding: 10px 8px;
+  padding: 9px 8px;
   border-bottom: 1px solid rgba(137, 65, 51, 0.12);
   vertical-align: top;
 }
 
 .table tbody tr:nth-child(odd) {
-  background: rgba(148, 51, 34, 0.04);
+  background: rgba(80, 80, 80, 0.08);
 }
 
 .inlineInput {
   min-width: 180px;
   margin-bottom: 8px;
+  border: 1px solid rgba(115, 29, 19, 0.24);
+  border-radius: 10px;
+  background: #fffdf9;
+  color: #231915;
+  padding: 8px 10px;
 }
 
 .numberInput {
-  max-width: 92px;
+  max-width: 88px;
+  border: 1px solid rgba(115, 29, 19, 0.24);
+  border-radius: 10px;
+  background: #fffdf9;
+  color: #231915;
+  padding: 8px 10px;
+}
+
+.rowButton,
+.deleteButton {
+  border-radius: 999px;
+  background: rgba(159, 29, 23, 0.08);
+  color: #7e140f;
+  padding: 8px 12px;
+  border: 0;
 }
 
 .emptyTableCell {
@@ -710,51 +498,10 @@
   text-align: center;
 }
 
-.breakdownGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.breakdownCard {
-  display: grid;
-  gap: 6px;
-  border: 1px solid rgba(121, 42, 31, 0.12);
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 250, 244, 0.92));
-  padding: 14px;
-}
-
-.breakdownCard strong {
-  color: #452922;
-}
-
-.breakdownCard span {
-  color: #6a5447;
-}
-
-.breakdownCard small {
-  color: var(--suite-blue);
-}
-
-.bottomDeck {
-  display: grid;
-  grid-template-columns: 1.4fr 0.9fr;
-  gap: 14px;
-}
-
-.warningList {
-  margin: 0;
-  padding-left: 20px;
-  color: #6a2f23;
-  display: grid;
-  gap: 6px;
-}
-
 .draftSummaryDeck {
   display: grid;
   grid-template-columns: 1.45fr 0.95fr;
-  gap: 14px;
+  gap: 18px;
   align-items: start;
 }
 
@@ -778,30 +525,28 @@
 .summaryLedger,
 .staffLedger {
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  border: 1px solid var(--suite-line);
-  border-radius: 20px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.5);
+  grid-template-columns: 170px minmax(0, 1fr);
+  border: 1px solid rgba(137, 65, 51, 0.16);
+  background: #fff;
 }
 
 .summaryLedgerLabelColumn,
 .staffLedgerLabelColumn {
   display: grid;
-  background: linear-gradient(180deg, var(--suite-accent) 0%, var(--suite-accent-dark) 100%);
-  color: #fff7ef;
+  background: #aa140f;
+  color: #fff;
 }
 
 .summaryLedgerValueColumn,
 .staffLedgerControlColumn {
   display: grid;
-  background: rgba(255, 255, 255, 0.72);
+  background: #fff;
 }
 
 .summaryLedgerLabelColumn span,
 .summaryLedgerValueColumn span,
 .staffLedgerLabelColumn span {
-  padding: 14px 16px;
+  padding: 14px 12px;
   border-bottom: 1px solid rgba(137, 65, 51, 0.12);
 }
 
@@ -811,22 +556,22 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 10px 12px;
   border-bottom: 1px solid rgba(137, 65, 51, 0.12);
 }
 
 .staffControlRow input {
   width: 100%;
-  border: 1px solid var(--suite-line-strong);
+  border: 1px solid rgba(115, 29, 19, 0.24);
   border-radius: 10px;
-  background: var(--suite-surface-strong);
-  color: var(--suite-ink);
+  background: #fffdf9;
+  color: #231915;
   padding: 8px 10px;
 }
 
 .staffControlRow small,
 .staffToggleRow small {
-  color: var(--suite-muted);
+  color: #685447;
 }
 
 .staffToggleRow {
@@ -834,63 +579,88 @@
 }
 
 .staffToggleRow input {
-  accent-color: var(--suite-accent);
+  accent-color: #aa140f;
 }
 
-.placeholder {
-  min-height: 420px;
+.breakdownGrid {
   display: grid;
-  place-items: center;
-  text-align: center;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
-.placeholder h2 {
-  margin: 0 0 8px;
-  color: var(--suite-accent-dark);
+.breakdownCard {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(194, 153, 117, 0.28);
+  border-radius: 18px;
+  background: #fffdf9;
+  padding: 14px;
+}
+
+.breakdownCard strong {
+  color: #452922;
+}
+
+.breakdownCard span {
+  color: #6a5447;
+}
+
+.breakdownCard small {
+  color: #244a7a;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .feedback {
   font-size: 0.92rem;
-  padding: 0 6px;
+  padding: 0 2px;
 }
 
 @media (max-width: 1100px) {
-  .libraryHero,
-  .libraryDeck,
-  .layout {
-    grid-template-columns: 1fr;
+  .pageFrame {
+    width: min(100vw - 24px, 1280px);
   }
 
-  .draftSummaryDeck,
+  .summaryGrid,
   .draftControlStrip,
   .financialGrid,
-  .bottomDeck,
-  .controlGrid,
-  .summaryGrid,
+  .draftSummaryDeck,
   .breakdownGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inlineDraftRow {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
 @media (max-width: 720px) {
-  .libraryStats {
-    grid-template-columns: 1fr;
+  .appChrome {
+    padding: 10px 12px;
   }
 
-  .templatePreviewHeader,
-  .templatePreviewFooter {
-    grid-template-columns: 1fr;
-    display: grid;
+  .pageFrame {
+    width: calc(100vw - 16px);
+    margin: 16px auto 28px;
   }
 
-  .templatePreviewMeta {
-    justify-items: start;
-  }
-
-  .inlineDraftRow,
-  .draftSummaryDeck,
+  .summaryGrid,
   .draftControlStrip,
   .financialGrid,
+  .draftSummaryDeck,
+  .breakdownGrid,
+  .loadRowButton,
+  .inlineDraftRow,
   .summaryLedger,
   .staffLedger {
     grid-template-columns: 1fr;
@@ -903,22 +673,12 @@
     grid-template-columns: 1fr;
   }
 
-  .hero {
+  .cloneSearchLabel {
     flex-direction: column;
     align-items: start;
   }
 
-  .heroAside {
-    min-width: 0;
-    width: 100%;
-  }
-
-  .draftSummaryDeck,
-  .financialGrid,
-  .bottomDeck,
-  .controlGrid,
-  .summaryGrid,
-  .breakdownGrid {
-    grid-template-columns: 1fr;
+  .cloneTeamName {
+    font-size: clamp(2rem, 8vw, 3rem);
   }
 }
