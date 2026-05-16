@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 
 import styles from './TeamCreator.module.css'
+import { getSkillReference } from '../../../data/skillReferences'
 import { BrowserLocalStorageStore, MemoryKeyValueStore } from '../../../shared/storage/keyValueStore'
 import { LocalTeamRepository } from '../../../shared/repositories/localTeamRepository'
 import {
@@ -16,6 +17,7 @@ import {
   countPlayersInSharedGroup,
   getDraftWarnings,
 } from '../../../shared/utils/teamMath'
+import type { SkillReference } from '../../../shared/types/skillReference'
 import type { RosterTemplate, SavedTeam, SavedTeamSummary } from '../../../shared/types/team'
 import { createTeam, createTeamPlayer } from '../utils/teamFactory'
 
@@ -63,6 +65,7 @@ export function TeamCreator() {
   const [libraryView, setLibraryView] = useState<'CREATE' | 'LOAD'>('CREATE')
   const [activeTeam, setActiveTeam] = useState<SavedTeam | null>(null)
   const [selectedPositionId, setSelectedPositionId] = useState('')
+  const [activeSkillReference, setActiveSkillReference] = useState<SkillReference | null>(null)
   const [feedback, setFeedback] = useState('')
 
   const activeTemplate = useMemo(
@@ -86,22 +89,13 @@ export function TeamCreator() {
       ? selectedPositionId
       : (selectablePositions[0]?.id ?? '')
 
-  const rosterPositionGroups = useMemo(() => {
-    if (!activeTemplate || !activeTeam) {
-      return []
+  const selectedPosition = useMemo(() => {
+    if (!activeTemplate || !effectiveSelectedPositionId) {
+      return null
     }
 
-    return activeTemplate.positions.map((position) => {
-      const used = teamCounts[position.id] ?? 0
-      const remaining = getRemainingSlots(activeTeam, activeTemplate, position.id)
-
-      return {
-        position,
-        used,
-        remaining,
-      }
-    })
-  }, [activeTeam, activeTemplate, teamCounts])
+    return findPosition(activeTemplate, effectiveSelectedPositionId)
+  }, [activeTemplate, effectiveSelectedPositionId])
 
   const activeTemplatePlayerLimit = useMemo(() => {
     if (!activeTemplate) {
@@ -234,24 +228,71 @@ export function TeamCreator() {
     }))
   }
 
+  function handleMovePlayer(playerId: string, direction: 'up' | 'down') {
+    updateActiveTeam((team) => {
+      const currentIndex = team.players.findIndex((player) => player.id === playerId)
+
+      if (currentIndex < 0) {
+        return team
+      }
+
+      const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+
+      if (targetIndex < 0 || targetIndex >= team.players.length) {
+        return team
+      }
+
+      const nextPlayers = [...team.players]
+      const [movedPlayer] = nextPlayers.splice(currentIndex, 1)
+      nextPlayers.splice(targetIndex, 0, movedPlayer)
+
+      return {
+        ...team,
+        players: nextPlayers,
+      }
+    })
+  }
+
+  function handleDuplicatePlayer(playerId: string) {
+    if (!activeTemplate) {
+      return
+    }
+
+    updateActiveTeam((team) => {
+      const currentIndex = team.players.findIndex((player) => player.id === playerId)
+      const sourcePlayer = team.players[currentIndex]
+
+      if (!sourcePlayer) {
+        return team
+      }
+
+      const position = findPosition(activeTemplate, sourcePlayer.positionTemplateId)
+
+      if (!position || getRemainingSlots(team, activeTemplate, position.id) <= 0) {
+        return team
+      }
+
+      const duplicatedPlayer = {
+        ...sourcePlayer,
+        id: crypto.randomUUID(),
+        name: `${sourcePlayer.name} Copy`,
+        shirtNumber: null,
+      }
+
+      const nextPlayers = [...team.players]
+      nextPlayers.splice(currentIndex + 1, 0, duplicatedPlayer)
+
+      return {
+        ...team,
+        players: nextPlayers,
+      }
+    })
+  }
+
   function handlePlayerNameChange(playerId: string, name: string) {
     updateActiveTeam((team) => ({
       ...team,
       players: team.players.map((player) => (player.id === playerId ? { ...player, name } : player)),
-    }))
-  }
-
-  function handlePlayerNumberChange(playerId: string, value: string) {
-    updateActiveTeam((team) => ({
-      ...team,
-      players: team.players.map((player) =>
-        player.id === playerId
-          ? {
-              ...player,
-              shirtNumber: value ? Number(value) : null,
-            }
-          : player,
-      ),
     }))
   }
 
@@ -300,6 +341,29 @@ export function TeamCreator() {
     await repository.saveTeam(activeTeam)
     refreshState()
     setFeedback(`Saved ${activeTeam.name}.`)
+  }
+
+  function renderSkills(skills: string[]) {
+    if (skills.length === 0) {
+      return 'None'
+    }
+
+    return skills.map((skill, index) => {
+      const reference = getSkillReference(skill)
+
+      return (
+        <span key={`${skill}-${index}`}>
+          {reference ? (
+            <button className={styles.skillLink} onClick={() => setActiveSkillReference(reference)} type="button">
+              {skill}
+            </button>
+          ) : (
+            <span>{skill}</span>
+          )}
+          {index < skills.length - 1 ? ', ' : ''}
+        </span>
+      )
+    })
   }
 
   if (!activeTeam || !activeTemplate) {
@@ -403,7 +467,7 @@ export function TeamCreator() {
                               <td>{position.agility}</td>
                               <td>{position.passing ?? '-'}</td>
                               <td>{position.armour}</td>
-                              <td>{position.startingSkills.length > 0 ? position.startingSkills.join(', ') : 'None'}</td>
+                              <td>{renderSkills(position.startingSkills)}</td>
                               <td>{formatCategories(position.primaryCategories)}</td>
                               <td>{formatCategories(position.secondaryCategories)}</td>
                             </tr>
@@ -524,33 +588,6 @@ export function TeamCreator() {
               </div>
             </div>
 
-            <div className={styles.inlineDraftRow}>
-              <span className={styles.inlineDraftCellMuted}>Player Name</span>
-              <div className={styles.inlineDraftActions}>
-                <button className={styles.inlineAddButton} onClick={handleAddPlayer} type="button">
-                  +
-                </button>
-                <span>x</span>
-                <span>1</span>
-              </div>
-              <label className={styles.inlineDraftSelectWrap}>
-                <span className={styles.visuallyHidden}>Position</span>
-                <select value={effectiveSelectedPositionId} onChange={(event) => setSelectedPositionId(event.target.value)}>
-                  {activeTemplate.positions.map((position) => {
-                    const used = teamCounts[position.id] ?? 0
-                    const remaining = getRemainingSlots(activeTeam, activeTemplate, position.id)
-
-                    return (
-                      <option key={position.id} value={position.id} disabled={remaining <= 0}>
-                        {position.name} {used}/{position.maxQty}
-                      </option>
-                    )
-                  })}
-                </select>
-              </label>
-              <span className={styles.inlineDraftHint}>Quantity and shared-limit checks are enforced automatically.</span>
-            </div>
-
             {draftWarnings.length > 0 ? (
               <div className={styles.inlineWarnings}>
                 <strong>Roster Needs Attention</strong>
@@ -569,6 +606,7 @@ export function TeamCreator() {
                 <thead>
                   <tr>
                     <th>#</th>
+                    <th>Controls</th>
                     <th>Name</th>
                     <th>Position</th>
                     <th>MA</th>
@@ -580,19 +618,13 @@ export function TeamCreator() {
                     <th>SPP</th>
                     <th>NI</th>
                     <th>Value</th>
-                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {activeTeam.players.length === 0 ? (
-                    <tr>
-                      <td colSpan={13} className={styles.emptyTableCell}>
-                        Add players from the selected roster template.
-                      </td>
-                    </tr>
-                  ) : (
-                    activeTeam.players.map((player, index) => {
-                      const position = findPosition(activeTemplate, player.positionTemplateId)
+                  {activeTeam.players.length === 0
+                    ? null
+                    : activeTeam.players.map((player, index) => {
+                        const position = findPosition(activeTemplate, player.positionTemplateId)
 
                       if (!position) {
                         return null
@@ -600,43 +632,107 @@ export function TeamCreator() {
 
                       const skills = [...position.startingSkills, ...player.extraSkills]
 
-                      return (
-                        <tr key={player.id}>
-                          <td>{player.shirtNumber ?? index + 1}</td>
-                          <td>
-                            <input
-                              className={styles.inlineInput}
-                              value={player.name}
-                              onChange={(event) => handlePlayerNameChange(player.id, event.target.value)}
-                            />
-                            <input
-                              className={styles.numberInput}
-                              type="number"
-                              min="0"
-                              placeholder="No."
-                              value={player.shirtNumber ?? ''}
-                              onChange={(event) => handlePlayerNumberChange(player.id, event.target.value)}
-                            />
-                          </td>
-                          <td>{position.name}</td>
+                        return (
+                          <tr key={player.id}>
+                            <td>{player.shirtNumber ?? index + 1}</td>
+                            <td>
+                              <div className={styles.playerControls}>
+                                <button
+                                  className={styles.iconButton}
+                                  onClick={() => handleMovePlayer(player.id, 'up')}
+                                  type="button"
+                                  disabled={index === 0}
+                                  aria-label="Move player up"
+                                >
+                                  ↑
+                                </button>
+                                <button
+                                  className={styles.iconButton}
+                                  onClick={() => handleMovePlayer(player.id, 'down')}
+                                  type="button"
+                                  disabled={index === activeTeam.players.length - 1}
+                                  aria-label="Move player down"
+                                >
+                                  ↓
+                                </button>
+                                <button
+                                  className={styles.iconButton}
+                                  onClick={() => handleDuplicatePlayer(player.id)}
+                                  type="button"
+                                  disabled={getRemainingSlots(activeTeam, activeTemplate, position.id) <= 0}
+                                  aria-label="Duplicate player"
+                                >
+                                  ⧉
+                                </button>
+                                <button
+                                  className={styles.iconButton}
+                                  onClick={() => handleRemovePlayer(player.id)}
+                                  type="button"
+                                  aria-label="Delete player"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            </td>
+                            <td>
+                              <input
+                                className={styles.inlineInput}
+                                value={player.name}
+                                onChange={(event) => handlePlayerNameChange(player.id, event.target.value)}
+                              />
+                            </td>
+                            <td>{position.name}</td>
                           <td>{position.movement}</td>
                           <td>{position.strength}</td>
                           <td>{position.agility}</td>
                           <td>{position.passing ?? '-'}</td>
                           <td>{position.armour}</td>
-                          <td>{skills.length > 0 ? skills.join(', ') : 'None'}</td>
+                          <td>{renderSkills(skills)}</td>
                           <td>{player.spp}</td>
-                          <td>{player.nigglingInjuries}</td>
-                          <td>{formatGold(player.currentValue)}</td>
-                          <td>
-                            <button className={styles.rowButton} onClick={() => handleRemovePlayer(player.id)} type="button">
-                              Remove
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
+                            <td>{player.nigglingInjuries}</td>
+                            <td>{formatGold(player.currentValue)}</td>
+                          </tr>
+                        )
+                      })}
+                  <tr className={styles.draftEntryRow}>
+                    <td></td>
+                    <td>
+                      <div className={styles.inlineDraftActions}>
+                        <button className={styles.inlineAddButton} onClick={handleAddPlayer} type="button">
+                          +
+                        </button>
+                        <span>x</span>
+                        <span>1</span>
+                      </div>
+                    </td>
+                    <td className={styles.inlineDraftCellMuted}>Player Name</td>
+                    <td>
+                      <label className={styles.inlineDraftSelectWrap}>
+                        <span className={styles.visuallyHidden}>Position</span>
+                        <select value={effectiveSelectedPositionId} onChange={(event) => setSelectedPositionId(event.target.value)}>
+                          {activeTemplate.positions.map((position) => {
+                            const used = teamCounts[position.id] ?? 0
+                            const remaining = getRemainingSlots(activeTeam, activeTemplate, position.id)
+
+                            return (
+                              <option key={position.id} value={position.id} disabled={remaining <= 0}>
+                                {position.name} {used}/{position.maxQty}
+                              </option>
+                            )
+                          })}
+                        </select>
+                      </label>
+                    </td>
+                    <td>{selectedPosition?.movement ?? '-'}</td>
+                    <td>{selectedPosition?.strength ?? '-'}</td>
+                    <td>{selectedPosition?.agility ?? '-'}</td>
+                    <td>{selectedPosition?.passing ?? '-'}</td>
+                    <td>{selectedPosition?.armour ?? '-'}</td>
+                    <td>{selectedPosition ? renderSkills(selectedPosition.startingSkills) : '-'}</td>
+                    <td>0</td>
+                    <td>0</td>
+                    <td>{selectedPosition ? formatGold(selectedPosition.cost) : '-'}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -680,7 +776,7 @@ export function TeamCreator() {
                         <td>{position.agility}</td>
                         <td>{position.passing ?? '-'}</td>
                         <td>{position.armour}</td>
-                        <td>{position.startingSkills.length > 0 ? position.startingSkills.join(', ') : 'None'}</td>
+                        <td>{renderSkills(position.startingSkills)}</td>
                         <td>{formatCategories(position.primaryCategories)}</td>
                         <td>{formatCategories(position.secondaryCategories)}</td>
                       </tr>
@@ -817,33 +913,26 @@ export function TeamCreator() {
                   </label>
                 </div>
               </section>
-            </section>
-            </section>
-
-            <section className={styles.panel}>
-              <div className={styles.panelHeader}>
-                <div>
-                  <p className={styles.sectionKicker}>Composition</p>
-                  <h2 className={styles.panelHeadline}>Roster Breakdown</h2>
-                </div>
-              </div>
-
-              <div className={styles.breakdownGrid}>
-                {rosterPositionGroups.map(({ position, used, remaining }) => (
-                  <article key={position.id} className={styles.breakdownCard}>
-                    <strong>{position.name}</strong>
-                    <span>{used}/{position.maxQty} rostered</span>
-                    <span>{formatGold(position.cost)} gp</span>
-                    <small>{remaining > 0 ? `${remaining} slot${remaining === 1 ? '' : 's'} open` : 'Full'}</small>
-                  </article>
-                ))}
-              </div>
+              </section>
             </section>
           </section>
         </>
 
         <footer className={styles.feedback}>{feedback || 'Local-first repository active. Saved teams stay in this browser for now.'}</footer>
       </section>
+      {activeSkillReference ? (
+        <div className={styles.skillModalBackdrop} onClick={() => setActiveSkillReference(null)} role="presentation">
+          <div className={styles.skillModal} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+            <button className={styles.skillModalClose} onClick={() => setActiveSkillReference(null)} type="button" aria-label="Close skill details">
+              ×
+            </button>
+            <h2 className={styles.skillModalTitle}>{activeSkillReference.name}</h2>
+            <p className={styles.skillModalMeta}>Type: {activeSkillReference.type}</p>
+            <p className={styles.skillModalExcerpt}>{activeSkillReference.excerpt}</p>
+            <p className={styles.skillModalPage}>Reference: page {activeSkillReference.page}</p>
+          </div>
+        </div>
+      ) : null}
       </div>
     </div>
   )

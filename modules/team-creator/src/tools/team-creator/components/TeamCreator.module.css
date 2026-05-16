@@ -359,16 +359,6 @@
   color: #685447;
 }
 
-.inlineDraftRow {
-  display: grid;
-  grid-template-columns: 1fr auto minmax(280px, 430px) 1fr;
-  gap: 14px;
-  align-items: center;
-  padding: 6px 0 14px;
-  border-top: 1px solid rgba(137, 65, 51, 0.18);
-  border-bottom: 1px solid rgba(137, 65, 51, 0.18);
-}
-
 .inlineDraftCellMuted {
   color: #7a6455;
   font-style: italic;
@@ -378,6 +368,12 @@
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.playerControls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .inlineAddButton {
@@ -391,6 +387,21 @@
   font-weight: 700;
 }
 
+.iconButton {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(36, 74, 122, 0.14);
+  color: #244a7a;
+  font-weight: 700;
+}
+
+.iconButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .inlineDraftSelectWrap select {
   width: 100%;
   border: 1px solid rgba(115, 29, 19, 0.24);
@@ -398,11 +409,6 @@
   background: #fffdf9;
   color: #231915;
   padding: 9px 12px;
-}
-
-.inlineDraftHint {
-  color: #685447;
-  font-size: 0.9rem;
 }
 
 .inlineWarnings,
@@ -465,9 +471,25 @@
   background: rgba(80, 80, 80, 0.08);
 }
 
+.skillLink {
+  border: 0;
+  background: transparent;
+  color: #244a7a;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.draftEntryRow {
+  background: #fff !important;
+}
+
+.draftEntryRow td {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
 .inlineInput {
   min-width: 180px;
-  margin-bottom: 8px;
   border: 1px solid rgba(115, 29, 19, 0.24);
   border-radius: 10px;
   background: #fffdf9;
@@ -475,16 +497,6 @@
   padding: 8px 10px;
 }
 
-.numberInput {
-  max-width: 88px;
-  border: 1px solid rgba(115, 29, 19, 0.24);
-  border-radius: 10px;
-  background: #fffdf9;
-  color: #231915;
-  padding: 8px 10px;
-}
-
-.rowButton,
 .deleteButton {
   border-radius: 999px;
   background: rgba(159, 29, 23, 0.08);
@@ -626,6 +638,55 @@
   padding: 0 2px;
 }
 
+.skillModalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(24, 24, 24, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.skillModal {
+  position: relative;
+  width: min(760px, 100%);
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.2);
+  padding: 28px;
+}
+
+.skillModalClose {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 2px solid #3a3a3a;
+  background: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.skillModalTitle {
+  margin: 0 0 8px;
+  color: #971d17;
+  font-size: 1.8rem;
+}
+
+.skillModalMeta,
+.skillModalPage {
+  margin: 0 0 10px;
+  color: #494949;
+}
+
+.skillModalExcerpt {
+  margin: 0 0 14px;
+  color: #222;
+  line-height: 1.5;
+}
+
 @media (max-width: 1100px) {
   .pageFrame {
     width: min(100vw - 24px, 1280px);
@@ -639,9 +700,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .inlineDraftRow {
-    grid-template-columns: 1fr 1fr;
-  }
 }
 
 @media (max-width: 720px) {
@@ -660,7 +718,6 @@
   .draftSummaryDeck,
   .breakdownGrid,
   .loadRowButton,
-  .inlineDraftRow,
   .summaryLedger,
   .staffLedger {
     grid-template-columns: 1fr;
