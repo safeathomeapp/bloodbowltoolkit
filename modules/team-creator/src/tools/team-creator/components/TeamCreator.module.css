@@ -57,6 +57,38 @@
   gap: 18px;
 }
 
+.librarySinglePane {
+  display: grid;
+}
+
+.libraryNav {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.libraryNavButton,
+.libraryNavButtonActive {
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.libraryNavButton {
+  border: 1px solid rgba(31, 71, 120, 0.28);
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--suite-blue);
+}
+
+.libraryNavButtonActive {
+  border: 1px solid var(--suite-accent);
+  background: linear-gradient(135deg, var(--suite-accent) 0%, var(--suite-accent-dark) 100%);
+  color: #fff7ef;
+  box-shadow: 0 12px 24px rgba(126, 20, 15, 0.18);
+}
+
 .createTeamGrid {
   display: grid;
   gap: 14px;
@@ -95,6 +127,10 @@
 
 .templateChip:hover,
 .templateChipActive:hover,
+.libraryNavButton:hover,
+.libraryNavButtonActive:hover,
+.editorStageButton:hover,
+.editorStageButtonActive:hover,
 .libraryCardButton:hover,
 .teamCardButton:hover,
 .secondaryButton:hover,
@@ -222,6 +258,34 @@
 .editorTopbar {
   display: flex;
   justify-content: flex-start;
+}
+
+.editorStageNav {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.editorStageButton,
+.editorStageButtonActive {
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.editorStageButton {
+  border: 1px solid rgba(31, 71, 120, 0.28);
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--suite-blue);
+}
+
+.editorStageButtonActive {
+  border: 1px solid var(--suite-accent);
+  background: linear-gradient(135deg, var(--suite-accent) 0%, var(--suite-accent-dark) 100%);
+  color: #fff7ef;
+  box-shadow: 0 12px 24px rgba(126, 20, 15, 0.18);
 }
 
 .sidebar,
@@ -629,6 +693,13 @@
 .warningPanel {
   background: rgba(159, 29, 23, 0.08);
   border: 1px solid rgba(159, 29, 23, 0.18);
+  border-radius: 22px;
+  padding: 18px;
+}
+
+.successPanel {
+  background: rgba(31, 71, 120, 0.08);
+  border: 1px solid rgba(31, 71, 120, 0.18);
   border-radius: 22px;
   padding: 18px;
 }

@@ -60,6 +60,8 @@ export function TeamCreator() {
   const [selectedTemplateId, setSelectedTemplateId] = useState(() => repository.listRosterTemplatesSync()[0]?.id ?? '')
   const [newTeamName, setNewTeamName] = useState('')
   const [templateSearch, setTemplateSearch] = useState('')
+  const [libraryView, setLibraryView] = useState<'CREATE' | 'LOAD'>('CREATE')
+  const [editorStage, setEditorStage] = useState<'IDENTITY' | 'PLAYERS' | 'STAFF' | 'REVIEW'>('IDENTITY')
   const [activeTeam, setActiveTeam] = useState<SavedTeam | null>(null)
   const [selectedPositionId, setSelectedPositionId] = useState('')
   const [feedback, setFeedback] = useState('')
@@ -167,6 +169,7 @@ export function TeamCreator() {
     const nextTeam = createTeam(newTeamName, template)
     await repository.saveTeam(nextTeam)
     refreshState()
+    setEditorStage('IDENTITY')
     setActiveTeam(nextTeam)
     setNewTeamName('')
     setFeedback(`Created ${nextTeam.name}.`)
@@ -180,6 +183,7 @@ export function TeamCreator() {
       return
     }
 
+    setEditorStage('IDENTITY')
     setActiveTeam(nextTeam)
     setFeedback(`Loaded ${nextTeam.name}.`)
   }
@@ -327,140 +331,161 @@ export function TeamCreator() {
           </div>
         </header>
 
-        <section className={styles.libraryDeck}>
-          <section className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <div>
-                <p className={styles.sectionKicker}>Start Here</p>
-                <h2 className={styles.panelHeadline}>Create New Team</h2>
-              </div>
-            </div>
-            <div className={styles.createTeamGrid}>
-              <label className={styles.field}>
-                <span>Search Rosters</span>
-                <input
-                  value={templateSearch}
-                  onChange={(event) => setTemplateSearch(event.target.value)}
-                  placeholder="Search team type"
-                />
-              </label>
-              <div className={styles.templatePicker}>
-                {filteredTemplates.map((template) => (
-                  <button
-                    key={template.id}
-                    className={template.id === selectedTemplateId ? styles.templateChipActive : styles.templateChip}
-                    onClick={() => setSelectedTemplateId(template.id)}
-                    type="button"
-                  >
-                    {template.name}
-                  </button>
-                ))}
-              </div>
+        <nav className={styles.libraryNav} aria-label="Team vault workflows">
+          <button
+            className={libraryView === 'CREATE' ? styles.libraryNavButtonActive : styles.libraryNavButton}
+            onClick={() => setLibraryView('CREATE')}
+            type="button"
+          >
+            Create Team
+          </button>
+          <button
+            className={libraryView === 'LOAD' ? styles.libraryNavButtonActive : styles.libraryNavButton}
+            onClick={() => setLibraryView('LOAD')}
+            type="button"
+          >
+            Load Saved Team
+          </button>
+        </nav>
 
-              {!selectedTemplate ? null : (
-                <section className={styles.templatePreview}>
-                  <div className={styles.templatePreviewHeader}>
-                    <div>
-                      <p className={styles.sectionKicker}>Roster Preview</p>
-                      <h3 className={styles.templatePreviewTitle}>{selectedTemplate.name}</h3>
-                    </div>
-                    <div className={styles.templatePreviewMeta}>
-                      <span>{selectedTemplate.leagues.join(' / ') || 'League not listed'}</span>
-                      <span>Rerolls {formatGold(selectedTemplate.rerollCost)} gp</span>
-                    </div>
-                  </div>
+        {libraryView === 'CREATE' ? (
+          <section className={styles.librarySinglePane}>
+            <section className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <div>
+                  <p className={styles.sectionKicker}>Start Here</p>
+                  <h2 className={styles.panelHeadline}>Create New Team</h2>
+                </div>
+              </div>
+              <div className={styles.createTeamGrid}>
+                <label className={styles.field}>
+                  <span>Search Rosters</span>
+                  <input
+                    value={templateSearch}
+                    onChange={(event) => setTemplateSearch(event.target.value)}
+                    placeholder="Search team type"
+                  />
+                </label>
+                <div className={styles.templatePicker}>
+                  {filteredTemplates.map((template) => (
+                    <button
+                      key={template.id}
+                      className={template.id === selectedTemplateId ? styles.templateChipActive : styles.templateChip}
+                      onClick={() => setSelectedTemplateId(template.id)}
+                      type="button"
+                    >
+                      {template.name}
+                    </button>
+                  ))}
+                </div>
 
-                  <div className={styles.templatePreviewTableWrap}>
-                    <table className={styles.templatePreviewTable}>
-                      <thead>
-                        <tr>
-                          <th>Qty</th>
-                          <th>Position</th>
-                          <th>Cost</th>
-                          <th>MA</th>
-                          <th>ST</th>
-                          <th>AG</th>
-                          <th>PA</th>
-                          <th>AV</th>
-                          <th>Skills</th>
-                          <th>Primary</th>
-                          <th>Secondary</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedTemplate.positions.map((position) => (
-                          <tr key={position.id}>
-                            <td>
-                              {position.minQty}-{position.maxQty}
-                            </td>
-                            <td>{position.name}</td>
-                            <td>{formatGold(position.cost)}</td>
-                            <td>{position.movement}</td>
-                            <td>{position.strength}</td>
-                            <td>{position.agility}</td>
-                            <td>{position.passing ?? '-'}</td>
-                            <td>{position.armour}</td>
-                            <td>{position.startingSkills.length > 0 ? position.startingSkills.join(', ') : 'None'}</td>
-                            <td>{formatCategories(position.primaryCategories)}</td>
-                            <td>{formatCategories(position.secondaryCategories)}</td>
+                {!selectedTemplate ? null : (
+                  <section className={styles.templatePreview}>
+                    <div className={styles.templatePreviewHeader}>
+                      <div>
+                        <p className={styles.sectionKicker}>Roster Preview</p>
+                        <h3 className={styles.templatePreviewTitle}>{selectedTemplate.name}</h3>
+                      </div>
+                      <div className={styles.templatePreviewMeta}>
+                        <span>{selectedTemplate.leagues.join(' / ') || 'League not listed'}</span>
+                        <span>Rerolls {formatGold(selectedTemplate.rerollCost)} gp</span>
+                      </div>
+                    </div>
+
+                    <div className={styles.templatePreviewTableWrap}>
+                      <table className={styles.templatePreviewTable}>
+                        <thead>
+                          <tr>
+                            <th>Qty</th>
+                            <th>Position</th>
+                            <th>Cost</th>
+                            <th>MA</th>
+                            <th>ST</th>
+                            <th>AG</th>
+                            <th>PA</th>
+                            <th>AV</th>
+                            <th>Skills</th>
+                            <th>Primary</th>
+                            <th>Secondary</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {selectedTemplate.positions.map((position) => (
+                            <tr key={position.id}>
+                              <td>
+                                {position.minQty}-{position.maxQty}
+                              </td>
+                              <td>{position.name}</td>
+                              <td>{formatGold(position.cost)}</td>
+                              <td>{position.movement}</td>
+                              <td>{position.strength}</td>
+                              <td>{position.agility}</td>
+                              <td>{position.passing ?? '-'}</td>
+                              <td>{position.armour}</td>
+                              <td>{position.startingSkills.length > 0 ? position.startingSkills.join(', ') : 'None'}</td>
+                              <td>{formatCategories(position.primaryCategories)}</td>
+                              <td>{formatCategories(position.secondaryCategories)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
 
-                  <div className={styles.templatePreviewFooter}>
-                    <label className={styles.field}>
-                      <span>Team Name</span>
-                      <input
-                        value={newTeamName}
-                        onChange={(event) => setNewTeamName(event.target.value)}
-                        placeholder={`Enter ${selectedTemplate.name} team name`}
-                      />
-                    </label>
-                    <button className={styles.primaryButton} onClick={handleCreateTeam} type="button">
-                      Create Team
-                    </button>
-                  </div>
-                </section>
-              )}
-            </div>
-          </section>
-
-          <section className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <div>
-                <p className={styles.sectionKicker}>Load Existing</p>
-                <h2 className={styles.panelHeadline}>Saved Teams</h2>
+                    <div className={styles.templatePreviewFooter}>
+                      <label className={styles.field}>
+                        <span>Team Name</span>
+                        <input
+                          value={newTeamName}
+                          onChange={(event) => setNewTeamName(event.target.value)}
+                          placeholder={`Enter ${selectedTemplate.name} team name`}
+                        />
+                      </label>
+                      <button className={styles.primaryButton} onClick={handleCreateTeam} type="button">
+                        Create Team
+                      </button>
+                    </div>
+                  </section>
+                )}
               </div>
-            </div>
-
-            <div className={styles.libraryList}>
-              {teams.length === 0 ? (
-                <p className={styles.emptyState}>No saved teams yet.</p>
-              ) : (
-                teams.map((team) => (
-                  <article key={team.id} className={styles.libraryCard}>
-                    <button className={styles.libraryCardButton} onClick={() => void handleOpenTeam(team.id)} type="button">
-                      <div className={styles.libraryCardHeader}>
-                        <strong>{team.name}</strong>
-                        <span className={styles.libraryStatus}>{team.status.toLowerCase()}</span>
-                      </div>
-                      <span>{templates.find((template) => template.id === team.rosterTemplateId)?.name ?? 'Unknown roster'}</span>
-                      <div className={styles.libraryMetaRow}>
-                        <span>{team.playerCount} players</span>
-                        <span>Team Value {formatGold(team.totalValue)} gp</span>
-                      </div>
-                    </button>
-                    <button className={styles.deleteButton} onClick={() => void handleDeleteTeam(team.id)} type="button">
-                      Delete
-                    </button>
-                  </article>
-                ))
-              )}
-            </div>
+            </section>
           </section>
-        </section>
+        ) : (
+          <section className={styles.librarySinglePane}>
+            <section className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <div>
+                  <p className={styles.sectionKicker}>Load Existing</p>
+                  <h2 className={styles.panelHeadline}>Saved Teams</h2>
+                </div>
+              </div>
+
+              <div className={styles.libraryList}>
+                {teams.length === 0 ? (
+                  <p className={styles.emptyState}>No saved teams yet.</p>
+                ) : (
+                  teams.map((team) => (
+                    <article key={team.id} className={styles.libraryCard}>
+                      <button className={styles.libraryCardButton} onClick={() => void handleOpenTeam(team.id)} type="button">
+                        <div className={styles.libraryCardHeader}>
+                          <strong>{team.name}</strong>
+                          <span className={styles.libraryStatus}>{team.status.toLowerCase()}</span>
+                        </div>
+                        <span>{templates.find((template) => template.id === team.rosterTemplateId)?.name ?? 'Unknown roster'}</span>
+                        <div className={styles.libraryMetaRow}>
+                          <span>{team.playerCount} players</span>
+                          <span>Team Value {formatGold(team.totalValue)} gp</span>
+                        </div>
+                      </button>
+                      <button className={styles.deleteButton} onClick={() => void handleDeleteTeam(team.id)} type="button">
+                        Delete
+                      </button>
+                    </article>
+                  ))
+                )}
+              </div>
+            </section>
+          </section>
+        )}
 
         <footer className={styles.feedback}>{feedback || 'Choose a team to load or create a fresh draft.'}</footer>
       </div>
@@ -471,75 +496,115 @@ export function TeamCreator() {
     <div className={styles.editorLayout}>
       <section className={styles.editor}>
         <>
-            <div className={styles.editorTopbar}>
-              <button className={styles.secondaryButton} onClick={() => setActiveTeam(null)} type="button">
-                Back To Team Vault
+          <div className={styles.editorTopbar}>
+            <button className={styles.secondaryButton} onClick={() => setActiveTeam(null)} type="button">
+              Back To Team Vault
+            </button>
+          </div>
+          <header className={styles.hero}>
+            <div className={styles.heroCopy}>
+              <p className={styles.kicker}>Blood Bowl Toolkit Suite</p>
+              <input
+                className={styles.teamNameInput}
+                value={activeTeam.name}
+                onChange={(event) => handleTeamNameChange(event.target.value)}
+                aria-label="Team name"
+              />
+              <div className={styles.heroMeta}>
+                <span className={styles.heroPill}>{activeTemplate.name}</span>
+                <span className={styles.heroPill}>{activeTeam.players.length} players</span>
+                <span className={styles.heroPill}>{activeTeam.status.toLowerCase()}</span>
+              </div>
+              <p className={styles.metaLine}>{activeTemplate.leagues.join(' / ') || 'League not listed'}</p>
+            </div>
+            <div className={styles.heroAside}>
+              <div className={styles.heroValuePanel}>
+                <span>Total Team Value</span>
+                <strong>{formatGold(calculateTeamValue(activeTeam, activeTemplate))} gp</strong>
+              </div>
+              <button className={styles.primaryButton} onClick={() => void handleSaveTeam()} type="button">
+                Save Team
               </button>
             </div>
-            <header className={styles.hero}>
-              <div className={styles.heroCopy}>
-                <p className={styles.kicker}>Blood Bowl Toolkit Suite</p>
-                <input
-                  className={styles.teamNameInput}
-                  value={activeTeam.name}
-                  onChange={(event) => handleTeamNameChange(event.target.value)}
-                  aria-label="Team name"
-                />
-                <div className={styles.heroMeta}>
-                  <span className={styles.heroPill}>{activeTemplate.name}</span>
-                  <span className={styles.heroPill}>{activeTeam.players.length} players</span>
-                  <span className={styles.heroPill}>{activeTeam.status.toLowerCase()}</span>
-                </div>
-                <p className={styles.metaLine}>{activeTemplate.leagues.join(' / ') || 'League not listed'}</p>
-              </div>
-              <div className={styles.heroAside}>
-                <div className={styles.heroValuePanel}>
-                  <span>Total Team Value</span>
-                  <strong>{formatGold(calculateTeamValue(activeTeam, activeTemplate))} gp</strong>
-                </div>
-                <button className={styles.primaryButton} onClick={() => void handleSaveTeam()} type="button">
-                  Save Team
-                </button>
-              </div>
-            </header>
+          </header>
 
-            <section className={styles.summaryGrid}>
-              <article className={styles.summaryCard}>
-                <span>Roster Type</span>
-                <strong>{activeTemplate.name}</strong>
-                <small>{activeTemplate.specialRules.length > 0 ? activeTemplate.specialRules.join(' • ') : 'No special rules'}</small>
-              </article>
-              <article className={styles.summaryCard}>
-                <span>Draft Budget</span>
-                <strong>
-                  {formatGold(activeTeam.draftBudget)} gp
-                </strong>
-                <small>{formatGold(calculateTreasury(activeTeam, activeTemplate))} gp treasury remaining</small>
-              </article>
-              <article className={styles.summaryCard}>
-                <span>Player Value</span>
-                <strong>{formatGold(calculatePlayerValue(activeTeam))} gp</strong>
-                <small>Purchased player total</small>
-              </article>
-              <article className={styles.summaryCard}>
-                <span>Draft Status</span>
-                <strong>{draftWarnings.length === 0 ? 'Ready' : 'Needs fixes'}</strong>
-                <small>
-                  {activeTeam.players.length}/{activeTemplatePlayerLimit} registered players
-                </small>
-              </article>
-            </section>
+          <nav className={styles.editorStageNav} aria-label="Draft stages">
+            <button
+              className={editorStage === 'IDENTITY' ? styles.editorStageButtonActive : styles.editorStageButton}
+              onClick={() => setEditorStage('IDENTITY')}
+              type="button"
+            >
+              Team Identity
+            </button>
+            <button
+              className={editorStage === 'PLAYERS' ? styles.editorStageButtonActive : styles.editorStageButton}
+              onClick={() => setEditorStage('PLAYERS')}
+              type="button"
+            >
+              Player Hiring
+            </button>
+            <button
+              className={editorStage === 'STAFF' ? styles.editorStageButtonActive : styles.editorStageButton}
+              onClick={() => setEditorStage('STAFF')}
+              type="button"
+            >
+              Staff And Fans
+            </button>
+            <button
+              className={editorStage === 'REVIEW' ? styles.editorStageButtonActive : styles.editorStageButton}
+              onClick={() => setEditorStage('REVIEW')}
+              type="button"
+            >
+              Final Review
+            </button>
+          </nav>
 
-            <section className={styles.editorDeck}>
+          {editorStage === 'IDENTITY' ? (
+            <>
+              <section className={styles.summaryGrid}>
+                <article className={styles.summaryCard}>
+                  <span>Roster Type</span>
+                  <strong>{activeTemplate.name}</strong>
+                  <small>{activeTemplate.specialRules.length > 0 ? activeTemplate.specialRules.join(' • ') : 'No special rules'}</small>
+                </article>
+                <article className={styles.summaryCard}>
+                  <span>Draft Budget</span>
+                  <strong>{formatGold(activeTeam.draftBudget)} gp</strong>
+                  <small>{formatGold(calculateTreasury(activeTeam, activeTemplate))} gp treasury remaining</small>
+                </article>
+                <article className={styles.summaryCard}>
+                  <span>Player Value</span>
+                  <strong>{formatGold(calculatePlayerValue(activeTeam))} gp</strong>
+                  <small>Purchased player total</small>
+                </article>
+                <article className={styles.summaryCard}>
+                  <span>Draft Status</span>
+                  <strong>{draftWarnings.length === 0 ? 'Ready' : 'Needs fixes'}</strong>
+                  <small>{activeTeam.players.length}/{activeTemplatePlayerLimit} registered players</small>
+                </article>
+              </section>
+
               <section className={styles.panel}>
                 <div className={styles.panelHeader}>
                   <div>
-                    <p className={styles.sectionKicker}>Control Desk</p>
+                    <p className={styles.sectionKicker}>Identity</p>
                     <h2 className={styles.panelHeadline}>Team Ledger</h2>
                   </div>
                 </div>
 
                 <div className={styles.controlGrid}>
+                  <label className={styles.compactField}>
+                    <span>Team Name</span>
+                    <input value={activeTeam.name} onChange={(event) => handleTeamNameChange(event.target.value)} />
+                  </label>
+                  <label className={styles.compactField}>
+                    <span>Status</span>
+                    <select value={activeTeam.status} onChange={(event) => handleStatusChange(event.target.value as SavedTeam['status'])}>
+                      <option value="DRAFT">Draft</option>
+                      <option value="ACTIVE">Active</option>
+                      <option value="RETIRED">Retired</option>
+                    </select>
+                  </label>
                   <label className={styles.compactField}>
                     <span>Draft Budget</span>
                     <input
@@ -550,14 +615,212 @@ export function TeamCreator() {
                       onChange={(event) => handleDraftBudgetChange(event.target.value)}
                     />
                   </label>
-                  <label className={styles.compactField}>
-                    <span>Status</span>
-                    <select value={activeTeam.status} onChange={(event) => handleStatusChange(event.target.value as SavedTeam['status'])}>
-                      <option value="DRAFT">Draft</option>
-                      <option value="ACTIVE">Active</option>
-                      <option value="RETIRED">Retired</option>
-                    </select>
-                  </label>
+                  <div className={styles.infoCard}>
+                    <span>Roster</span>
+                    <strong>{activeTemplate.name}</strong>
+                  </div>
+                  <div className={styles.infoCard}>
+                    <span>League</span>
+                    <strong>{activeTemplate.leagues.join(' / ') || 'League not listed'}</strong>
+                  </div>
+                  <div className={styles.infoCard}>
+                    <span>Source</span>
+                    <strong>{activeTemplate.source.replace('Blood Bowl rulebook screengrab: ', '')}</strong>
+                  </div>
+                </div>
+              </section>
+            </>
+          ) : null}
+
+          {editorStage === 'PLAYERS' ? (
+            <>
+              <section className={styles.editorDeck}>
+                <section className={styles.panel}>
+                  <div className={styles.panelHeader}>
+                    <div>
+                      <p className={styles.sectionKicker}>Roster Tools</p>
+                      <h2 className={styles.panelHeadline}>Add Players</h2>
+                    </div>
+                  </div>
+
+                  <div className={styles.toolbar}>
+                    <label className={styles.compactField}>
+                      <span>Position</span>
+                      <select value={effectiveSelectedPositionId} onChange={(event) => setSelectedPositionId(event.target.value)}>
+                        {activeTemplate.positions.map((position) => {
+                          const used = teamCounts[position.id] ?? 0
+                          const remaining = getRemainingSlots(activeTeam, activeTemplate, position.id)
+
+                          return (
+                            <option key={position.id} value={position.id} disabled={remaining <= 0}>
+                              {position.name} {used}/{position.maxQty}
+                            </option>
+                          )
+                        })}
+                      </select>
+                    </label>
+                    <button className={styles.primaryButton} onClick={handleAddPlayer} type="button">
+                      Add Player
+                    </button>
+                  </div>
+                  <p className={styles.helperText}>
+                    Quantity limits, shared big-guy restrictions, and draft budgeting are enforced from the roster template.
+                  </p>
+                </section>
+
+                <section className={styles.panel}>
+                  <div className={styles.panelHeader}>
+                    <div>
+                      <p className={styles.sectionKicker}>Composition</p>
+                      <h2 className={styles.panelHeadline}>Roster Breakdown</h2>
+                    </div>
+                  </div>
+
+                  <div className={styles.breakdownGrid}>
+                    {rosterPositionGroups.map(({ position, used, remaining }) => (
+                      <article key={position.id} className={styles.breakdownCard}>
+                        <strong>{position.name}</strong>
+                        <span>{used}/{position.maxQty} rostered</span>
+                        <span>{formatGold(position.cost)} gp</span>
+                        <small>{remaining > 0 ? `${remaining} slot${remaining === 1 ? '' : 's'} open` : 'Full'}</small>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              </section>
+
+              <section className={styles.panel}>
+                <div className={styles.panelHeader}>
+                  <div>
+                    <p className={styles.sectionKicker}>Main Roster</p>
+                    <h2 className={styles.panelHeadline}>Player Register</h2>
+                  </div>
+                </div>
+
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Position</th>
+                        <th>MA</th>
+                        <th>ST</th>
+                        <th>AG</th>
+                        <th>PA</th>
+                        <th>AV</th>
+                        <th>Skills</th>
+                        <th>SPP</th>
+                        <th>NI</th>
+                        <th>Value</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeTeam.players.length === 0 ? (
+                        <tr>
+                          <td colSpan={13} className={styles.emptyTableCell}>
+                            Add players from the selected roster template.
+                          </td>
+                        </tr>
+                      ) : (
+                        activeTeam.players.map((player, index) => {
+                          const position = findPosition(activeTemplate, player.positionTemplateId)
+
+                          if (!position) {
+                            return null
+                          }
+
+                          const skills = [...position.startingSkills, ...player.extraSkills]
+
+                          return (
+                            <tr key={player.id}>
+                              <td>{player.shirtNumber ?? index + 1}</td>
+                              <td>
+                                <input
+                                  className={styles.inlineInput}
+                                  value={player.name}
+                                  onChange={(event) => handlePlayerNameChange(player.id, event.target.value)}
+                                />
+                                <input
+                                  className={styles.numberInput}
+                                  type="number"
+                                  min="0"
+                                  placeholder="No."
+                                  value={player.shirtNumber ?? ''}
+                                  onChange={(event) => handlePlayerNumberChange(player.id, event.target.value)}
+                                />
+                              </td>
+                              <td>{position.name}</td>
+                              <td>{position.movement}</td>
+                              <td>{position.strength}</td>
+                              <td>{position.agility}</td>
+                              <td>{position.passing ?? '-'}</td>
+                              <td>{position.armour}</td>
+                              <td>{skills.length > 0 ? skills.join(', ') : 'None'}</td>
+                              <td>{player.spp}</td>
+                              <td>{player.nigglingInjuries}</td>
+                              <td>{formatGold(player.currentValue)}</td>
+                              <td>
+                                <button className={styles.rowButton} onClick={() => handleRemovePlayer(player.id)} type="button">
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </>
+          ) : null}
+
+          {editorStage === 'STAFF' ? (
+            <>
+              <section className={styles.summaryGrid}>
+                <article className={styles.summaryCard}>
+                  <span>Rerolls</span>
+                  <strong>{formatGold(calculateRerollValue(activeTeam, activeTemplate))} gp</strong>
+                  <small>{activeTeam.rerollCount} rerolls at {formatGold(activeTemplate.rerollCost)} gp</small>
+                </article>
+                <article className={styles.summaryCard}>
+                  <span>Sideline Staff</span>
+                  <strong>
+                    {formatGold(
+                      calculateAssistantCoachValue(activeTeam) +
+                        calculateCheerleaderValue(activeTeam) +
+                        calculateApothecaryValue(activeTeam),
+                    )}{' '}
+                    gp
+                  </strong>
+                  <small>
+                    {activeTeam.assistantCoachCount} AC • {activeTeam.cheerleaderCount} CL •{' '}
+                    {activeTeam.apothecaryPurchased ? 'Apothecary bought' : 'No apothecary'}
+                  </small>
+                </article>
+                <article className={styles.summaryCard}>
+                  <span>Dedicated Fans</span>
+                  <strong>{formatGold(calculateDedicatedFansValue(activeTeam))} gp</strong>
+                  <small>{activeTeam.dedicatedFans} starting fans</small>
+                </article>
+                <article className={styles.summaryCard}>
+                  <span>Treasury</span>
+                  <strong>{formatGold(calculateTreasury(activeTeam, activeTemplate))} gp</strong>
+                  <small>Budget remaining after draft spend</small>
+                </article>
+              </section>
+
+              <section className={styles.panel}>
+                <div className={styles.panelHeader}>
+                  <div>
+                    <p className={styles.sectionKicker}>Support Staff</p>
+                    <h2 className={styles.panelHeadline}>Sideline And Fans</h2>
+                  </div>
+                </div>
+
+                <div className={styles.controlGrid}>
                   <label className={styles.compactField}>
                     <span>Rerolls</span>
                     <input
@@ -612,259 +875,137 @@ export function TeamCreator() {
                     </small>
                   </label>
                   <div className={styles.infoCard}>
-                    <span>Treasury</span>
-                    <strong>{formatGold(calculateTreasury(activeTeam, activeTemplate))} gp</strong>
-                  </div>
-                  <div className={styles.infoCard}>
-                    <span>Source</span>
-                    <strong>{activeTemplate.source.replace('Blood Bowl rulebook screengrab: ', '')}</strong>
+                    <span>Apothecary Rule</span>
+                    <strong>{activeTemplate.apothecary}</strong>
                   </div>
                 </div>
               </section>
+            </>
+          ) : null}
 
-              <section className={styles.panel}>
-                <div className={styles.panelHeader}>
-                  <div>
-                    <p className={styles.sectionKicker}>Roster Tools</p>
-                    <h2 className={styles.panelHeadline}>Add Players</h2>
+          {editorStage === 'REVIEW' ? (
+            <>
+              {draftWarnings.length > 0 ? (
+                <section className={styles.warningPanel}>
+                  <div className={styles.panelHeader}>
+                    <div>
+                      <p className={styles.sectionKicker}>Draft Checks</p>
+                      <h2 className={styles.panelHeadline}>Roster Needs Attention</h2>
+                    </div>
                   </div>
-                </div>
-
-                <div className={styles.toolbar}>
-                  <label className={styles.compactField}>
-                    <span>Position</span>
-                    <select value={effectiveSelectedPositionId} onChange={(event) => setSelectedPositionId(event.target.value)}>
-                      {activeTemplate.positions.map((position) => {
-                        const used = teamCounts[position.id] ?? 0
-                        const remaining = getRemainingSlots(activeTeam, activeTemplate, position.id)
-
-                        return (
-                          <option key={position.id} value={position.id} disabled={remaining <= 0}>
-                            {position.name} {used}/{position.maxQty}
-                          </option>
-                        )
-                      })}
-                    </select>
-                  </label>
-                  <button className={styles.primaryButton} onClick={handleAddPlayer} type="button">
-                    Add Player
-                  </button>
-                </div>
-                <p className={styles.helperText}>
-                  Quantity limits, shared big-guy restrictions, and draft budgeting are enforced from the roster template.
-                </p>
-              </section>
-            </section>
-
-            <section className={styles.summaryGrid}>
-              <article className={styles.summaryCard}>
-                <span>Rerolls</span>
-                <strong>{formatGold(calculateRerollValue(activeTeam, activeTemplate))} gp</strong>
-                <small>{activeTeam.rerollCount} rerolls at {formatGold(activeTemplate.rerollCost)} gp</small>
-              </article>
-              <article className={styles.summaryCard}>
-                <span>Sideline Staff</span>
-                <strong>
-                  {formatGold(
-                    calculateAssistantCoachValue(activeTeam) +
-                      calculateCheerleaderValue(activeTeam) +
-                      calculateApothecaryValue(activeTeam),
-                  )}{' '}
-                  gp
-                </strong>
-                <small>
-                  {activeTeam.assistantCoachCount} AC • {activeTeam.cheerleaderCount} CL •{' '}
-                  {activeTeam.apothecaryPurchased ? 'Apothecary bought' : 'No apothecary'}
-                </small>
-              </article>
-              <article className={styles.summaryCard}>
-                <span>Dedicated Fans</span>
-                <strong>{formatGold(calculateDedicatedFansValue(activeTeam))} gp</strong>
-                <small>{activeTeam.dedicatedFans} starting fans</small>
-              </article>
-              <article className={styles.summaryCard}>
-                <span>Team Value</span>
-                <strong>{formatGold(calculateTeamValue(activeTeam, activeTemplate))} gp</strong>
-                <small>Players, rerolls, staff, fans, and apothecary</small>
-              </article>
-            </section>
-
-            {draftWarnings.length > 0 ? (
-              <section className={styles.warningPanel}>
-                <div className={styles.panelHeader}>
-                  <div>
-                    <p className={styles.sectionKicker}>Draft Checks</p>
-                    <h2 className={styles.panelHeadline}>Roster Needs Attention</h2>
+                  <ul className={styles.warningList}>
+                    {draftWarnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </section>
+              ) : (
+                <section className={styles.successPanel}>
+                  <div className={styles.panelHeader}>
+                    <div>
+                      <p className={styles.sectionKicker}>Draft Checks</p>
+                      <h2 className={styles.panelHeadline}>Draft Ready</h2>
+                    </div>
                   </div>
-                </div>
-                <ul className={styles.warningList}>
-                  {draftWarnings.map((warning) => (
-                    <li key={warning}>{warning}</li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
+                  <p className={styles.helperText}>This roster currently satisfies the drafting checks tracked in the tool.</p>
+                </section>
+              )}
 
-            <section className={styles.panel}>
-              <div className={styles.panelHeader}>
-                <div>
-                  <p className={styles.sectionKicker}>Main Roster</p>
-                  <h2 className={styles.panelHeadline}>Player Register</h2>
-                </div>
-              </div>
-
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Name</th>
-                      <th>Position</th>
-                      <th>MA</th>
-                      <th>ST</th>
-                      <th>AG</th>
-                      <th>PA</th>
-                      <th>AV</th>
-                      <th>Skills</th>
-                      <th>SPP</th>
-                      <th>NI</th>
-                      <th>Value</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeTeam.players.length === 0 ? (
-                      <tr>
-                        <td colSpan={13} className={styles.emptyTableCell}>
-                          Add players from the selected roster template.
-                        </td>
-                      </tr>
-                    ) : (
-                      activeTeam.players.map((player, index) => {
-                        const position = findPosition(activeTemplate, player.positionTemplateId)
-
-                        if (!position) {
-                          return null
-                        }
-
-                        const skills = [...position.startingSkills, ...player.extraSkills]
-
-                        return (
-                          <tr key={player.id}>
-                            <td>{player.shirtNumber ?? index + 1}</td>
-                            <td>
-                              <input
-                                className={styles.inlineInput}
-                                value={player.name}
-                                onChange={(event) => handlePlayerNameChange(player.id, event.target.value)}
-                              />
-                              <input
-                                className={styles.numberInput}
-                                type="number"
-                                min="0"
-                                placeholder="No."
-                                value={player.shirtNumber ?? ''}
-                                onChange={(event) => handlePlayerNumberChange(player.id, event.target.value)}
-                              />
-                            </td>
-                            <td>{position.name}</td>
-                            <td>{position.movement}</td>
-                            <td>{position.strength}</td>
-                            <td>{position.agility}</td>
-                            <td>{position.passing ?? '-'}</td>
-                            <td>{position.armour}</td>
-                            <td>{skills.length > 0 ? skills.join(', ') : 'None'}</td>
-                            <td>{player.spp}</td>
-                            <td>{player.nigglingInjuries}</td>
-                            <td>{formatGold(player.currentValue)}</td>
-                            <td>
-                              <button className={styles.rowButton} onClick={() => handleRemovePlayer(player.id)} type="button">
-                                Remove
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
-            <section className={styles.bottomDeck}>
-              <section className={styles.panel}>
-                <div className={styles.panelHeader}>
-                  <div>
-                    <p className={styles.sectionKicker}>Template View</p>
-                    <h2 className={styles.panelHeadline}>Roster Template</h2>
-                  </div>
-                </div>
-                <div className={styles.tableWrap}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>Qty</th>
-                        <th>Position</th>
-                        <th>Cost</th>
-                        <th>MA</th>
-                        <th>ST</th>
-                        <th>AG</th>
-                        <th>PA</th>
-                        <th>AV</th>
-                        <th>Skills</th>
-                        <th>Primary</th>
-                        <th>Secondary</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {activeTemplate.positions.map((position) => {
-                        const used = teamCounts[position.id] ?? 0
-
-                        return (
-                          <tr key={position.id}>
-                            <td>
-                              {used}/{position.maxQty}
-                            </td>
-                            <td>{position.name}</td>
-                            <td>{formatGold(position.cost)}</td>
-                            <td>{position.movement}</td>
-                            <td>{position.strength}</td>
-                            <td>{position.agility}</td>
-                            <td>{position.passing ?? '-'}</td>
-                            <td>{position.armour}</td>
-                            <td>{position.startingSkills.length > 0 ? position.startingSkills.join(', ') : 'None'}</td>
-                            <td>{formatCategories(position.primaryCategories)}</td>
-                            <td>{formatCategories(position.secondaryCategories)}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+              <section className={styles.summaryGrid}>
+                <article className={styles.summaryCard}>
+                  <span>Players</span>
+                  <strong>{activeTeam.players.length}</strong>
+                  <small>{activeTemplatePlayerLimit} possible across this roster</small>
+                </article>
+                <article className={styles.summaryCard}>
+                  <span>Player Value</span>
+                  <strong>{formatGold(calculatePlayerValue(activeTeam))} gp</strong>
+                  <small>Current roster spend on players</small>
+                </article>
+                <article className={styles.summaryCard}>
+                  <span>Total Team Value</span>
+                  <strong>{formatGold(calculateTeamValue(activeTeam, activeTemplate))} gp</strong>
+                  <small>Players, rerolls, staff, fans, and apothecary</small>
+                </article>
+                <article className={styles.summaryCard}>
+                  <span>Treasury</span>
+                  <strong>{formatGold(calculateTreasury(activeTeam, activeTemplate))} gp</strong>
+                  <small>Remaining from draft budget</small>
+                </article>
               </section>
 
-              <section className={styles.panel}>
-                <div className={styles.panelHeader}>
-                  <div>
-                    <p className={styles.sectionKicker}>Composition</p>
-                    <h2 className={styles.panelHeadline}>Roster Breakdown</h2>
+              <section className={styles.bottomDeck}>
+                <section className={styles.panel}>
+                  <div className={styles.panelHeader}>
+                    <div>
+                      <p className={styles.sectionKicker}>Template View</p>
+                      <h2 className={styles.panelHeadline}>Roster Template</h2>
+                    </div>
                   </div>
-                </div>
+                  <div className={styles.tableWrap}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>Qty</th>
+                          <th>Position</th>
+                          <th>Cost</th>
+                          <th>MA</th>
+                          <th>ST</th>
+                          <th>AG</th>
+                          <th>PA</th>
+                          <th>AV</th>
+                          <th>Skills</th>
+                          <th>Primary</th>
+                          <th>Secondary</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeTemplate.positions.map((position) => {
+                          const used = teamCounts[position.id] ?? 0
 
-                <div className={styles.breakdownGrid}>
-                  {rosterPositionGroups.map(({ position, used, remaining }) => (
-                    <article key={position.id} className={styles.breakdownCard}>
-                      <strong>{position.name}</strong>
-                      <span>
-                        {used}/{position.maxQty} rostered
-                      </span>
-                      <span>{formatGold(position.cost)} gp</span>
-                      <small>{remaining > 0 ? `${remaining} slot${remaining === 1 ? '' : 's'} open` : 'Full'}</small>
-                    </article>
-                  ))}
-                </div>
+                          return (
+                            <tr key={position.id}>
+                              <td>{used}/{position.maxQty}</td>
+                              <td>{position.name}</td>
+                              <td>{formatGold(position.cost)}</td>
+                              <td>{position.movement}</td>
+                              <td>{position.strength}</td>
+                              <td>{position.agility}</td>
+                              <td>{position.passing ?? '-'}</td>
+                              <td>{position.armour}</td>
+                              <td>{position.startingSkills.length > 0 ? position.startingSkills.join(', ') : 'None'}</td>
+                              <td>{formatCategories(position.primaryCategories)}</td>
+                              <td>{formatCategories(position.secondaryCategories)}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section className={styles.panel}>
+                  <div className={styles.panelHeader}>
+                    <div>
+                      <p className={styles.sectionKicker}>Composition</p>
+                      <h2 className={styles.panelHeadline}>Roster Breakdown</h2>
+                    </div>
+                  </div>
+
+                  <div className={styles.breakdownGrid}>
+                    {rosterPositionGroups.map(({ position, used, remaining }) => (
+                      <article key={position.id} className={styles.breakdownCard}>
+                        <strong>{position.name}</strong>
+                        <span>{used}/{position.maxQty} rostered</span>
+                        <span>{formatGold(position.cost)} gp</span>
+                        <small>{remaining > 0 ? `${remaining} slot${remaining === 1 ? '' : 's'} open` : 'Full'}</small>
+                      </article>
+                    ))}
+                  </div>
+                </section>
               </section>
-            </section>
+            </>
+          ) : null}
         </>
 
         <footer className={styles.feedback}>{feedback || 'Local-first repository active. Saved teams stay in this browser for now.'}</footer>
