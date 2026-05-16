@@ -62,6 +62,115 @@
   gap: 14px;
 }
 
+.templatePicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(120, 84, 61, 0.06);
+}
+
+.templateChip,
+.templateChipActive {
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.templateChip {
+  border: 1px solid rgba(31, 71, 120, 0.35);
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--suite-blue);
+}
+
+.templateChipActive {
+  border: 1px solid var(--suite-accent);
+  background: linear-gradient(135deg, var(--suite-accent) 0%, var(--suite-accent-dark) 100%);
+  color: #fff7ef;
+  box-shadow: 0 12px 24px rgba(126, 20, 15, 0.18);
+}
+
+.templateChip:hover,
+.templateChipActive:hover,
+.libraryCardButton:hover,
+.teamCardButton:hover,
+.secondaryButton:hover,
+.primaryButton:hover {
+  transform: translateY(-1px);
+}
+
+.templatePreview {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.48), rgba(255, 248, 241, 0.82)),
+    rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(159, 29, 23, 0.12);
+}
+
+.templatePreviewHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: end;
+}
+
+.templatePreviewTitle {
+  margin: 0;
+  color: #412821;
+  font-size: 1.5rem;
+}
+
+.templatePreviewMeta {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+  color: var(--suite-muted);
+  font-size: 0.92rem;
+}
+
+.templatePreviewTableWrap {
+  overflow-x: auto;
+}
+
+.templatePreviewTable {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+}
+
+.templatePreviewTable thead th {
+  background: var(--suite-accent);
+  color: #fff7ef;
+  padding: 9px 8px;
+  text-align: left;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.templatePreviewTable tbody td {
+  padding: 9px 8px;
+  border-bottom: 1px solid rgba(137, 65, 51, 0.12);
+  vertical-align: top;
+}
+
+.templatePreviewTable tbody tr:nth-child(odd) {
+  background: rgba(148, 51, 34, 0.04);
+}
+
+.templatePreviewFooter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: end;
+}
+
 .libraryList {
   display: grid;
   gap: 12px;
@@ -568,6 +677,16 @@
 @media (max-width: 720px) {
   .libraryStats {
     grid-template-columns: 1fr;
+  }
+
+  .templatePreviewHeader,
+  .templatePreviewFooter {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .templatePreviewMeta {
+    justify-items: start;
   }
 
   .hero {

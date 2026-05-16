@@ -59,6 +59,7 @@ export function TeamCreator() {
   const [teams, setTeams] = useState<SavedTeamSummary[]>(() => repository.listTeamsSync())
   const [selectedTemplateId, setSelectedTemplateId] = useState(() => repository.listRosterTemplatesSync()[0]?.id ?? '')
   const [newTeamName, setNewTeamName] = useState('')
+  const [templateSearch, setTemplateSearch] = useState('')
   const [activeTeam, setActiveTeam] = useState<SavedTeam | null>(null)
   const [selectedPositionId, setSelectedPositionId] = useState('')
   const [feedback, setFeedback] = useState('')
@@ -116,6 +117,32 @@ export function TeamCreator() {
 
     return getDraftWarnings(activeTeam, activeTemplate)
   }, [activeTeam, activeTemplate])
+
+  const selectedTemplate = useMemo(
+    () => templates.find((template) => template.id === selectedTemplateId) ?? templates[0] ?? null,
+    [selectedTemplateId, templates],
+  )
+
+  const filteredTemplates = useMemo(() => {
+    const query = templateSearch.trim().toLowerCase()
+
+    if (!query) {
+      return templates
+    }
+
+    return templates.filter((template) => {
+      const haystack = [
+        template.name,
+        template.leagues.join(' '),
+        template.specialRules.join(' '),
+        ...template.positions.map((position) => position.name),
+      ]
+        .join(' ')
+        .toLowerCase()
+
+      return haystack.includes(query)
+    })
+  }, [templateSearch, templates])
 
   function refreshState() {
     const nextTemplates = repository.listRosterTemplatesSync()
@@ -310,26 +337,93 @@ export function TeamCreator() {
             </div>
             <div className={styles.createTeamGrid}>
               <label className={styles.field}>
-                <span>Roster</span>
-                <select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>
-                  {templates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className={styles.field}>
-                <span>Team Name</span>
+                <span>Search Rosters</span>
                 <input
-                  value={newTeamName}
-                  onChange={(event) => setNewTeamName(event.target.value)}
-                  placeholder="Enter team name"
+                  value={templateSearch}
+                  onChange={(event) => setTemplateSearch(event.target.value)}
+                  placeholder="Search team type"
                 />
               </label>
-              <button className={styles.primaryButton} onClick={handleCreateTeam} type="button">
-                Create Team
-              </button>
+              <div className={styles.templatePicker}>
+                {filteredTemplates.map((template) => (
+                  <button
+                    key={template.id}
+                    className={template.id === selectedTemplateId ? styles.templateChipActive : styles.templateChip}
+                    onClick={() => setSelectedTemplateId(template.id)}
+                    type="button"
+                  >
+                    {template.name}
+                  </button>
+                ))}
+              </div>
+
+              {!selectedTemplate ? null : (
+                <section className={styles.templatePreview}>
+                  <div className={styles.templatePreviewHeader}>
+                    <div>
+                      <p className={styles.sectionKicker}>Roster Preview</p>
+                      <h3 className={styles.templatePreviewTitle}>{selectedTemplate.name}</h3>
+                    </div>
+                    <div className={styles.templatePreviewMeta}>
+                      <span>{selectedTemplate.leagues.join(' / ') || 'League not listed'}</span>
+                      <span>Rerolls {formatGold(selectedTemplate.rerollCost)} gp</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.templatePreviewTableWrap}>
+                    <table className={styles.templatePreviewTable}>
+                      <thead>
+                        <tr>
+                          <th>Qty</th>
+                          <th>Position</th>
+                          <th>Cost</th>
+                          <th>MA</th>
+                          <th>ST</th>
+                          <th>AG</th>
+                          <th>PA</th>
+                          <th>AV</th>
+                          <th>Skills</th>
+                          <th>Primary</th>
+                          <th>Secondary</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedTemplate.positions.map((position) => (
+                          <tr key={position.id}>
+                            <td>
+                              {position.minQty}-{position.maxQty}
+                            </td>
+                            <td>{position.name}</td>
+                            <td>{formatGold(position.cost)}</td>
+                            <td>{position.movement}</td>
+                            <td>{position.strength}</td>
+                            <td>{position.agility}</td>
+                            <td>{position.passing ?? '-'}</td>
+                            <td>{position.armour}</td>
+                            <td>{position.startingSkills.length > 0 ? position.startingSkills.join(', ') : 'None'}</td>
+                            <td>{formatCategories(position.primaryCategories)}</td>
+                            <td>{formatCategories(position.secondaryCategories)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className={styles.templatePreviewFooter}>
+                    <label className={styles.field}>
+                      <span>Team Name</span>
+                      <input
+                        value={newTeamName}
+                        onChange={(event) => setNewTeamName(event.target.value)}
+                        placeholder={`Enter ${selectedTemplate.name} team name`}
+                      />
+                    </label>
+                    <button className={styles.primaryButton} onClick={handleCreateTeam} type="button">
+                      Create Team
+                    </button>
+                  </div>
+                </section>
+              )}
             </div>
           </section>
 
