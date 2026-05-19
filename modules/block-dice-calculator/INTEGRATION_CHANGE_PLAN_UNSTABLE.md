@@ -186,3 +186,17 @@ Pay special attention to:
 - whether source switching feels clear enough when a side already has players on the pitch
 - whether missing shirt numbers or similar player labels are confusing in the block-dice UI
 - whether any saved team fails to load because of roster-template mismatch
+
+## UX Follow-Up Note
+
+Observed during shared-team beta testing on `2026-05-19`:
+
+- imported team placement state is still too sticky across sides
+- if the user changes the imported-player dropdown for blue, then taps the grid while blue is still the active placement side, block dice may place the next blue imported player even when the user is mentally focused on a different side or team
+- this is not a rules bug, but it is a workflow nuisance and should be revisited during the later block-dice UX tidy pass
+
+When revisiting this:
+
+- review how active side, selected imported team, and selected next player are communicated before grid placement
+- consider whether side switching, placement arming, or explicit source confirmation needs to be clearer
+- do not change it during the current backend/session implementation pass unless it starts blocking match-session integration

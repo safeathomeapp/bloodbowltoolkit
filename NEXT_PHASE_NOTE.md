@@ -4,9 +4,11 @@
 
 - block dice is stable and now accepts imported teams
 - team creator is a usable drafting MVP with export support
+- team creator now also runs against the shared API through the existing repository boundary
 - the suite roadmap has pivoted toward shared backend and session flow
 - `services/api/` now exists with a live PostgreSQL-backed scaffold
 - users, leagues, and teams are now implemented and smoke-tested in the API
+- CORS is enabled for local frontend-to-API development across ports
 
 ## What Not To Do Next
 
@@ -18,19 +20,23 @@
 
 ## Best Next Move
 
-- add an API-backed repository path for `modules/team-creator/`
+- implement match-session endpoints in `services/api/`
 
 ## Concrete Next Implementation Pass
 
-1. preserve the existing `TeamRepository` interface
-2. add an API-backed implementation beside the local one
-3. wire team creator to use the API-backed repository behind a clear selection boundary
-4. keep local-only storage available as a fallback until the shared path is stable
+1. implement:
+   - `POST /match-sessions`
+   - `GET /match-sessions/:sessionId`
+   - `GET /match-sessions/code/:sessionCode`
+   - `POST /match-sessions/:sessionId/join`
+2. keep the payload shaped around the existing shared team records
+3. resolve the preload payload block dice needs from session context
+4. only return to block-dice UX tidy work after the session-loading path exists
 
 ## After That
 
-1. create match-session endpoints
-2. resolve block-dice preload payloads from shared session context
+1. wire block dice to consume match-session preload data
+2. remove more of the temporary export/import bridge from the main flow
 3. then return to progression fields once shared team identity is stable
 
 ## Integration Goal

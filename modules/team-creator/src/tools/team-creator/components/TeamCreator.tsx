@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import styles from './TeamCreator.module.css'
 import { getSkillReference } from '../../../data/skillReferences'
-import { BrowserLocalStorageStore, MemoryKeyValueStore } from '../../../shared/storage/keyValueStore'
-import { LocalTeamRepository } from '../../../shared/repositories/localTeamRepository'
+import { resolveTeamRepositorySelection } from '../../../shared/repositories/createTeamRepository'
 import {
   TEAM_CREATOR_EXCHANGE_FORMAT,
   TEAM_CREATOR_EXCHANGE_VERSION,
@@ -33,10 +32,8 @@ type ReferenceModalContent = {
   page: number
 }
 
-const repository =
-  typeof window !== 'undefined'
-    ? new LocalTeamRepository(new BrowserLocalStorageStore(window.localStorage))
-    : new LocalTeamRepository(new MemoryKeyValueStore())
+const repositorySelection = resolveTeamRepositorySelection()
+const repository = repositorySelection.repository
 
 function formatGold(value: number) {
   return value.toLocaleString('en-GB')
@@ -82,14 +79,15 @@ function getRemainingSlots(team: SavedTeam, template: RosterTemplate, positionId
 }
 
 export function TeamCreator() {
-  const [templates, setTemplates] = useState<RosterTemplate[]>(() => repository.listRosterTemplatesSync())
-  const [teams, setTeams] = useState<SavedTeamSummary[]>(() => repository.listTeamsSync())
-  const [selectedTemplateId, setSelectedTemplateId] = useState(() => repository.listRosterTemplatesSync()[0]?.id ?? '')
+  const [templates, setTemplates] = useState<RosterTemplate[]>([])
+  const [teams, setTeams] = useState<SavedTeamSummary[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [libraryView, setLibraryView] = useState<'CREATE' | 'LOAD'>('CREATE')
   const [activeTeam, setActiveTeam] = useState<SavedTeam | null>(null)
   const [selectedPositionId, setSelectedPositionId] = useState('')
   const [activeReference, setActiveReference] = useState<ReferenceModalContent | null>(null)
   const [feedback, setFeedback] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
 
   const draftRuleReferences: Record<string, ReferenceModalContent> = {
     rerolls: {
@@ -179,16 +177,69 @@ export function TeamCreator() {
     [selectedTemplateId, templates],
   )
 
-  function refreshState() {
-    const nextTemplates = repository.listRosterTemplatesSync()
-    const nextTeams = repository.listTeamsSync()
+  useEffect(() => {
+    let isDisposed = false
+
+    async function loadInitialState() {
+      setIsLoading(true)
+
+      try {
+        const nextTemplates = await repository.listRosterTemplates()
+
+        if (isDisposed) {
+          return
+        }
+
+        setTemplates(nextTemplates)
+        setSelectedTemplateId((currentSelectedTemplateId) =>
+          currentSelectedTemplateId && nextTemplates.some((template) => template.id === currentSelectedTemplateId)
+            ? currentSelectedTemplateId
+            : (nextTemplates[0]?.id ?? ''),
+        )
+
+        const nextTeams = await repository.listTeams()
+
+        if (isDisposed) {
+          return
+        }
+
+        setTeams(nextTeams)
+        setFeedback('')
+      } catch (error) {
+        if (!isDisposed) {
+          const nextMessage =
+            error instanceof Error
+              ? `Repository load failed: ${error.message}`
+              : 'Teams could not be loaded from the current repository.'
+
+          setFeedback(nextMessage)
+        }
+      } finally {
+        if (!isDisposed) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    void loadInitialState()
+
+    return () => {
+      isDisposed = true
+    }
+  }, [])
+
+  async function refreshState() {
+    const nextTemplates = await repository.listRosterTemplates()
+    const nextTeams = await repository.listTeams()
 
     setTemplates(nextTemplates)
     setTeams(nextTeams)
-
-    if (!selectedTemplateId && nextTemplates[0]) {
-      setSelectedTemplateId(nextTemplates[0].id)
-    }
+    setSelectedTemplateId((currentSelectedTemplateId) =>
+      currentSelectedTemplateId && nextTemplates.some((template) => template.id === currentSelectedTemplateId)
+        ? currentSelectedTemplateId
+        : (nextTemplates[0]?.id ?? ''),
+    )
+    setFeedback('')
   }
 
   async function handleCreateTeam() {
@@ -201,8 +252,8 @@ export function TeamCreator() {
 
     const nextTeam = createTeam(`New ${template.name} Team`, template)
     await repository.saveTeam(nextTeam)
-    refreshState()
-    setActiveTeam(nextTeam)
+    await refreshState()
+    setActiveTeam((await repository.getTeam(nextTeam.id)) ?? nextTeam)
     setFeedback(`Created a new ${template.name} draft.`)
   }
 
@@ -225,7 +276,7 @@ export function TeamCreator() {
       setActiveTeam(null)
     }
 
-    refreshState()
+    await refreshState()
     setFeedback('Team deleted.')
   }
 
@@ -378,15 +429,21 @@ export function TeamCreator() {
     }
 
     await repository.saveTeam(activeTeam)
-    refreshState()
+    const persistedTeam = await repository.getTeam(activeTeam.id)
+
+    await refreshState()
+
+    if (persistedTeam) {
+      setActiveTeam(persistedTeam)
+    }
+
     setFeedback(`Saved ${activeTeam.name}.`)
   }
 
-  function handleExportTeams() {
-    const persistedTeams = repository
-      .listTeamsSync()
-      .map((team) => repository.getTeamSync(team.id))
-      .filter((team): team is SavedTeam => Boolean(team))
+  async function handleExportTeams() {
+    const persistedTeams = (
+      await Promise.all(teams.map(async (team) => repository.getTeam(team.id)))
+    ).filter((team): team is SavedTeam => Boolean(team))
 
     const exportTeams = activeTeam
       ? [
@@ -476,7 +533,12 @@ export function TeamCreator() {
           </nav>
 
           <div className={styles.libraryActionRow}>
-            <button className={styles.secondaryButton} onClick={handleExportTeams} type="button" disabled={teams.length === 0}>
+            <button
+              className={styles.secondaryButton}
+              onClick={() => void handleExportTeams()}
+              type="button"
+              disabled={isLoading || teams.length === 0}
+            >
               Export Teams For Block Dice
             </button>
           </div>
@@ -574,7 +636,12 @@ export function TeamCreator() {
             </section>
           )}
 
-          <footer className={styles.feedback}>{feedback || 'Choose a team to load or create a fresh draft.'}</footer>
+          <footer className={styles.feedback}>
+            {feedback ||
+              (isLoading
+                ? `Loading teams and rosters from ${repositorySelection.label}...`
+                : `Choose a team to load or create a fresh draft. Repository: ${repositorySelection.label}.`)}
+          </footer>
         </div>
         {activeReference ? (
           <div className={styles.skillModalBackdrop} onClick={() => setActiveReference(null)} role="presentation">
@@ -610,7 +677,7 @@ export function TeamCreator() {
             <button className={styles.secondaryButton} onClick={() => setActiveTeam(null)} type="button">
               Back To Team Vault
             </button>
-            <button className={styles.secondaryButton} onClick={handleExportTeams} type="button">
+            <button className={styles.secondaryButton} onClick={() => void handleExportTeams()} type="button">
               Export Teams For Block Dice
             </button>
           </div>
@@ -1074,7 +1141,14 @@ export function TeamCreator() {
           </section>
         </>
 
-        <footer className={styles.feedback}>{feedback || 'Local-first repository active. Saved teams stay in this browser for now.'}</footer>
+        <footer className={styles.feedback}>
+          {feedback ||
+            `Repository: ${repositorySelection.label}. ${
+              repositorySelection.mode === 'api'
+                ? 'Teams save through the shared backend.'
+                : 'Teams currently save in this browser.'
+            }`}
+        </footer>
       </section>
       {activeReference ? (
         <div className={styles.skillModalBackdrop} onClick={() => setActiveReference(null)} role="presentation">

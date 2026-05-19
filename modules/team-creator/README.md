@@ -1,15 +1,39 @@
 # Team Creator
 
-Local-first Blood Bowl team creator module.
+Blood Bowl team creator module.
 
 ## Current Scope
 
 - choose a roster template
-- create and save teams locally
+- create and save teams
 - add and remove players within template quantity caps
 - edit player names and shirt numbers
 - track reroll count
 - calculate current team value from player values plus rerolls
+
+## Repository Modes
+
+The module can run against:
+
+- local browser storage
+- the shared API in `services/api/`
+
+Set the repository mode with Vite env vars:
+
+```bash
+cd modules/team-creator
+cp .env.example .env.local
+```
+
+Available env vars:
+
+- `VITE_TEAM_REPOSITORY_MODE=local|api|auto`
+- `VITE_API_BASE_URL=http://127.0.0.1:3001`
+
+Recommended shared-backend development mode:
+
+- `VITE_TEAM_REPOSITORY_MODE=api`
+- `VITE_API_BASE_URL=http://127.0.0.1:3001`
 
 ## Current Seed Data
 

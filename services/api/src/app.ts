@@ -12,6 +12,17 @@ export async function buildApp() {
     logger: true,
   })
 
+  app.addHook('onRequest', async (request, reply) => {
+    reply.header('Access-Control-Allow-Origin', request.headers.origin ?? '*')
+    reply.header('Vary', 'Origin')
+    reply.header('Access-Control-Allow-Headers', 'Content-Type')
+    reply.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+
+    if (request.method === 'OPTIONS') {
+      return reply.code(204).send()
+    }
+  })
+
   await registerPrisma(app)
   await registerHealthRoutes(app)
   await registerUserRoutes(app)
