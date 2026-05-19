@@ -341,9 +341,13 @@ In place:
   - `GET /leagues/:leagueId`
   - `POST /leagues/:leagueId/join`
   - `GET /leagues/:leagueId/members`
+  - `GET /teams`
+  - `GET /teams/:teamId`
+  - `POST /teams`
+  - `PUT /teams/:teamId`
+  - `DELETE /teams/:teamId`
 
 Next implementation step:
 
-- team CRUD endpoints
 - API-backed repository path for team creator
 - match session creation and preload fetch

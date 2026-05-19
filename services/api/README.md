@@ -29,10 +29,14 @@ Implemented route slice:
 - `GET /leagues/:leagueId`
 - `POST /leagues/:leagueId/join`
 - `GET /leagues/:leagueId/members`
+- `GET /teams`
+- `GET /teams/:teamId`
+- `POST /teams`
+- `PUT /teams/:teamId`
+- `DELETE /teams/:teamId`
 
 Still placeholder-only:
 
-- team routes
 - match session routes
 
 It does not yet implement the full domain workflow.

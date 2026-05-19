@@ -6,7 +6,7 @@
 - team creator is a usable drafting MVP with export support
 - the suite roadmap has pivoted toward shared backend and session flow
 - `services/api/` now exists with a live PostgreSQL-backed scaffold
-- the first user and league endpoints are implemented and smoke-tested
+- users, leagues, and teams are now implemented and smoke-tested in the API
 
 ## What Not To Do Next
 
@@ -18,19 +18,14 @@
 
 ## Best Next Move
 
-- implement shared team CRUD in `services/api/`
+- add an API-backed repository path for `modules/team-creator/`
 
 ## Concrete Next Implementation Pass
 
-1. implement:
-   - `GET /teams`
-   - `GET /teams/:teamId`
-   - `POST /teams`
-   - `PUT /teams/:teamId`
-   - `DELETE /teams/:teamId`
-2. keep the payload close to the existing `SavedTeam` and `SavedTeamPlayer` shape
-3. preserve the repository boundary in the team creator
-4. add an API-backed repository implementation after the team routes exist
+1. preserve the existing `TeamRepository` interface
+2. add an API-backed implementation beside the local one
+3. wire team creator to use the API-backed repository behind a clear selection boundary
+4. keep local-only storage available as a fallback until the shared path is stable
 
 ## After That
 
