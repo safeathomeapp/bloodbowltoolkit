@@ -1,128 +1,206 @@
 # Roadmap
 
+## Stable Baseline
+
+- `modules/block-dice-calculator/` is stable working MVP software
+- `modules/team-creator/` is now a working local-first drafting MVP
+- roster templates are seeded from uploaded rulebook screenshots
+- skill popups and draft-rule help popups are wired into the team creator
+- persistence is still local to the browser through a repository boundary
+
+## Design Direction
+
+- treat the team creator as the `team management module`, not only a draft screen
+- keep one canonical saved team record
+- layer `draft rules`, `progression`, `league rules`, and `event/tournament rules` on top of that record
+- do not bake one specific event pack or league format directly into the core team schema
+
+## Canonical Data Split
+
+### Base Team State
+
+- roster template reference
+- team identity
+- purchased players
+- rerolls
+- assistant coaches
+- cheerleaders
+- dedicated fans
+- apothecary
+- treasury
+- team value
+
+### Player Progression State
+
+- SPP
+- injuries
+- miss next game
+- added skills
+- stat increases or decreases
+- current player value adjustments
+
+### Ruleset And Event Overlay State
+
+- draft budget
+- resurrection or league flag
+- tiering
+- bonus TV
+- bonus skills
+- event-specific restrictions
+- redraft or competition constraints
+
 ## Completed Phases
 
-- Repository bootstrap
-- React + TypeScript + Vite scaffold
-- PWA and Vitest baseline
-- Documentation foundation
-- 7x7 tactical grid foundation
-- Token placement flow
-- Blocker and target selection flow
-- Standalone assist and block-dice rules engine
-- Why explanation bottom-sheet
-- Mobile UI stabilization and local-only persistence
-- Final MVP cleanup and Codex handoff
-- UX revision review and roadmap reset
-- Edit / Calculate mode architecture
-- Standard adjacent preview overlays
-- Blitz preview and non-adjacent target overlays
-- Candidate attack squares, square-specific Why, and explicit invalidation
-- Candidate-square readability refinement
-- Tie-aware blitz candidate ranking
-- Player cards and contextual attacker controls
-- Board-header mode switch and edit-card refactor
-- Stable module packaging of the block-dice app under `modules/block-dice-calculator/`
+- repository cleanup and branch consolidation onto `main`
+- stable packaging of the block-dice app under `modules/block-dice-calculator/`
+- local-first `modules/team-creator/` scaffold
+- rulebook-backed roster template library
+- roster template audit coverage
+- first-pass `bbroster`-style team creator frontend
+- saved team vault flow
+- one-page draft sheet flow
+- clickable skill reference popups
+- draft-rule help popups for team-building controls
 
 ## Current State
 
-- `modules/block-dice-calculator/` is the stable working software and current source of truth
-- PostgreSQL is available locally and is the intended persistence layer for the next phase
-- No backend service exists in the repository yet
+- the team creator is good enough to count as an MVP drafting tool
+- the team creator is still local-first and single-user
+- the block-dice module is still separate and stable
+- there is no backend service in the repository yet
+- the latest block-dice team import work proved that cross-device flow is now the main blocker
+
+## Route Pivot
+
+As of `2026-05-19`, the practical product flow is now understood more clearly:
+
+- Player A and Player B should be able to operate on separate devices
+- league or competition context should identify who is playing whom
+- block dice should load the correct teams automatically from that shared context
+
+Because of that, the earlier order of `more local-first team depth first, backend later` is no longer the best route.
+
+The team creator MVP has already done its main job:
+
+- validate the saved team model
+- validate roster template data
+- validate first-pass block-dice team loading
+
+The next blocker is shared persistence and shared match/session loading.
 
 ## Execution Order
 
-### Phase 1: Mainline And Repository Hygiene
+### Phase 1: Lock The Existing Frontend MVPs
 
-- merged the MVP PR into `main`
-- replaced the historical default branch with `main`
-- preserved `modules/block-dice-calculator/` as the working module boundary
-- aligned root docs with the suite/module structure
+- keep improving the team creator only where it removes clear friction
+- do not broaden scope without protecting the current working flow
+- keep block-dice integration stable enough for reference use
+- avoid large new frontend rewrites while the shared data model is introduced
 
-### Phase 2: Backend Foundation
+### Phase 2: Define Shared Backend Contracts
 
-- Create a backend service under `services/api/`
-- Use `Node + TypeScript`
-- Add a web framework:
-  - preferred default: `Fastify`
-- Connect to PostgreSQL
-- Add database migrations
-- Add environment-variable handling
-- Add schema validation for request and response payloads
-- Add baseline health and version endpoints
+- define the minimal shared entities needed for real multi-user flow
+- include:
+  - user
+  - league
+  - league membership
+  - team ownership
+  - match or session identity
+  - side assignment for a given session
+- keep the canonical saved-team model intact while moving persistence behind a shared interface
 
-### Phase 3: Core Domain Model
+### Phase 3: Introduce Backend Infrastructure
 
-- Define persistent entities for:
-  - player profiles
-  - rosters
-  - roster players
-  - teams
-  - team players
+- create `services/api/`
+- keep repository boundaries explicit
+- start with the minimum persistence and API surface needed for:
+  - league creation
+  - joining a league
+  - saving teams under a user or league context
+  - creating or loading a match session
+
+### Phase 4: Replace Local-Only Team Loading
+
+- migrate the team creator away from browser-only storage as the main path
+- keep local-only mode only if still useful as a fallback or temporary offline mode
+- remove the need for manual export/import to move teams between apps or devices
+
+### Phase 5: Preload Teams Into Block Dice From Match Context
+
+- allow block dice to open with attacker and defender context already known
+- support:
+  - player-selected team assignment
+  - fixture or match-code loading
+  - session-based side designation
+- keep block-dice calculation logic independent from progression and event logic
+- treat this as a data-source integration, not a rewrite
+
+### Phase 6: Add Player Progression On Top Of Shared Teams
+
+- add editable player progression fields to the roster editor
+- support:
+  - SPP
+  - injuries
+  - miss next game
+  - added skills
+  - stat changes
+  - current player value overrides
+- keep progression as mutable player state, not as edits to the roster template
+- apply this only once the shared team identity and storage model are stable
+
+### Phase 7: Introduce Ruleset Profiles And Event Overlays
+
+- add a `ruleset profile` concept above the base team
+- first profiles should cover:
+  - standard draft
+  - league team
+  - resurrection event
+  - exhibition
+- support one-day and tournament-specific modifiers
+- include optional event data such as:
+  - tier
+  - bonus gold or TV
+  - free skills
+  - special roster restrictions
+- make these saveable as explicit event entries or applied views
+- do not overwrite the underlying base team silently
+
+### Phase 8: League Tooling
+
+- add competition and league workflows only after team and progression models are stable
+- support:
   - leagues
-  - competitions
   - fixtures
   - results
   - standings
-- Separate reusable profile data from competition-specific team state
-- Document the backend data model before building broad UI on top of it
-- Keep roster-template data separate from saved team/player state so 20+ team types can share one creator flow
+  - redraft support if still justified
+- keep league administration as a separate layer above core team management
 
-### Phase 4: Roster Builder
+## Immediate Next Step
 
-- Build CRUD for player profiles
-- Build CRUD for rosters
-- Support adding players to rosters with role, stats, skills, and cost fields
-- Support creating teams from rosters
-- make the creator template-driven rather than building around a single hardcoded team
-- Decide whether roster content is:
-  - freeform user-defined first
-  - seeded from Blood Bowl reference data first
-- Add import/export for roster data if still justified after CRUD is stable
-
-### Phase 5: League And Competition Creator
-
-- Build CRUD for leagues
-- Build CRUD for competitions inside leagues
-- Define supported competition formats:
-  - round robin
-  - knockout
-  - swiss
-  - or configurable later if justified
-- Build fixture generation
-- Build result entry
-- Build standings calculation
-
-### Phase 6: Integration Back Into The Block-Dice Module
-
-- Allow `modules/block-dice-calculator/` to retrieve saved players, rosters, and teams
-- Keep the existing local tactical workflow usable even before remote data is selected
-- Avoid coupling block-dice calculation logic to league-management concerns
-- Treat backend integration as a data-source enhancement, not a rewrite of the module
-
-### Phase 7: Operational Hardening
-
-- Add authentication only if multi-user access is a real requirement
-- Add audit/history only if league administration needs it
-- Add deployment and backup notes
-- Add seed scripts and local developer setup docs
-
-## Active Next Step
-
-- Start Phase 2 by scaffolding `services/api/` and connecting it to the local PostgreSQL instance
+- define the minimal shared backend/domain contract and scaffold `services/api/`
+- first implementation target:
+  - create league
+  - join league
+  - save team under a shared identity
+  - create or resolve a match session
+  - preload block dice with the two participating teams
 
 ## Deferred Until Proven Necessary
 
-- Probability helpers
-- Full game simulation
-- Turn sequencing
-- Online play
-- Advanced permissions model
-- Background job infrastructure
-- Microservice split
+- authentication
+- multi-user collaboration
+- online play
+- match simulation
+- probability helpers outside the block-dice tool
+- advanced permissions
+- background jobs
+- microservice split
 
 ## Scope Boundary
 
-- The existing block-dice module remains stable working software
-- New backend and suite work must integrate with that module instead of destabilizing it
-- Roster, league, and competition tooling should be built in deliberate phases, not mixed into one oversized pass
+- `modules/block-dice-calculator/` remains stable working software
+- `modules/team-creator/` remains the place for team drafting and management
+- `services/api/` should become the shared persistence and session layer
+- event and league logic should sit on top of base team data, not distort it
+- backend work should now solve the proven cross-device workflow blocker, not chase speculative platform complexity

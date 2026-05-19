@@ -9,6 +9,7 @@
 - `modules/`: suite modules
 - `modules/block-dice-calculator/`: current finished working software and source-of-truth runnable module
 - `modules/team-creator/`: local-first saved-team creation module
+- planned `services/api/`: shared backend for leagues, teams, and match-session loading
 
 ## Source Of Truth
 
@@ -18,6 +19,7 @@
 - block-dice tests: `modules/block-dice-calculator/src/tools/block-dice/tests/`
 - block-dice module status and integration boundary: `modules/block-dice-calculator/MODULE_STATUS.md`
 - suite roadmap and post-MVP direction: `ROADMAP.md`
+- shared backend MVP direction: `docs/architecture/2026-05-19_shared_backend_mvp_spec.md`
 
 ## Architectural Boundaries
 
@@ -25,3 +27,4 @@
 - The block-dice calculator remains the current known-good working module and should be integrated into future suite work rather than reimplemented from scratch.
 - React components render state and explanation output, but rules logic stays outside React and inside the module rules layer.
 - Future toolkit modules may be added under `modules/`, but they should not destabilize the existing block-dice module without a deliberate migration plan.
+- Shared persistence and league/session orchestration should be introduced in `services/api/`, not embedded directly into the frontend modules.

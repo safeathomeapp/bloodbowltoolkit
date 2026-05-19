@@ -18,12 +18,16 @@ interface EvaluatedPlayer {
   profile: PlayerProfile
 }
 
-function getRelativeParticipantLabel(player: EvaluatedPlayer, activeTeam: TeamSide) {
-  const prefix = player.placedPlayer.teamSide === activeTeam ? 'A' : 'D'
+function getTeamColorLabel(teamSide: TeamSide) {
+  return teamSide === 'A' ? 'Blue' : 'Red'
+}
+
+function getRelativeParticipantLabel(player: EvaluatedPlayer) {
+  const prefix = getTeamColorLabel(player.placedPlayer.teamSide)
   const fallbackLabel = player.profile.name ?? player.placedPlayer.id
   const numericSuffix = player.profile.number ?? fallbackLabel.match(/(\d+)$/)?.[1]
 
-  return numericSuffix ? `${prefix}${numericSuffix}` : prefix
+  return numericSuffix ? `${prefix} ${numericSuffix}` : prefix
 }
 
 function isAdjacent(left: Position, right: Position) {
@@ -138,7 +142,7 @@ function evaluateAssist(
   boardState: BoardState,
   profiles: PlayerProfile[],
 ): AssistDetail {
-  const label = getRelativeParticipantLabel(candidate, activeTeam)
+  const label = getRelativeParticipantLabel(candidate)
 
   if (!candidate.placedPlayer.isStanding) {
     return {
@@ -187,7 +191,7 @@ function evaluateAssist(
     isGuardSuppressedByDefensive(candidate, activeTeam, boardState, profiles)
   const usedGuard = hasSkill(candidate, 'GUARD') && !guardSuppressedByDefensive
   const markers = listMarkers(candidate, boardState, profiles, ignoredOpponentIds)
-  const markerLabels = markers.map((marker) => getRelativeParticipantLabel(marker, activeTeam))
+  const markerLabels = markers.map((marker) => getRelativeParticipantLabel(marker))
 
   if (markers.length > 0 && !usedGuard) {
     return {
@@ -323,6 +327,8 @@ export function calculateBlockDice(
   const blocker = requirePlayer(boardState.blockerId, boardState, profiles)
   const target = requirePlayer(boardState.targetId, boardState, profiles)
   const activeTeam = blocker.placedPlayer.teamSide
+  const attackerLabel = getTeamColorLabel(blocker.placedPlayer.teamSide)
+  const defenderLabel = getTeamColorLabel(target.placedPlayer.teamSide)
   const attackerHasDauntless = hasSkill(blocker, 'DAUNTLESS')
   const attackerUsesHorns = Boolean(options.isBlitz) && hasSkill(blocker, 'HORNS')
   const hornsModifier = attackerUsesHorns ? 1 : 0
@@ -333,11 +339,11 @@ export function calculateBlockDice(
       : strengthAfterHorns
   const attackerBaseSummary = attackerHasDauntless
     ? target.profile.strength > strengthAfterHorns
-      ? `A uses Dauntless after Horns and rises to match D at ST ${target.profile.strength}.`
-      : 'A has Dauntless, but it does not trigger because their Strength is already high enough.'
+      ? `${attackerLabel} uses Dauntless after Horns and rises to match ${defenderLabel} at ST ${target.profile.strength}.`
+      : `${attackerLabel} has Dauntless, but it does not trigger because their Strength is already high enough.`
     : null
   const hornsSummary = attackerUsesHorns
-    ? 'A gains +1 ST from Horns because this block is part of a blitz.'
+    ? `${attackerLabel} gains +1 ST from Horns because this block is part of a blitz.`
     : null
   const attackerModifierEntries = [hornsSummary, attackerBaseSummary].filter((entry): entry is string => Boolean(entry))
 
@@ -383,7 +389,7 @@ export function calculateBlockDice(
   const defenderStrength = target.profile.strength + defensiveModifier
   const finalDice = buildFinalDiceSummary(attackerStrength, defenderStrength)
   const blockerLabel = blocker.profile.name ?? blocker.placedPlayer.id
-  const defenderLabel = target.profile.name ?? target.placedPlayer.id
+  const targetNameLabel = target.profile.name ?? target.placedPlayer.id
 
   return {
     blocker: {
@@ -395,7 +401,7 @@ export function calculateBlockDice(
     },
     target: {
       id: target.placedPlayer.id,
-      label: defenderLabel,
+      label: targetNameLabel,
       teamSide: target.placedPlayer.teamSide,
       strength: target.profile.strength,
       position: target.placedPlayer.position,

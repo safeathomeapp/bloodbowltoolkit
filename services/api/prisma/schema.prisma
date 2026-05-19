@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LeagueMembershipRole {
+  OWNER
+  MEMBER
+}
+
+enum TeamStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+enum MatchSessionStatus {
+  PENDING
+  ACTIVE
+  CLOSED
+}
+
+enum MatchSessionSide {
+  HOME
+  AWAY
+}
+
+model User {
+  id                    String                    @id @default(cuid())
+  displayName           String
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  ownedLeagues          League[]                  @relation("LeagueOwner")
+  leagueMemberships     LeagueMembership[]
+  ownedTeams            Team[]
+  createdMatchSessions  MatchSession[]            @relation("MatchSessionCreator")
+  matchParticipants     MatchSessionParticipant[]
+}
+
+model League {
+  id           String             @id @default(cuid())
+  name         String
+  createdById  String
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  createdBy    User               @relation("LeagueOwner", fields: [createdById], references: [id])
+  memberships  LeagueMembership[]
+  teams        Team[]
+  matchSessions MatchSession[]
+}
+
+model LeagueMembership {
+  id        String               @id @default(cuid())
+  leagueId  String
+  userId    String
+  role      LeagueMembershipRole
+  joinedAt  DateTime             @default(now())
+  league    League               @relation(fields: [leagueId], references: [id])
+  user      User                 @relation(fields: [userId], references: [id])
+
+  @@unique([leagueId, userId])
+}
+
+model Team {
+  id                    String       @id @default(cuid())
+  ownerUserId           String
+  leagueId              String?
+  rosterTemplateId      String
+  name                  String
+  status                TeamStatus
+  draftBudget           Int
+  rerollCount           Int
+  assistantCoachCount   Int
+  cheerleaderCount      Int
+  dedicatedFans         Int
+  apothecaryPurchased   Boolean
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  owner                 User         @relation(fields: [ownerUserId], references: [id])
+  league                League?      @relation(fields: [leagueId], references: [id])
+  players               TeamPlayer[]
+  homeSessions          MatchSession[] @relation("HomeTeam")
+  awaySessions          MatchSession[] @relation("AwayTeam")
+  sessionParticipants   MatchSessionParticipant[]
+}
+
+model TeamPlayer {
+  id                String   @id @default(cuid())
+  teamId            String
+  positionTemplateId String
+  name              String
+  shirtNumber       Int?
+  currentValue      Int
+  spp               Int
+  nigglingInjuries  Int
+  extraSkills       String[]
+  statAdjustments   Json
+  displayOrder      Int
+  team              Team     @relation(fields: [teamId], references: [id])
+
+  @@index([teamId, displayOrder])
+}
+
+model MatchSession {
+  id             String                   @id @default(cuid())
+  leagueId       String?
+  homeTeamId     String
+  awayTeamId     String
+  sessionCode    String                   @unique
+  status         MatchSessionStatus
+  createdByUserId String
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  league         League?                  @relation(fields: [leagueId], references: [id])
+  homeTeam       Team                     @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam       Team                     @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  createdBy      User                     @relation("MatchSessionCreator", fields: [createdByUserId], references: [id])
+  participants   MatchSessionParticipant[]
+}
+
+model MatchSessionParticipant {
+  id             String           @id @default(cuid())
+  matchSessionId String
+  userId         String
+  teamId         String
+  side           MatchSessionSide
+  matchSession   MatchSession     @relation(fields: [matchSessionId], references: [id])
+  user           User             @relation(fields: [userId], references: [id])
+  team           Team             @relation(fields: [teamId], references: [id])
+
+  @@unique([matchSessionId, userId])
+  @@unique([matchSessionId, side])
+}

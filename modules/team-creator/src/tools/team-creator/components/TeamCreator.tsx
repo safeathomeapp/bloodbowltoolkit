@@ -5,6 +5,11 @@ import { getSkillReference } from '../../../data/skillReferences'
 import { BrowserLocalStorageStore, MemoryKeyValueStore } from '../../../shared/storage/keyValueStore'
 import { LocalTeamRepository } from '../../../shared/repositories/localTeamRepository'
 import {
+  TEAM_CREATOR_EXCHANGE_FORMAT,
+  TEAM_CREATOR_EXCHANGE_VERSION,
+  type TeamCreatorExchangePackage,
+} from '../../../shared/types/teamExchange'
+import {
   calculateApothecaryValue,
   calculateAssistantCoachValue,
   calculateCheerleaderValue,
@@ -21,6 +26,13 @@ import type { SkillReference } from '../../../shared/types/skillReference'
 import type { RosterTemplate, SavedTeam, SavedTeamSummary } from '../../../shared/types/team'
 import { createTeam, createTeamPlayer } from '../utils/teamFactory'
 
+type ReferenceModalContent = {
+  title: string
+  type: string
+  excerpt: string
+  page: number
+}
+
 const repository =
   typeof window !== 'undefined'
     ? new LocalTeamRepository(new BrowserLocalStorageStore(window.localStorage))
@@ -32,6 +44,19 @@ function formatGold(value: number) {
 
 function formatCategories(categories: string[]) {
   return categories.length > 0 ? categories.join('') : '-'
+}
+
+function formatPositionLabel(position: Pick<RosterTemplate['positions'][number], 'name' | 'role'>) {
+  return `${position.name} (${position.role})`
+}
+
+function toReferenceModalContent(reference: SkillReference): ReferenceModalContent {
+  return {
+    title: reference.name,
+    type: reference.type,
+    excerpt: reference.excerpt,
+    page: reference.page,
+  }
 }
 
 function findPosition(template: RosterTemplate, positionId: string) {
@@ -60,13 +85,49 @@ export function TeamCreator() {
   const [templates, setTemplates] = useState<RosterTemplate[]>(() => repository.listRosterTemplatesSync())
   const [teams, setTeams] = useState<SavedTeamSummary[]>(() => repository.listTeamsSync())
   const [selectedTemplateId, setSelectedTemplateId] = useState(() => repository.listRosterTemplatesSync()[0]?.id ?? '')
-  const [newTeamName, setNewTeamName] = useState('')
-  const [templateSearch, setTemplateSearch] = useState('')
   const [libraryView, setLibraryView] = useState<'CREATE' | 'LOAD'>('CREATE')
   const [activeTeam, setActiveTeam] = useState<SavedTeam | null>(null)
   const [selectedPositionId, setSelectedPositionId] = useState('')
-  const [activeSkillReference, setActiveSkillReference] = useState<SkillReference | null>(null)
+  const [activeReference, setActiveReference] = useState<ReferenceModalContent | null>(null)
   const [feedback, setFeedback] = useState('')
+
+  const draftRuleReferences: Record<string, ReferenceModalContent> = {
+    rerolls: {
+      title: 'Team Re-rolls',
+      type: 'DRAFTING RULE',
+      page: 90,
+      excerpt:
+        'Teams may buy Team Re-rolls during drafting up to the roster maximum. In League Play, buying one later costs double its usual amount and still counts at its normal value toward Team Value.',
+    },
+    assistantCoaches: {
+      title: 'Assistant Coaches',
+      type: 'DRAFTING RULE',
+      page: 90,
+      excerpt:
+        'A team may hire up to 6 Assistant Coaches at 10,000 gold pieces each. They benefit the team during Brilliant Coaching results on the Kick-off Event table.',
+    },
+    cheerleaders: {
+      title: 'Cheerleaders',
+      type: 'DRAFTING RULE',
+      page: 90,
+      excerpt:
+        'A team may hire up to 6 Cheerleaders at 10,000 gold pieces each. They benefit the team during Cheering Fans results on the Kick-off Event table.',
+    },
+    apothecary: {
+      title: 'Apothecary',
+      type: 'DRAFTING RULE',
+      page: 90,
+      excerpt:
+        'Most teams may hire a single Apothecary for 50,000 gold pieces if their roster allows one. The Apothecary can attempt to patch up an injured player during the game.',
+    },
+    dedicatedFans: {
+      title: 'Dedicated Fans',
+      type: 'DRAFTING RULE',
+      page: 91,
+      excerpt:
+        'A team starts with Dedicated Fans 1 automatically. During drafting, you may increase Dedicated Fans up to a maximum of 7 by paying 5,000 gold pieces per point improved.',
+    },
+  }
 
   const activeTemplate = useMemo(
     () => templates.find((template) => template.id === activeTeam?.rosterTemplateId) ?? null,
@@ -118,27 +179,6 @@ export function TeamCreator() {
     [selectedTemplateId, templates],
   )
 
-  const filteredTemplates = useMemo(() => {
-    const query = templateSearch.trim().toLowerCase()
-
-    if (!query) {
-      return templates
-    }
-
-    return templates.filter((template) => {
-      const haystack = [
-        template.name,
-        template.leagues.join(' '),
-        template.specialRules.join(' '),
-        ...template.positions.map((position) => position.name),
-      ]
-        .join(' ')
-        .toLowerCase()
-
-      return haystack.includes(query)
-    })
-  }, [templateSearch, templates])
-
   function refreshState() {
     const nextTemplates = repository.listRosterTemplatesSync()
     const nextTeams = repository.listTeamsSync()
@@ -154,17 +194,16 @@ export function TeamCreator() {
   async function handleCreateTeam() {
     const template = templates.find((entry) => entry.id === selectedTemplateId)
 
-    if (!template || !newTeamName.trim()) {
-      setFeedback('Choose a roster and enter a team name first.')
+    if (!template) {
+      setFeedback('Choose a roster first.')
       return
     }
 
-    const nextTeam = createTeam(newTeamName, template)
+    const nextTeam = createTeam(`New ${template.name} Team`, template)
     await repository.saveTeam(nextTeam)
     refreshState()
     setActiveTeam(nextTeam)
-    setNewTeamName('')
-    setFeedback(`Created ${nextTeam.name}.`)
+    setFeedback(`Created a new ${template.name} draft.`)
   }
 
   async function handleOpenTeam(teamId: string) {
@@ -343,6 +382,43 @@ export function TeamCreator() {
     setFeedback(`Saved ${activeTeam.name}.`)
   }
 
+  function handleExportTeams() {
+    const persistedTeams = repository
+      .listTeamsSync()
+      .map((team) => repository.getTeamSync(team.id))
+      .filter((team): team is SavedTeam => Boolean(team))
+
+    const exportTeams = activeTeam
+      ? [
+          activeTeam,
+          ...persistedTeams.filter((team) => team.id !== activeTeam.id),
+        ]
+      : persistedTeams
+
+    if (exportTeams.length === 0) {
+      setFeedback('There are no saved teams to export yet.')
+      return
+    }
+
+    const exportPackage: TeamCreatorExchangePackage = {
+      format: TEAM_CREATOR_EXCHANGE_FORMAT,
+      version: TEAM_CREATOR_EXCHANGE_VERSION,
+      exportedAt: new Date().toISOString(),
+      teams: exportTeams,
+    }
+
+    const blob = new Blob([JSON.stringify(exportPackage, null, 2)], { type: 'application/json' })
+    const objectUrl = URL.createObjectURL(blob)
+    const downloadLink = document.createElement('a')
+
+    downloadLink.href = objectUrl
+    downloadLink.download = `blood-bowl-toolkit-teams-${new Date().toISOString().slice(0, 10)}.json`
+    downloadLink.click()
+    URL.revokeObjectURL(objectUrl)
+
+    setFeedback(`Exported ${exportTeams.length} team${exportTeams.length === 1 ? '' : 's'} for block-dice import.`)
+  }
+
   function renderSkills(skills: string[]) {
     if (skills.length === 0) {
       return 'None'
@@ -354,7 +430,7 @@ export function TeamCreator() {
       return (
         <span key={`${skill}-${index}`}>
           {reference ? (
-            <button className={styles.skillLink} onClick={() => setActiveSkillReference(reference)} type="button">
+            <button className={styles.skillLink} onClick={() => setActiveReference(toReferenceModalContent(reference))} type="button">
               {skill}
             </button>
           ) : (
@@ -399,22 +475,17 @@ export function TeamCreator() {
             </button>
           </nav>
 
+          <div className={styles.libraryActionRow}>
+            <button className={styles.secondaryButton} onClick={handleExportTeams} type="button" disabled={teams.length === 0}>
+              Export Teams For Block Dice
+            </button>
+          </div>
+
           {libraryView === 'CREATE' ? (
             <section className={styles.librarySinglePane}>
               <section className={styles.clonePickerPanel}>
-                <div className={styles.cloneFilterRow}>
-                  <label className={styles.cloneSearchLabel}>
-                    <span>Search</span>
-                    <input
-                      value={templateSearch}
-                      onChange={(event) => setTemplateSearch(event.target.value)}
-                      placeholder="Team type"
-                    />
-                  </label>
-                </div>
-
                 <div className={styles.cloneChipField}>
-                  {filteredTemplates.map((template) => (
+                  {templates.map((template) => (
                     <button
                       key={template.id}
                       className={template.id === selectedTemplateId ? styles.templateChipActive : styles.templateChip}
@@ -460,7 +531,7 @@ export function TeamCreator() {
                           {selectedTemplate.positions.map((position) => (
                             <tr key={position.id}>
                               <td>{position.minQty}/{position.maxQty}</td>
-                              <td>{position.name}</td>
+                              <td>{formatPositionLabel(position)}</td>
                               <td>{formatGold(position.cost)}</td>
                               <td>{position.movement}</td>
                               <td>{position.strength}</td>
@@ -475,17 +546,6 @@ export function TeamCreator() {
                         </tbody>
                       </table>
                     </div>
-                  </section>
-
-                  <section className={styles.cloneNameBar}>
-                    <label className={styles.field}>
-                      <span>Team Name</span>
-                      <input
-                        value={newTeamName}
-                        onChange={(event) => setNewTeamName(event.target.value)}
-                        placeholder={`Enter ${selectedTemplate.name} team name`}
-                      />
-                    </label>
                   </section>
                 </section>
               )}
@@ -516,6 +576,19 @@ export function TeamCreator() {
 
           <footer className={styles.feedback}>{feedback || 'Choose a team to load or create a fresh draft.'}</footer>
         </div>
+        {activeReference ? (
+          <div className={styles.skillModalBackdrop} onClick={() => setActiveReference(null)} role="presentation">
+            <div className={styles.skillModal} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+              <button className={styles.skillModalClose} onClick={() => setActiveReference(null)} type="button" aria-label="Close rule details">
+                ×
+              </button>
+              <h2 className={styles.skillModalTitle}>{activeReference.title}</h2>
+              <p className={styles.skillModalMeta}>Type: {activeReference.type}</p>
+              <p className={styles.skillModalExcerpt}>{activeReference.excerpt}</p>
+              <p className={styles.skillModalPage}>Reference: page {activeReference.page}</p>
+            </div>
+          </div>
+        ) : null}
       </div>
     )
   }
@@ -530,12 +603,15 @@ export function TeamCreator() {
         <div className={styles.accountDot} aria-hidden="true" />
       </header>
 
-      <div className={styles.pageFrame}>
+        <div className={styles.pageFrame}>
       <section className={styles.editor}>
         <>
           <div className={styles.editorTopbar}>
             <button className={styles.secondaryButton} onClick={() => setActiveTeam(null)} type="button">
               Back To Team Vault
+            </button>
+            <button className={styles.secondaryButton} onClick={handleExportTeams} type="button">
+              Export Teams For Block Dice
             </button>
           </div>
           <header className={styles.cloneHero}>
@@ -681,7 +757,7 @@ export function TeamCreator() {
                                 onChange={(event) => handlePlayerNameChange(player.id, event.target.value)}
                               />
                             </td>
-                            <td>{position.name}</td>
+                            <td>{formatPositionLabel(position)}</td>
                           <td>{position.movement}</td>
                           <td>{position.strength}</td>
                           <td>{position.agility}</td>
@@ -716,7 +792,7 @@ export function TeamCreator() {
 
                             return (
                               <option key={position.id} value={position.id} disabled={remaining <= 0}>
-                                {position.name} {used}/{position.maxQty}
+                                {formatPositionLabel(position)} {used}/{position.maxQty}
                               </option>
                             )
                           })}
@@ -769,7 +845,7 @@ export function TeamCreator() {
                     return (
                       <tr key={position.id}>
                         <td>{used}/{position.maxQty}</td>
-                        <td>{position.name}</td>
+                        <td>{formatPositionLabel(position)}</td>
                         <td>{formatGold(position.cost)}</td>
                         <td>{position.movement}</td>
                         <td>{position.strength}</td>
@@ -791,7 +867,17 @@ export function TeamCreator() {
             <section className={styles.financialZone}>
               <section className={styles.summaryGrid}>
                 <article className={styles.summaryCard}>
-                  <span>Rerolls</span>
+                  <span>
+                    Rerolls
+                    <button
+                      className={styles.helpIcon}
+                      onClick={() => setActiveReference(draftRuleReferences.rerolls)}
+                      type="button"
+                      aria-label="Show rerolls help"
+                    >
+                      ?
+                    </button>
+                  </span>
                   <strong>{formatGold(calculateRerollValue(activeTeam, activeTemplate))} gp</strong>
                   <small>{activeTeam.rerollCount} purchased</small>
                 </article>
@@ -801,12 +887,32 @@ export function TeamCreator() {
                   <small>{activeTeam.assistantCoachCount} AC • {activeTeam.cheerleaderCount} CL</small>
                 </article>
                 <article className={styles.summaryCard}>
-                  <span>Dedicated Fans</span>
+                  <span>
+                    Dedicated Fans
+                    <button
+                      className={styles.helpIcon}
+                      onClick={() => setActiveReference(draftRuleReferences.dedicatedFans)}
+                      type="button"
+                      aria-label="Show dedicated fans help"
+                    >
+                      ?
+                    </button>
+                  </span>
                   <strong>{formatGold(calculateDedicatedFansValue(activeTeam))} gp</strong>
                   <small>{activeTeam.dedicatedFans} starting fans</small>
                 </article>
                 <article className={styles.summaryCard}>
-                  <span>Apothecary</span>
+                  <span>
+                    Apothecary
+                    <button
+                      className={styles.helpIcon}
+                      onClick={() => setActiveReference(draftRuleReferences.apothecary)}
+                      type="button"
+                      aria-label="Show apothecary help"
+                    >
+                      ?
+                    </button>
+                  </span>
                   <strong>{formatGold(calculateApothecaryValue(activeTeam))} gp</strong>
                   <small>{activeTeam.apothecaryPurchased ? 'Purchased' : 'Not purchased'}</small>
                 </article>
@@ -861,11 +967,61 @@ export function TeamCreator() {
 
               <section className={styles.staffLedger}>
                 <div className={styles.staffLedgerLabelColumn}>
-                  <span>Rerolls</span>
-                  <span>Assistant Coaches</span>
-                  <span>Cheerleaders</span>
-                  <span>Dedicated Fans</span>
-                  <span>Apothecary</span>
+                  <span>
+                    Rerolls
+                    <button
+                      className={styles.helpIcon}
+                      onClick={() => setActiveReference(draftRuleReferences.rerolls)}
+                      type="button"
+                      aria-label="Show rerolls help"
+                    >
+                      ?
+                    </button>
+                  </span>
+                  <span>
+                    Assistant Coaches
+                    <button
+                      className={styles.helpIcon}
+                      onClick={() => setActiveReference(draftRuleReferences.assistantCoaches)}
+                      type="button"
+                      aria-label="Show assistant coaches help"
+                    >
+                      ?
+                    </button>
+                  </span>
+                  <span>
+                    Cheerleaders
+                    <button
+                      className={styles.helpIcon}
+                      onClick={() => setActiveReference(draftRuleReferences.cheerleaders)}
+                      type="button"
+                      aria-label="Show cheerleaders help"
+                    >
+                      ?
+                    </button>
+                  </span>
+                  <span>
+                    Dedicated Fans
+                    <button
+                      className={styles.helpIcon}
+                      onClick={() => setActiveReference(draftRuleReferences.dedicatedFans)}
+                      type="button"
+                      aria-label="Show dedicated fans help"
+                    >
+                      ?
+                    </button>
+                  </span>
+                  <span>
+                    Apothecary
+                    <button
+                      className={styles.helpIcon}
+                      onClick={() => setActiveReference(draftRuleReferences.apothecary)}
+                      type="button"
+                      aria-label="Show apothecary help"
+                    >
+                      ?
+                    </button>
+                  </span>
                 </div>
                 <div className={styles.staffLedgerControlColumn}>
                   <label className={styles.staffControlRow}>
@@ -920,16 +1076,16 @@ export function TeamCreator() {
 
         <footer className={styles.feedback}>{feedback || 'Local-first repository active. Saved teams stay in this browser for now.'}</footer>
       </section>
-      {activeSkillReference ? (
-        <div className={styles.skillModalBackdrop} onClick={() => setActiveSkillReference(null)} role="presentation">
+      {activeReference ? (
+        <div className={styles.skillModalBackdrop} onClick={() => setActiveReference(null)} role="presentation">
           <div className={styles.skillModal} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
-            <button className={styles.skillModalClose} onClick={() => setActiveSkillReference(null)} type="button" aria-label="Close skill details">
+            <button className={styles.skillModalClose} onClick={() => setActiveReference(null)} type="button" aria-label="Close rule details">
               ×
             </button>
-            <h2 className={styles.skillModalTitle}>{activeSkillReference.name}</h2>
-            <p className={styles.skillModalMeta}>Type: {activeSkillReference.type}</p>
-            <p className={styles.skillModalExcerpt}>{activeSkillReference.excerpt}</p>
-            <p className={styles.skillModalPage}>Reference: page {activeSkillReference.page}</p>
+            <h2 className={styles.skillModalTitle}>{activeReference.title}</h2>
+            <p className={styles.skillModalMeta}>Type: {activeReference.type}</p>
+            <p className={styles.skillModalExcerpt}>{activeReference.excerpt}</p>
+            <p className={styles.skillModalPage}>Reference: page {activeReference.page}</p>
           </div>
         </div>
       ) : null}

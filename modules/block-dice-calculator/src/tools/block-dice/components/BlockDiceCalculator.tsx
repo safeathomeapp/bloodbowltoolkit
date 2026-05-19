@@ -1,10 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import styles from './BlockDiceCalculator.module.css'
 import type { BoardState, PlayerProfile, PlacedPlayer, Position, Skill, TeamSide } from '../../../shared/types/game'
 import { getNextSelectionState } from './getNextSelectionState'
 import { calculateBlockDice } from '../rules/calculateBlockDice'
 import { buildPositionKey, calculatePotentialBlockCandidates } from '../rules/calculatePotentialBlockCandidates'
 import { calculateAllTargetPreviews } from '../rules/calculateTargetPreviews'
+import { rosterTemplates } from '../../../../../team-creator/src/data/rosterTemplates'
+import { buildRosterTemplateMap, resolveImportedTeam } from '../../../shared/integration/resolveImportedTeam'
+import {
+  buildTeamCreatorExchangePackage,
+  parseTeamCreatorExchangePackage,
+  readAvailableTeamsFromWindow,
+  storeImportedTeamsExchange,
+} from '../../../shared/integration/teamCreatorStore'
+import type { ImportedBlockDicePlayer, ImportedBlockDiceTeam } from '../../../shared/integration/teamImport'
 
 const GRID_SIZE = 7
 const STRENGTH_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -18,6 +27,7 @@ const SHOW_BLITZ_INVALIDATION_ACTION = false
 type AppMode = 'EDIT' | 'CALCULATE'
 type PreviewMode = 'STANDARD' | 'BLITZ'
 type HelpTopic = 'GUIDE' | 'INSTALL'
+type TeamLoaderTarget = TeamSide | null
 
 interface TeamDraft {
   strength: number
@@ -37,6 +47,15 @@ const defaultTeamDrafts: Record<TeamSide, TeamDraft> = {
   A: { ...defaultTeamDraft },
   B: { ...defaultTeamDraft },
 }
+const defaultImportedTeamIds: Record<TeamSide, string | null> = {
+  A: null,
+  B: null,
+}
+const defaultSelectedImportedPlayerIds: Record<TeamSide, string | null> = {
+  A: null,
+  B: null,
+}
+const importedTeamTemplateMap = buildRosterTemplateMap(rosterTemplates)
 
 const emptyBoardState: BoardState = {
   placedPlayers: [],
@@ -55,6 +74,8 @@ interface PersistedCalculatorState {
   previewMode: PreviewMode
   focusSelectedDefender: boolean
   selectedEditPlayerIds: Record<TeamSide, string | null>
+  importedTeamIds?: Record<TeamSide, string | null>
+  selectedImportedPlayerIds?: Record<TeamSide, string | null>
   invalidatedBlitzCandidates: Record<string, string[]>
   selectedBlitzCandidateKey: string | null
 }
@@ -80,6 +101,10 @@ function loadPersistedState(): PersistedCalculatorState | null {
 
 function buildTokenId(teamSide: TeamSide, nextNumber: number) {
   return `${teamSide}${nextNumber}`
+}
+
+function buildImportedPlacementId(teamSide: TeamSide, importedPlayerId: string) {
+  return `import-${teamSide}-${importedPlayerId}`
 }
 
 function isSamePosition(left: Position, right: Position) {
@@ -127,6 +152,11 @@ function getTokenRoleLabel(options: { isBlocker: boolean; isTarget: boolean; isB
   return null
 }
 
+function formatImportedPlayerOptionLabel(player: ImportedBlockDicePlayer) {
+  const numberLabel = player.shirtNumber ?? '-'
+  return `${numberLabel} - ${player.playerName}`
+}
+
 function toDiceLabel(count: number, chooser: 'ATTACKER' | 'DEFENDER' | 'NONE') {
   if (chooser === 'ATTACKER') {
     return `${count}D`
@@ -165,6 +195,17 @@ function getExplanationEntryMeta(tone: 'SUCCESS' | 'WARNING' | 'MUTED') {
 
 export function BlockDiceCalculator() {
   const persistedState = loadPersistedState()
+  const savedTeams = readAvailableTeamsFromWindow()
+  const importedTeamOptions = savedTeams
+    .flatMap((team) => {
+      try {
+        return [resolveImportedTeam(team, importedTeamTemplateMap)]
+      } catch {
+        return [] as ImportedBlockDiceTeam[]
+      }
+    })
+    .sort((left, right) => left.name.localeCompare(right.name))
+  const importedTeamOptionMap = new Map(importedTeamOptions.map((team) => [team.id, team]))
   const [teamDrafts, setTeamDrafts] = useState<Record<TeamSide, TeamDraft>>(() => {
     if (persistedState?.teamDrafts) {
       return persistedState.teamDrafts
@@ -202,6 +243,12 @@ export function BlockDiceCalculator() {
   const [selectedEditPlayerIds, setSelectedEditPlayerIds] = useState<Record<TeamSide, string | null>>(
     persistedState?.selectedEditPlayerIds ?? { A: null, B: null },
   )
+  const [importedTeamIds, setImportedTeamIds] = useState<Record<TeamSide, string | null>>(
+    persistedState?.importedTeamIds ?? defaultImportedTeamIds,
+  )
+  const [selectedImportedPlayerIds, setSelectedImportedPlayerIds] = useState<Record<TeamSide, string | null>>(
+    persistedState?.selectedImportedPlayerIds ?? defaultSelectedImportedPlayerIds,
+  )
   const [invalidatedBlitzCandidates, setInvalidatedBlitzCandidates] = useState<Record<string, string[]>>(
     persistedState?.invalidatedBlitzCandidates ?? {},
   )
@@ -212,8 +259,11 @@ export function BlockDiceCalculator() {
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false)
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [helpTopic, setHelpTopic] = useState<HelpTopic>('GUIDE')
+  const [teamLoaderTarget, setTeamLoaderTarget] = useState<TeamLoaderTarget>(null)
+  const [teamImportFeedback, setTeamImportFeedback] = useState('')
   const longPressTimerRef = useRef<number | null>(null)
   const suppressClickRef = useRef(false)
+  const teamImportInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -230,6 +280,8 @@ export function BlockDiceCalculator() {
       previewMode,
       focusSelectedDefender,
       selectedEditPlayerIds,
+      importedTeamIds,
+      selectedImportedPlayerIds,
       invalidatedBlitzCandidates,
       selectedBlitzCandidateKey,
     }
@@ -241,11 +293,13 @@ export function BlockDiceCalculator() {
     boardState,
     teamDrafts,
     focusSelectedDefender,
+    importedTeamIds,
     invalidatedBlitzCandidates,
     nextNumbers,
     playerProfiles,
     previewMode,
     selectedEditPlayerIds,
+    selectedImportedPlayerIds,
     selectedBlitzCandidateKey,
   ])
 
@@ -286,6 +340,64 @@ export function BlockDiceCalculator() {
     }
 
     const draft = teamDrafts[activeTeam]
+    const importedTeam = importedTeamIds[activeTeam] ? importedTeamOptionMap.get(importedTeamIds[activeTeam] ?? '') ?? null : null
+    const placedImportedPlayerIds = new Set(
+      boardState.placedPlayers
+        .filter((player) => player.teamSide === activeTeam)
+        .map((player) => player.id),
+    )
+    const availableImportedPlayers = importedTeam
+      ? importedTeam.players.filter(
+          (player) => !placedImportedPlayerIds.has(buildImportedPlacementId(activeTeam, player.id)),
+        )
+      : []
+    const selectedImportedPlayer =
+      importedTeam && availableImportedPlayers.length > 0
+        ? availableImportedPlayers.find((player) => player.id === selectedImportedPlayerIds[activeTeam]) ??
+          availableImportedPlayers[0]
+        : null
+
+    if (importedTeam && selectedImportedPlayer) {
+      const placedPlayerId = buildImportedPlacementId(activeTeam, selectedImportedPlayer.id)
+      const profileId = `profile-${placedPlayerId}`
+
+      const nextProfile: PlayerProfile = {
+        id: profileId,
+        number: selectedImportedPlayer.shirtNumber ?? undefined,
+        name: selectedImportedPlayer.playerName,
+        strength: selectedImportedPlayer.strength,
+        skills: selectedImportedPlayer.blockDiceSkills,
+      }
+
+      const nextPlacedPlayer: PlacedPlayer = {
+        id: placedPlayerId,
+        profileId,
+        teamSide: activeTeam,
+        position,
+        isStanding: true,
+        hasTackleZone: true,
+      }
+
+      setPlayerProfiles((currentProfiles) => [...currentProfiles, nextProfile])
+      setBoardState((currentState) => ({
+        ...currentState,
+        placedPlayers: [...currentState.placedPlayers, nextPlacedPlayer],
+      }))
+      setSelectedEditPlayerIds((current) => ({
+        ...current,
+        [activeTeam]: nextPlacedPlayer.id,
+      }))
+      setSelectedImportedPlayerIds((current) => ({
+        ...current,
+        [activeTeam]: null,
+      }))
+      return
+    }
+
+    if (importedTeam) {
+      return
+    }
+
     const nextNumber = nextNumbers[activeTeam]
     const tokenId = buildTokenId(activeTeam, nextNumber)
     const profileId = `profile-${tokenId}`
@@ -404,6 +516,38 @@ export function BlockDiceCalculator() {
         ...updates,
       },
     }))
+  }
+
+  const setImportedTeamSelection = (teamSide: TeamSide, importedTeamId: string) => {
+    setImportedTeamIds((current) => ({
+      ...current,
+      [teamSide]: importedTeamId || null,
+    }))
+    setSelectedImportedPlayerIds((current) => ({
+      ...current,
+      [teamSide]: null,
+    }))
+    setSelectedEditPlayerIds((current) => ({
+      ...current,
+      [teamSide]: null,
+    }))
+  }
+
+  const setImportedPlayerSelection = (teamSide: TeamSide, importedPlayerId: string) => {
+    setSelectedImportedPlayerIds((current) => ({
+      ...current,
+      [teamSide]: importedPlayerId || null,
+    }))
+  }
+
+  const openTeamLoader = (teamSide: TeamSide) => {
+    setIsHeaderMenuOpen(false)
+    setTeamLoaderTarget(teamSide)
+  }
+
+  const applyTeamLoaderSelection = (teamSide: TeamSide, importedTeamId: string | null) => {
+    setImportedTeamSelection(teamSide, importedTeamId ?? '')
+    setTeamLoaderTarget(null)
   }
 
   const applyEditorStrength = (teamSide: TeamSide, player: PlacedPlayer | null, strength: number) => {
@@ -544,11 +688,14 @@ export function BlockDiceCalculator() {
     setAppMode('EDIT')
     setPreviewMode('STANDARD')
     setSelectedEditPlayerIds({ A: null, B: null })
+    setImportedTeamIds(defaultImportedTeamIds)
+    setSelectedImportedPlayerIds(defaultSelectedImportedPlayerIds)
     setInvalidatedBlitzCandidates({})
     setSelectedBlitzCandidateKey(null)
     setIsWhyPanelOpen(false)
     setIsHeaderMenuOpen(false)
     setIsHelpOpen(false)
+    setTeamLoaderTarget(null)
 
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(STORAGE_KEY)
@@ -561,6 +708,44 @@ export function BlockDiceCalculator() {
     setIsHelpOpen(true)
   }
 
+  const openTeamImportPicker = () => {
+    setIsHeaderMenuOpen(false)
+    teamImportInputRef.current?.click()
+  }
+
+  const handleTeamImportFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0]
+
+    if (!selectedFile) {
+      return
+    }
+
+    try {
+      const rawValue = await selectedFile.text()
+      const parsedPackage = parseTeamCreatorExchangePackage(rawValue)
+
+      if (!parsedPackage) {
+        setTeamImportFeedback('That file is not a valid team-creator export package.')
+        return
+      }
+
+      if (typeof window !== 'undefined') {
+        storeImportedTeamsExchange(
+          window.localStorage,
+          buildTeamCreatorExchangePackage(parsedPackage.teams),
+        )
+      }
+
+      setTeamImportFeedback(
+        `Imported ${parsedPackage.teams.length} team${parsedPackage.teams.length === 1 ? '' : 's'} into block dice.`,
+      )
+    } catch {
+      setTeamImportFeedback('The team export file could not be read.')
+    } finally {
+      event.target.value = ''
+    }
+  }
+
   const defendingTeam: TeamSide = activeTeam === 'A' ? 'B' : 'A'
   const selectedEditPlayerA =
     boardState.placedPlayers.find((player) => player.id === selectedEditPlayerIds.A) ?? null
@@ -568,6 +753,38 @@ export function BlockDiceCalculator() {
     boardState.placedPlayers.find((player) => player.id === selectedEditPlayerIds.B) ?? null
   const selectedEditProfileA = getProfileForPlayer(selectedEditPlayerA, playerProfiles)
   const selectedEditProfileB = getProfileForPlayer(selectedEditPlayerB, playerProfiles)
+  const importedTeamsBySide: Record<TeamSide, ImportedBlockDiceTeam | null> = {
+    A: importedTeamIds.A ? importedTeamOptionMap.get(importedTeamIds.A) ?? null : null,
+    B: importedTeamIds.B ? importedTeamOptionMap.get(importedTeamIds.B) ?? null : null,
+  }
+  const availableImportedPlayersBySide: Record<TeamSide, ImportedBlockDicePlayer[]> = {
+    A: importedTeamsBySide.A
+      ? importedTeamsBySide.A.players.filter(
+          (player) =>
+            !boardState.placedPlayers.some(
+              (placedPlayer) => placedPlayer.id === buildImportedPlacementId('A', player.id),
+            ),
+        )
+      : [],
+    B: importedTeamsBySide.B
+      ? importedTeamsBySide.B.players.filter(
+          (player) =>
+            !boardState.placedPlayers.some(
+              (placedPlayer) => placedPlayer.id === buildImportedPlacementId('B', player.id),
+            ),
+        )
+      : [],
+  }
+  const pendingImportedPlayersBySide: Record<TeamSide, ImportedBlockDicePlayer | null> = {
+    A:
+      availableImportedPlayersBySide.A.find((player) => player.id === selectedImportedPlayerIds.A) ??
+      availableImportedPlayersBySide.A[0] ??
+      null,
+    B:
+      availableImportedPlayersBySide.B.find((player) => player.id === selectedImportedPlayerIds.B) ??
+      availableImportedPlayersBySide.B[0] ??
+      null,
+  }
   const blocker = boardState.placedPlayers.find((player) => player.id === boardState.blockerId) ?? null
   const target = boardState.placedPlayers.find((player) => player.id === boardState.targetId) ?? null
   const invalidationSetKey = blocker && target ? `${blocker.id}:${target.id}` : null
@@ -617,18 +834,45 @@ export function BlockDiceCalculator() {
     const selectedPlayer = teamSide === 'A' ? selectedEditPlayerA : selectedEditPlayerB
     const selectedProfile = teamSide === 'A' ? selectedEditProfileA : selectedEditProfileB
     const draft = teamDrafts[teamSide]
+    const importedTeam = importedTeamsBySide[teamSide]
+    const pendingImportedPlayer = pendingImportedPlayersBySide[teamSide]
+    const availableImportedPlayers = availableImportedPlayersBySide[teamSide]
+    const isImportedSource = Boolean(importedTeam)
+    const isPendingImportedPreview = isImportedSource && !selectedPlayer
 
     return {
       teamSide,
       selectedPlayer,
       selectedProfile,
-      name: selectedProfile?.name ?? (selectedPlayer ? `Player ${getProfileTokenNumber(selectedPlayer, playerProfiles)}` : 'New player'),
-      strength: selectedProfile?.strength ?? draft.strength,
-      skills: selectedProfile?.skills ?? draft.skills,
+      importedTeam,
+      pendingImportedPlayer,
+      availableImportedPlayers,
+      isImportedSource,
+      isPendingImportedPreview,
+      name:
+        selectedProfile?.name ??
+        pendingImportedPlayer?.playerName ??
+        (selectedPlayer ? `Player ${getProfileTokenNumber(selectedPlayer, playerProfiles)}` : 'New player'),
+      strength: selectedProfile?.strength ?? pendingImportedPlayer?.strength ?? draft.strength,
+      skills: selectedProfile?.skills ?? pendingImportedPlayer?.blockDiceSkills ?? draft.skills,
       isStanding: selectedPlayer?.isStanding ?? draft.isStanding,
       hasTackleZone: selectedPlayer?.hasTackleZone ?? draft.hasTackleZone,
     }
   })
+  const calculateTeamNameCards = [
+    {
+      key: activeTeam,
+      teamSide: activeTeam,
+      panelLabel: 'Attacker Team',
+      importedTeam: importedTeamsBySide[activeTeam],
+    },
+    {
+      key: defendingTeam,
+      teamSide: defendingTeam,
+      panelLabel: 'Defender Team',
+      importedTeam: importedTeamsBySide[defendingTeam],
+    },
+  ]
   const attackerCardStrength = blockerProfile
     ? (() => {
         const hornsModifier = previewMode === 'BLITZ' && blockerSkills.includes('HORNS') ? 1 : 0
@@ -777,6 +1021,27 @@ export function BlockDiceCalculator() {
                     <button
                       type="button"
                       className={styles.menuItem}
+                      onClick={openTeamImportPicker}
+                    >
+                      Import teams
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.menuItem}
+                      onClick={() => openTeamLoader('A')}
+                    >
+                      Load blue team
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.menuItem}
+                      onClick={() => openTeamLoader('B')}
+                    >
+                      Load red team
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.menuItem}
                       onClick={() => openHelpSheet('INSTALL')}
                     >
                       Install
@@ -793,6 +1058,16 @@ export function BlockDiceCalculator() {
               </div>
             </div>
           </div>
+          <input
+            ref={teamImportInputRef}
+            type="file"
+            accept="application/json,.json"
+            className={styles.hiddenFileInput}
+            onChange={(event) => void handleTeamImportFileChange(event)}
+          />
+          {teamImportFeedback ? (
+            <p className={styles.statusNote}>{teamImportFeedback}</p>
+          ) : null}
         </div>
 
         <div className={styles.boardWorkspace}>
@@ -905,71 +1180,160 @@ export function BlockDiceCalculator() {
 
           <div className={styles.playerCardGrid} aria-label="Selected player cards">
             {appMode === 'EDIT'
-              ? editCardStates.map((card) => (
-                  <article
-                    key={card.teamSide}
-                    className={`${styles.playerCard} ${
-                      card.teamSide === 'A' ? styles.playerCardTeamA : styles.playerCardTeamB
-                    }`}
-                  >
-                    <div className={styles.playerCardHeader}>
-                      <p className={styles.playerCardName}>{card.name}</p>
-                      <select
-                        id={`edit-strength-${card.teamSide}`}
-                        className={styles.playerCardStrengthSelect}
-                        value={card.strength}
-                        onChange={(event) => applyEditorStrength(card.teamSide, card.selectedPlayer, Number(event.target.value))}
-                      >
-                        {STRENGTH_OPTIONS.map((value) => (
-                          <option key={value} value={value}>
-                            ST {value}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className={styles.playerCardToggleRow}>
-                      {PLAYER_SKILL_OPTIONS.map((skill) => (
-                        <button
-                          key={skill}
-                          type="button"
-                          className={card.skills.includes(skill) ? styles.playerToggleActive : styles.playerToggle}
-                          onClick={() => applyEditorSkill(card.teamSide, card.selectedPlayer, card.skills, skill)}
-                          aria-pressed={card.skills.includes(skill)}
+              ? (
+                <>
+                  {(editCardStates.some((card) => card.importedTeam) ? (
+                    <div className={styles.teamNameStripGrid} aria-label="Loaded team names">
+                      {editCardStates.map((card) => (
+                        <article
+                          key={`team-name-${card.teamSide}`}
+                          className={`${styles.teamNameStrip} ${
+                            card.teamSide === 'A' ? styles.teamNameStripTeamA : styles.teamNameStripTeamB
+                          }`}
                         >
-                          {skill}
-                        </button>
+                          <p className={styles.teamNameStripLabel}>{card.teamSide === 'A' ? 'Blue Team' : 'Red Team'}</p>
+                          <p className={styles.teamNameStripName}>{card.importedTeam?.name ?? 'Manual placement'}</p>
+                        </article>
                       ))}
                     </div>
-                    <div className={styles.playerCardToggleRow}>
-                      <button
-                        type="button"
-                        className={!card.isStanding ? styles.playerToggleActive : styles.playerToggle}
-                        onClick={() =>
-                          applyEditorStanding(
-                            card.teamSide,
-                            card.selectedPlayer,
-                            card.isStanding,
-                            card.hasTackleZone,
-                          )
-                        }
-                        aria-pressed={!card.isStanding}
-                      >
-                        Prone
-                      </button>
-                      <button
-                        type="button"
-                        className={card.hasTackleZone ? styles.playerToggleActive : styles.playerToggle}
-                        onClick={() => applyEditorTackleZone(card.teamSide, card.selectedPlayer, card.hasTackleZone)}
-                        disabled={!card.isStanding}
-                        aria-pressed={card.hasTackleZone}
-                      >
-                        Tackle zone
-                      </button>
-                    </div>
-                  </article>
-                ))
+                  ) : null)}
+                  {editCardStates.map((card) => (
+                    <article
+                      key={card.teamSide}
+                      className={`${styles.playerCard} ${
+                        card.teamSide === 'A' ? styles.playerCardTeamA : styles.playerCardTeamB
+                      }`}
+                    >
+                      <p className={styles.playerCardControlLabel}>Source</p>
+                      {!card.importedTeam && importedTeamOptions.length === 0 ? (
+                        <p className={styles.playerCardNote}>
+                          Use the menu and choose `Import teams` after exporting a team package from the team creator.
+                        </p>
+                      ) : !card.importedTeam ? (
+                        <p className={styles.playerCardMeta}>Manual placement active for this side.</p>
+                      ) : null}
+                      {card.importedTeam ? (
+                        <div className={styles.playerCardSourceBlock}>
+                          <label
+                            htmlFor={`edit-imported-player-${card.teamSide}`}
+                            className={styles.playerCardControlLabel}
+                          >
+                            Next player
+                          </label>
+                          <select
+                            id={`edit-imported-player-${card.teamSide}`}
+                            className={styles.playerCardImportSelect}
+                            value={card.pendingImportedPlayer?.id ?? ''}
+                            onChange={(event) => setImportedPlayerSelection(card.teamSide, event.target.value)}
+                            disabled={card.availableImportedPlayers.length === 0}
+                          >
+                            {card.availableImportedPlayers.length === 0 ? (
+                              <option value="">All players placed</option>
+                            ) : null}
+                            {card.availableImportedPlayers.map((player) => (
+                              <option key={player.id} value={player.id}>
+                                {formatImportedPlayerOptionLabel(player)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : null}
+                      <div className={styles.playerCardHeader}>
+                        <p className={styles.playerCardName}>{card.name}</p>
+                        <select
+                          id={`edit-strength-${card.teamSide}`}
+                          className={styles.playerCardStrengthSelect}
+                          value={card.strength}
+                          onChange={(event) => applyEditorStrength(card.teamSide, card.selectedPlayer, Number(event.target.value))}
+                          disabled={card.isPendingImportedPreview}
+                        >
+                          {STRENGTH_OPTIONS.map((value) => (
+                            <option key={value} value={value}>
+                              ST {value}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className={styles.playerCardToggleRow}>
+                        {PLAYER_SKILL_OPTIONS.map((skill) => (
+                          <button
+                            key={skill}
+                            type="button"
+                            className={card.skills.includes(skill) ? styles.playerToggleActive : styles.playerToggle}
+                            onClick={() => applyEditorSkill(card.teamSide, card.selectedPlayer, card.skills, skill)}
+                            disabled={card.isPendingImportedPreview}
+                            aria-pressed={card.skills.includes(skill)}
+                          >
+                            {skill}
+                          </button>
+                        ))}
+                      </div>
+                      <div className={styles.playerCardToggleRow}>
+                        <button
+                          type="button"
+                          className={!card.isStanding ? styles.playerToggleActive : styles.playerToggle}
+                          onClick={() =>
+                            applyEditorStanding(
+                              card.teamSide,
+                              card.selectedPlayer,
+                              card.isStanding,
+                              card.hasTackleZone,
+                            )
+                          }
+                          disabled={card.isPendingImportedPreview}
+                          aria-pressed={!card.isStanding}
+                        >
+                          Prone
+                        </button>
+                        <button
+                          type="button"
+                          className={card.hasTackleZone ? styles.playerToggleActive : styles.playerToggle}
+                          onClick={() => applyEditorTackleZone(card.teamSide, card.selectedPlayer, card.hasTackleZone)}
+                          disabled={!card.isStanding || card.isPendingImportedPreview}
+                          aria-pressed={card.hasTackleZone}
+                        >
+                          Tackle zone
+                        </button>
+                      </div>
+                      {card.importedTeam ? (
+                        <>
+                          <p className={styles.playerCardMeta}>
+                            {card.importedTeam.name} · {card.importedTeam.rosterName}
+                          </p>
+                          <p className={styles.playerCardNote}>
+                            {card.selectedPlayer
+                              ? 'Placed imported players can still be adjusted locally for testing.'
+                              : card.pendingImportedPlayer
+                                ? `Tap an empty square to place ${card.pendingImportedPlayer.playerName}.`
+                                : 'All imported players for this side are already on the pitch.'}
+                          </p>
+                        </>
+                      ) : (
+                        <p className={styles.playerCardNote}>
+                          Tap an empty square to add a manual player for this side.
+                        </p>
+                      )}
+                    </article>
+                  ))}
+                </>
+              )
               : (
                 <>
+                  {(calculateTeamNameCards.some((card) => card.importedTeam) ? (
+                    <div className={styles.teamNameStripGrid} aria-label="Loaded team names">
+                      {calculateTeamNameCards.map((card) => (
+                        <article
+                          key={`team-name-calc-${card.teamSide}`}
+                          className={`${styles.teamNameStrip} ${
+                            card.teamSide === 'A' ? styles.teamNameStripTeamA : styles.teamNameStripTeamB
+                          }`}
+                        >
+                          <p className={styles.teamNameStripLabel}>{card.panelLabel}</p>
+                          <p className={styles.teamNameStripName}>{card.importedTeam?.name ?? 'Manual placement'}</p>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null)}
                   <article
                     className={`${styles.playerCard} ${
                       activeTeam === 'A' ? styles.playerCardTeamA : styles.playerCardTeamB
@@ -1181,6 +1545,63 @@ export function BlockDiceCalculator() {
                   <li>`✓` means the assist is applied, `▲` means it is marked or fails, and `⊘` means it is not relevant.</li>
                 </ul>
               </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {teamLoaderTarget ? (
+        <div
+          className={styles.bottomSheetBackdrop}
+          role="presentation"
+          onClick={() => setTeamLoaderTarget(null)}
+        >
+          <section
+            className={styles.bottomSheet}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="team-loader-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.bottomSheetHeader}>
+              <div>
+                <p className={styles.eyebrow}>Load Team</p>
+                <p id="team-loader-title" className={styles.resultHeadline}>
+                  {teamLoaderTarget === 'A' ? 'Blue Team Source' : 'Red Team Source'}
+                </p>
+              </div>
+              <button
+                type="button"
+                className={styles.teamToggle}
+                onClick={() => setTeamLoaderTarget(null)}
+              >
+                CLOSE
+              </button>
+            </div>
+
+            <div className={styles.teamLoaderList}>
+              <button
+                type="button"
+                className={styles.teamLoaderButton}
+                onClick={() => applyTeamLoaderSelection(teamLoaderTarget, null)}
+              >
+                Manual placement
+              </button>
+              {importedTeamOptions.map((team) => (
+                <button
+                  key={team.id}
+                  type="button"
+                  className={styles.teamLoaderButton}
+                  onClick={() => applyTeamLoaderSelection(teamLoaderTarget, team.id)}
+                >
+                  {team.name} · {team.rosterName}
+                </button>
+              ))}
+              {importedTeamOptions.length === 0 ? (
+                <p className={styles.statusNote}>
+                  No imported team library found yet. Use `Import teams` from the menu first.
+                </p>
+              ) : null}
             </div>
           </section>
         </div>

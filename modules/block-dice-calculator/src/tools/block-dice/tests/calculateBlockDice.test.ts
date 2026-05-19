@@ -241,7 +241,7 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.total).toBe(5)
     expect(result.finalDice.chooser).toBe('NONE')
     expect(explanationTexts(result, 'Offensive Assists')).toContain(
-      'A uses Dauntless after Horns and rises to match D at ST 5.',
+      'Blue uses Dauntless after Horns and rises to match Red at ST 5.',
     )
   })
 
@@ -256,7 +256,7 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.total).toBe(5)
     expect(result.finalDice.chooser).toBe('ATTACKER')
     expect(explanationTexts(result, 'Offensive Assists')).toContain(
-      'A has Dauntless, but it does not trigger because their Strength is already high enough.',
+      'Blue has Dauntless, but it does not trigger because their Strength is already high enough.',
     )
   })
 
@@ -282,8 +282,8 @@ describe('calculateBlockDice', () => {
 
     const result = calculateBlockDice(boardState, profiles)
     const offensiveTexts = explanationTexts(result, 'Offensive Assists')
-    expect(offensiveTexts).toContain('A2, A3 and A4 are not relevant in this block.')
-    expect(offensiveTexts).not.toContain('A2 is not marking the relevant player for this assist.')
+    expect(offensiveTexts).toContain('Blue 2, Blue 3 and Blue 4 are not relevant in this block.')
+    expect(offensiveTexts).not.toContain('Blue 2 is not marking the relevant player for this assist.')
   })
 
   it('applies Horns during a blitz', () => {
@@ -296,7 +296,7 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.base).toBe(4)
     expect(result.attackerStrength.total).toBe(4)
     expect(result.finalDice.chooser).toBe('NONE')
-    expect(explanationTexts(result, 'Offensive Assists')).toContain('A gains +1 ST from Horns because this block is part of a blitz.')
+    expect(explanationTexts(result, 'Offensive Assists')).toContain('Blue gains +1 ST from Horns because this block is part of a blitz.')
   })
 
   it('does not trigger Dauntless when Horns already reaches the defender strength', () => {
@@ -310,7 +310,7 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.total).toBe(4)
     expect(result.finalDice.chooser).toBe('NONE')
     expect(explanationTexts(result, 'Offensive Assists')).toContain(
-      'A has Dauntless, but it does not trigger because their Strength is already high enough.',
+      'Blue has Dauntless, but it does not trigger because their Strength is already high enough.',
     )
   })
 
@@ -325,10 +325,10 @@ describe('calculateBlockDice', () => {
     expect(result.attackerStrength.total).toBe(5)
     expect(result.finalDice.chooser).toBe('NONE')
     expect(explanationTexts(result, 'Offensive Assists')).toContain(
-      'A gains +1 ST from Horns because this block is part of a blitz.',
+      'Blue gains +1 ST from Horns because this block is part of a blitz.',
     )
     expect(explanationTexts(result, 'Offensive Assists')).toContain(
-      'A uses Dauntless after Horns and rises to match D at ST 5.',
+      'Blue uses Dauntless after Horns and rises to match Red at ST 5.',
     )
   })
 
@@ -350,9 +350,9 @@ describe('calculateBlockDice', () => {
       result.explanation.find((section) => section.title === 'Offensive Assists')?.entries ?? []
 
     expect(offensiveEntries.map((entry) => entry.text)).toEqual([
-      'A2 provides a offensive assist.',
-      'A3 cannot assist because they are marked by D2.',
-      'A4 is not relevant in this block.',
+      'Blue 2 provides a offensive assist.',
+      'Blue 3 cannot assist because they are marked by Red 2.',
+      'Blue 4 is not relevant in this block.',
     ])
     expect(offensiveEntries.map((entry) => entry.tone)).toEqual(['SUCCESS', 'WARNING', 'MUTED'])
   })

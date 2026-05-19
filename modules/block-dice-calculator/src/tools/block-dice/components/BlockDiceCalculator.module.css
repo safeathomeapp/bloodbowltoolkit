@@ -299,6 +299,10 @@
   font-size: 0.82rem;
 }
 
+.hiddenFileInput {
+  display: none;
+}
+
 .legendRow {
   margin-top: 0.85rem;
   display: flex;
@@ -369,6 +373,45 @@
   gap: 0.55rem;
 }
 
+.teamNameStripGrid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.teamNameStrip {
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.72rem;
+  border: 1px solid rgba(246, 239, 228, 0.16);
+}
+
+.teamNameStripTeamA {
+  background: linear-gradient(180deg, rgba(41, 90, 161, 0.36), rgba(17, 32, 59, 0.72));
+  border-color: rgba(96, 169, 255, 0.34);
+}
+
+.teamNameStripTeamB {
+  background: linear-gradient(180deg, rgba(161, 51, 71, 0.34), rgba(65, 20, 28, 0.74));
+  border-color: rgba(248, 108, 115, 0.3);
+}
+
+.teamNameStripLabel {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.64rem;
+  color: rgba(246, 239, 228, 0.7);
+}
+
+.teamNameStripName {
+  margin: 0.2rem 0 0;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: rgba(246, 239, 228, 0.95);
+  line-height: 1.15;
+}
+
 .playerCard {
   padding: 0.8rem;
   border-radius: 0.72rem;
@@ -392,6 +435,42 @@
   justify-content: space-between;
   gap: 0.6rem;
   text-align: center;
+}
+
+.playerCardSourceBlock {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.playerCardControlLabel {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(246, 239, 228, 0.72);
+}
+
+.playerCardImportSelect {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 2.5rem;
+  border: 1px solid rgba(246, 239, 228, 0.16);
+  border-radius: 0.72rem;
+  background: rgba(246, 239, 228, 0.08);
+  color: inherit;
+  padding: 0.55rem 0.7rem;
+  font-weight: 700;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+}
+
+.playerCardImportSelect option,
+.playerCardStrengthSelect option {
+  background: #fffdf9;
+  color: #231915;
 }
 
 .playerCardHeading {
@@ -770,6 +849,23 @@
   gap: 0.85rem;
 }
 
+.teamLoaderList {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.teamLoaderButton {
+  width: 100%;
+  border: 1px solid rgba(246, 239, 228, 0.18);
+  border-radius: 0.9rem;
+  padding: 0.85rem 0.9rem;
+  background: rgba(246, 239, 228, 0.06);
+  color: rgba(246, 239, 228, 0.92);
+  text-align: left;
+  font-weight: 800;
+}
+
 .whyRoleRow {
   margin-top: 0.9rem;
   display: flex;
@@ -915,13 +1011,26 @@
     gap: 0.4rem;
   }
 
+  .teamNameStripGrid {
+    gap: 0.4rem;
+  }
+
   .playerCard {
     padding: 0.55rem;
     border-radius: 0.58rem;
   }
 
+  .teamNameStrip {
+    padding: 0.42rem 0.55rem;
+    border-radius: 0.58rem;
+  }
+
   .playerCardName {
     font-size: 0.86rem;
+  }
+
+  .teamNameStripName {
+    font-size: 0.74rem;
   }
 
   .playerCardStrength {
@@ -934,9 +1043,16 @@
     font-size: 0.68rem;
   }
 
+  .playerCardImportSelect {
+    min-height: 2.2rem;
+    padding: 0.45rem 0.55rem;
+    font-size: 0.68rem;
+  }
+
   .playerCardMeta,
   .playerCardNote,
-  .playerCardLabel {
+  .playerCardLabel,
+  .playerCardControlLabel {
     font-size: 0.66rem;
   }
 
@@ -981,6 +1097,10 @@
   .playerCardGrid {
     grid-template-columns: minmax(0, 1fr);
     align-content: start;
+  }
+
+  .teamNameStripGrid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .bottomSheet {
