@@ -13,6 +13,7 @@ import {
   readAvailableTeamsFromWindow,
   storeImportedTeamsExchange,
 } from '../../../shared/integration/teamCreatorStore'
+import { fetchBlockDiceSessionContextByCode } from '../../../shared/integration/matchSessionApi'
 import type { ImportedBlockDicePlayer, ImportedBlockDiceTeam } from '../../../shared/integration/teamImport'
 
 const GRID_SIZE = 7
@@ -261,6 +262,9 @@ export function BlockDiceCalculator() {
   const [helpTopic, setHelpTopic] = useState<HelpTopic>('GUIDE')
   const [teamLoaderTarget, setTeamLoaderTarget] = useState<TeamLoaderTarget>(null)
   const [teamImportFeedback, setTeamImportFeedback] = useState('')
+  const [isSessionLoaderOpen, setIsSessionLoaderOpen] = useState(false)
+  const [sessionCodeInput, setSessionCodeInput] = useState('')
+  const [isSessionLoading, setIsSessionLoading] = useState(false)
   const longPressTimerRef = useRef<number | null>(null)
   const suppressClickRef = useRef(false)
   const teamImportInputRef = useRef<HTMLInputElement | null>(null)
@@ -713,6 +717,11 @@ export function BlockDiceCalculator() {
     teamImportInputRef.current?.click()
   }
 
+  const openSessionLoader = () => {
+    setIsHeaderMenuOpen(false)
+    setIsSessionLoaderOpen(true)
+  }
+
   const handleTeamImportFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0]
 
@@ -743,6 +752,39 @@ export function BlockDiceCalculator() {
       setTeamImportFeedback('The team export file could not be read.')
     } finally {
       event.target.value = ''
+    }
+  }
+
+  const handleLoadSessionByCode = async () => {
+    setIsSessionLoading(true)
+
+    try {
+      const sessionContext = await fetchBlockDiceSessionContextByCode(sessionCodeInput)
+
+      if (typeof window !== 'undefined') {
+        storeImportedTeamsExchange(
+          window.localStorage,
+          buildTeamCreatorExchangePackage([sessionContext.teams.home, sessionContext.teams.away]),
+        )
+      }
+
+      setImportedTeamIds({
+        A: sessionContext.teams.home.id,
+        B: sessionContext.teams.away.id,
+      })
+      setSelectedImportedPlayerIds(defaultSelectedImportedPlayerIds)
+      setSelectedEditPlayerIds({ A: null, B: null })
+      setSessionCodeInput(sessionContext.matchSession.sessionCode)
+      setIsSessionLoaderOpen(false)
+      setTeamImportFeedback(
+        `Loaded session ${sessionContext.matchSession.sessionCode}. Blue: ${sessionContext.teams.home.name}. Red: ${sessionContext.teams.away.name}.`,
+      )
+    } catch (error) {
+      setTeamImportFeedback(
+        error instanceof Error ? `Session load failed: ${error.message}` : 'Session load failed.',
+      )
+    } finally {
+      setIsSessionLoading(false)
     }
   }
 
@@ -1038,6 +1080,13 @@ export function BlockDiceCalculator() {
                       onClick={() => openTeamLoader('B')}
                     >
                       Load red team
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.menuItem}
+                      onClick={openSessionLoader}
+                    >
+                      Load session code
                     </button>
                     <button
                       type="button"
@@ -1602,6 +1651,61 @@ export function BlockDiceCalculator() {
                   No imported team library found yet. Use `Import teams` from the menu first.
                 </p>
               ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isSessionLoaderOpen ? (
+        <div
+          className={styles.bottomSheetBackdrop}
+          role="presentation"
+          onClick={() => setIsSessionLoaderOpen(false)}
+        >
+          <section
+            className={styles.bottomSheet}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="session-loader-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.bottomSheetHeader}>
+              <div>
+                <p className={styles.eyebrow}>Shared Session</p>
+                <p id="session-loader-title" className={styles.resultHeadline}>
+                  Load Match Session
+                </p>
+              </div>
+              <button
+                type="button"
+                className={styles.teamToggle}
+                onClick={() => setIsSessionLoaderOpen(false)}
+              >
+                CLOSE
+              </button>
+            </div>
+
+            <div className={styles.teamLoaderList}>
+              <label className={styles.sessionLoaderField}>
+                <span className={styles.playerCardControlLabel}>Session code</span>
+                <input
+                  className={styles.sessionLoaderInput}
+                  value={sessionCodeInput}
+                  onChange={(event) => setSessionCodeInput(event.target.value.toUpperCase())}
+                  placeholder="Enter session code"
+                />
+              </label>
+              <button
+                type="button"
+                className={styles.teamLoaderButton}
+                onClick={() => void handleLoadSessionByCode()}
+                disabled={isSessionLoading || !sessionCodeInput.trim()}
+              >
+                {isSessionLoading ? 'Loading session...' : 'Load session'}
+              </button>
+              <p className={styles.statusNote}>
+                This loads the home team to blue and the away team to red through the shared API.
+              </p>
             </div>
           </section>
         </div>

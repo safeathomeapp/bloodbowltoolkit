@@ -9,6 +9,8 @@
 - `services/api/` now exists with a live PostgreSQL-backed scaffold
 - users, leagues, and teams are now implemented and smoke-tested in the API
 - CORS is enabled for local frontend-to-API development across ports
+- match-session endpoints are now implemented and smoke-tested in the API
+- block dice can now load a match session by code and pre-assign blue and red teams from shared API data
 
 ## What Not To Do Next
 
@@ -20,24 +22,20 @@
 
 ## Best Next Move
 
-- implement match-session endpoints in `services/api/`
+- reduce the manual session setup path across the frontend modules
 
 ## Concrete Next Implementation Pass
 
-1. implement:
-   - `POST /match-sessions`
-   - `GET /match-sessions/:sessionId`
-   - `GET /match-sessions/code/:sessionCode`
-   - `POST /match-sessions/:sessionId/join`
-2. keep the payload shaped around the existing shared team records
-3. resolve the preload payload block dice needs from session context
-4. only return to block-dice UX tidy work after the session-loading path exists
+1. add a frontend path to create or select a match session from shared team data
+2. keep block dice consuming shared session preload rather than direct ad hoc team imports where possible
+3. reduce the current manual dev/test cross-app handoff needed to get a session code
+4. after that, revisit block-dice UX polish around active side, source clarity, and imported placement flow
 
 ## After That
 
-1. wire block dice to consume match-session preload data
-2. remove more of the temporary export/import bridge from the main flow
-3. then return to progression fields once shared team identity is stable
+1. remove more of the temporary export/import bridge from the main flow
+2. then return to progression fields once shared team identity is stable
+3. only after that expand into richer league or fixture administration
 
 ## Integration Goal
 

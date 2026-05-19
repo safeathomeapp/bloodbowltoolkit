@@ -34,10 +34,15 @@ Implemented route slice:
 - `POST /teams`
 - `PUT /teams/:teamId`
 - `DELETE /teams/:teamId`
+- `POST /match-sessions`
+- `GET /match-sessions/:sessionId`
+- `GET /match-sessions/code/:sessionCode`
+- `POST /match-sessions/:sessionId/join`
+- `GET /match-sessions/:sessionId/block-dice-context`
 
 Still placeholder-only:
 
-- match session routes
+- no remaining route placeholders in the MVP slice
 
 It does not yet implement the full domain workflow.
 

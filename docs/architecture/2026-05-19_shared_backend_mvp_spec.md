@@ -346,8 +346,13 @@ In place:
   - `POST /teams`
   - `PUT /teams/:teamId`
   - `DELETE /teams/:teamId`
+  - `POST /match-sessions`
+  - `GET /match-sessions/:sessionId`
+  - `GET /match-sessions/code/:sessionCode`
+  - `POST /match-sessions/:sessionId/join`
+  - `GET /match-sessions/:sessionId/block-dice-context`
 
 Next implementation step:
 
-- API-backed repository path for team creator
-- match session creation and preload fetch
+- block-dice frontend session loading
+- session-driven preload flow across the two apps
