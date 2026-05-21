@@ -240,6 +240,52 @@
   flex-wrap: wrap;
 }
 
+.fixturePanel {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid rgba(137, 65, 51, 0.12);
+  padding-top: 14px;
+}
+
+.fixturePanelHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.fixtureList {
+  display: grid;
+  gap: 10px;
+}
+
+.fixtureCard {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(137, 65, 51, 0.12);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fffdfa;
+}
+
+.fixtureMeta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: #685447;
+  font-size: 0.86rem;
+}
+
+.fixtureTeams {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  color: #31231e;
+  font-weight: 700;
+}
+
 .cloneSectionTitle {
   margin: 0 0 6px;
   color: #292929;

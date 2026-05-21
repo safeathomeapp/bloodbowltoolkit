@@ -4,6 +4,8 @@ import {
   CompetitionStatus,
   CompetitionType,
   CompetitionVisibility,
+  FixtureSourceType,
+  FixtureStatus,
   Prisma,
   TournamentTeamSourceType,
 } from '@prisma/client'
@@ -54,6 +56,22 @@ const submissionBodySchema = z.object({
 
 const approveSubmissionBodySchema = z.object({
   approvedByUserId: z.string().min(1),
+})
+
+const fixtureParamsSchema = z.object({
+  competitionId: z.string().min(1),
+  fixtureId: z.string().min(1),
+})
+
+const generateFixturesBodySchema = z.object({
+  requestedByUserId: z.string().min(1),
+})
+
+const updateFixtureBodySchema = z.object({
+  requestedByUserId: z.string().min(1),
+  homeEntryId: z.string().min(1).nullable().optional(),
+  awayEntryId: z.string().min(1).nullable().optional(),
+  scheduledAt: z.string().datetime({ offset: true }).nullable().optional(),
 })
 
 function toIsoString(value: Date | null) {
@@ -214,6 +232,87 @@ function toCompetitionSubmissionDetail(submission: {
   }
 }
 
+function toFixtureEntrySummary(entry: {
+  id: string
+  userId: string
+  status: CompetitionEntryStatus
+  user: {
+    id: string
+    displayName: string
+  }
+  submission: {
+    id: string
+    teamName: string
+    rosterTemplateId: string
+  } | null
+}) {
+  return {
+    id: entry.id,
+    userId: entry.userId,
+    status: entry.status,
+    user: entry.user,
+    submission: entry.submission,
+  }
+}
+
+function toFixtureSummary(fixture: {
+  id: string
+  competitionId: string
+  roundNumber: number
+  bracketPosition: number | null
+  status: FixtureStatus
+  sourceType: FixtureSourceType
+  scheduledAt: Date | null
+  nextFixtureId: string | null
+  winnerEntryId: string | null
+  createdAt: Date
+  updatedAt: Date
+  homeEntry: {
+    id: string
+    userId: string
+    status: CompetitionEntryStatus
+    user: {
+      id: string
+      displayName: string
+    }
+    submission: {
+      id: string
+      teamName: string
+      rosterTemplateId: string
+    } | null
+  } | null
+  awayEntry: {
+    id: string
+    userId: string
+    status: CompetitionEntryStatus
+    user: {
+      id: string
+      displayName: string
+    }
+    submission: {
+      id: string
+      teamName: string
+      rosterTemplateId: string
+    } | null
+  } | null
+}) {
+  return {
+    id: fixture.id,
+    competitionId: fixture.competitionId,
+    roundNumber: fixture.roundNumber,
+    bracketPosition: fixture.bracketPosition,
+    status: fixture.status,
+    sourceType: fixture.sourceType,
+    scheduledAt: toIsoString(fixture.scheduledAt),
+    nextFixtureId: fixture.nextFixtureId,
+    winnerEntryId: fixture.winnerEntryId,
+    createdAt: fixture.createdAt.toISOString(),
+    updatedAt: fixture.updatedAt.toISOString(),
+    homeEntry: fixture.homeEntry ? toFixtureEntrySummary(fixture.homeEntry) : null,
+    awayEntry: fixture.awayEntry ? toFixtureEntrySummary(fixture.awayEntry) : null,
+  }
+}
+
 async function fetchCompetitionDetail(app: FastifyInstance, competitionId: string) {
   return app.prisma.competition.findUnique({
     where: {
@@ -290,6 +389,63 @@ async function fetchCompetitionEntry(
         },
       },
     },
+  })
+}
+
+type FixtureReader = Pick<Prisma.TransactionClient, 'fixture'> | Pick<FastifyInstance['prisma'], 'fixture'>
+
+async function fetchCompetitionFixtures(prisma: FixtureReader, competitionId: string) {
+  return prisma.fixture.findMany({
+    where: {
+      competitionId,
+    },
+    include: {
+      homeEntry: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              displayName: true,
+            },
+          },
+          submission: {
+            select: {
+              id: true,
+              teamName: true,
+              rosterTemplateId: true,
+            },
+          },
+        },
+      },
+      awayEntry: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              displayName: true,
+            },
+          },
+          submission: {
+            select: {
+              id: true,
+              teamName: true,
+              rosterTemplateId: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: [
+      {
+        roundNumber: 'asc',
+      },
+      {
+        bracketPosition: 'asc',
+      },
+      {
+        createdAt: 'asc',
+      },
+    ],
   })
 }
 
@@ -940,6 +1096,338 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
 
     return reply.send({
       entry: toCompetitionEntrySummary(approvedEntry),
+    })
+  })
+
+  app.post('/competitions/:competitionId/fixtures/generate', async (request, reply) => {
+    const paramsResult = competitionParamsSchema.safeParse(request.params)
+    const bodyResult = generateFixturesBodySchema.safeParse(request.body)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid competition id.',
+      })
+    }
+
+    if (!bodyResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid fixture generation payload.',
+        issues: bodyResult.error.issues,
+      })
+    }
+
+    const competition = await app.prisma.competition.findUnique({
+      where: {
+        id: paramsResult.data.competitionId,
+      },
+      include: {
+        entries: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                displayName: true,
+              },
+            },
+            submission: {
+              select: {
+                id: true,
+                teamName: true,
+                rosterTemplateId: true,
+              },
+            },
+          },
+          where: {
+            status: CompetitionEntryStatus.TEAM_APPROVED,
+          },
+          orderBy: [
+            {
+              approvedAt: 'asc',
+            },
+            {
+              createdAt: 'asc',
+            },
+          ],
+        },
+        fixtures: {
+          select: {
+            id: true,
+          },
+          take: 1,
+        },
+      },
+    })
+
+    if (!competition) {
+      return reply.code(404).send({
+        message: 'Competition not found.',
+      })
+    }
+
+    if (competition.createdByUserId !== bodyResult.data.requestedByUserId) {
+      return reply.code(403).send({
+        message: 'Only the competition owner can generate fixtures.',
+      })
+    }
+
+    if (competition.type !== CompetitionType.TOURNAMENT || competition.format !== CompetitionFormat.KNOCKOUT) {
+      return reply.code(409).send({
+        message: 'Fixture generation is currently implemented only for knockout tournaments.',
+      })
+    }
+
+    if (competition.fixtures.length > 0) {
+      return reply.code(409).send({
+        message: 'Fixtures already exist for this competition.',
+      })
+    }
+
+    if (competition.entries.length < 2) {
+      return reply.code(409).send({
+        message: 'At least two approved entries are required to generate fixtures.',
+      })
+    }
+
+    const approvedEntryCount = competition.entries.length
+    const isPowerOfTwo = (approvedEntryCount & (approvedEntryCount - 1)) === 0
+
+    if (!isPowerOfTwo) {
+      return reply.code(409).send({
+        message: 'The current knockout generator requires a power-of-two number of approved entries.',
+      })
+    }
+
+    const fixtures = await app.prisma.$transaction(async (transaction) => {
+      const createdFixturesByRound: Array<Array<{ id: string; bracketPosition: number | null }>> = []
+      const totalRounds = Math.log2(approvedEntryCount)
+
+      for (let roundNumber = 1; roundNumber <= totalRounds; roundNumber += 1) {
+        const fixtureCount = approvedEntryCount / 2 ** roundNumber
+        const roundFixtures: Array<{ id: string; bracketPosition: number | null }> = []
+
+        for (let bracketIndex = 0; bracketIndex < fixtureCount; bracketIndex += 1) {
+          const homeEntryId =
+            roundNumber === 1 ? competition.entries[bracketIndex * 2]?.id ?? null : null
+          const awayEntryId =
+            roundNumber === 1 ? competition.entries[bracketIndex * 2 + 1]?.id ?? null : null
+
+          const fixture = await transaction.fixture.create({
+            data: {
+              competitionId: competition.id,
+              roundNumber,
+              bracketPosition: bracketIndex + 1,
+              homeEntryId,
+              awayEntryId,
+              status:
+                roundNumber === 1 && homeEntryId && awayEntryId
+                  ? FixtureStatus.READY
+                  : FixtureStatus.PENDING,
+              sourceType: FixtureSourceType.GENERATED,
+            },
+          })
+
+          roundFixtures.push({
+            id: fixture.id,
+            bracketPosition: fixture.bracketPosition,
+          })
+        }
+
+        createdFixturesByRound.push(roundFixtures)
+      }
+
+      for (let roundIndex = 0; roundIndex < createdFixturesByRound.length - 1; roundIndex += 1) {
+        const currentRound = createdFixturesByRound[roundIndex]
+        const nextRound = createdFixturesByRound[roundIndex + 1]
+
+        for (let fixtureIndex = 0; fixtureIndex < currentRound.length; fixtureIndex += 1) {
+          const nextFixture = nextRound[Math.floor(fixtureIndex / 2)]
+
+          await transaction.fixture.update({
+            where: {
+              id: currentRound[fixtureIndex].id,
+            },
+            data: {
+              nextFixtureId: nextFixture.id,
+            },
+          })
+        }
+      }
+
+      return fetchCompetitionFixtures(transaction, competition.id)
+    })
+
+    return reply.code(201).send({
+      fixtures: fixtures.map(toFixtureSummary),
+    })
+  })
+
+  app.get('/competitions/:competitionId/fixtures', async (request, reply) => {
+    const paramsResult = competitionParamsSchema.safeParse(request.params)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid competition id.',
+      })
+    }
+
+    const competition = await app.prisma.competition.findUnique({
+      where: {
+        id: paramsResult.data.competitionId,
+      },
+      select: {
+        id: true,
+      },
+    })
+
+    if (!competition) {
+      return reply.code(404).send({
+        message: 'Competition not found.',
+      })
+    }
+
+    const fixtures = await fetchCompetitionFixtures(app.prisma, competition.id)
+
+    return reply.send({
+      fixtures: fixtures.map(toFixtureSummary),
+    })
+  })
+
+  app.put('/competitions/:competitionId/fixtures/:fixtureId', async (request, reply) => {
+    const paramsResult = fixtureParamsSchema.safeParse(request.params)
+    const bodyResult = updateFixtureBodySchema.safeParse(request.body)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid fixture id.',
+      })
+    }
+
+    if (!bodyResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid fixture update payload.',
+        issues: bodyResult.error.issues,
+      })
+    }
+
+    const fixture = await app.prisma.fixture.findFirst({
+      where: {
+        id: paramsResult.data.fixtureId,
+        competitionId: paramsResult.data.competitionId,
+      },
+      include: {
+        competition: true,
+      },
+    })
+
+    if (!fixture) {
+      return reply.code(404).send({
+        message: 'Fixture not found.',
+      })
+    }
+
+    if (fixture.competition.createdByUserId !== bodyResult.data.requestedByUserId) {
+      return reply.code(403).send({
+        message: 'Only the competition owner can update fixtures.',
+      })
+    }
+
+    if (
+      bodyResult.data.homeEntryId &&
+      bodyResult.data.awayEntryId &&
+      bodyResult.data.homeEntryId === bodyResult.data.awayEntryId
+    ) {
+      return reply.code(400).send({
+        message: 'Fixture home and away entries must be different.',
+      })
+    }
+
+    const referencedEntryIds = [bodyResult.data.homeEntryId, bodyResult.data.awayEntryId].filter(
+      (value): value is string => Boolean(value),
+    )
+
+    if (referencedEntryIds.length > 0) {
+      const entries = await app.prisma.competitionEntry.findMany({
+        where: {
+          competitionId: fixture.competitionId,
+          id: {
+            in: referencedEntryIds,
+          },
+          status: CompetitionEntryStatus.TEAM_APPROVED,
+        },
+        select: {
+          id: true,
+        },
+      })
+
+      if (entries.length !== referencedEntryIds.length) {
+        return reply.code(409).send({
+          message: 'Fixtures may only reference approved entries in the same competition.',
+        })
+      }
+    }
+
+    const updatedFixture = await app.prisma.fixture.update({
+      where: {
+        id: fixture.id,
+      },
+      data: {
+        homeEntryId:
+          bodyResult.data.homeEntryId === undefined ? fixture.homeEntryId : bodyResult.data.homeEntryId,
+        awayEntryId:
+          bodyResult.data.awayEntryId === undefined ? fixture.awayEntryId : bodyResult.data.awayEntryId,
+        scheduledAt:
+          bodyResult.data.scheduledAt === undefined
+            ? fixture.scheduledAt
+            : bodyResult.data.scheduledAt
+              ? new Date(bodyResult.data.scheduledAt)
+              : null,
+        sourceType: FixtureSourceType.COMMISSIONER_OVERRIDE,
+        status:
+          (bodyResult.data.homeEntryId === undefined ? fixture.homeEntryId : bodyResult.data.homeEntryId) &&
+          (bodyResult.data.awayEntryId === undefined ? fixture.awayEntryId : bodyResult.data.awayEntryId)
+            ? FixtureStatus.READY
+            : FixtureStatus.PENDING,
+      },
+      include: {
+        homeEntry: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                displayName: true,
+              },
+            },
+            submission: {
+              select: {
+                id: true,
+                teamName: true,
+                rosterTemplateId: true,
+              },
+            },
+          },
+        },
+        awayEntry: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                displayName: true,
+              },
+            },
+            submission: {
+              select: {
+                id: true,
+                teamName: true,
+                rosterTemplateId: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    return reply.send({
+      fixture: toFixtureSummary(updatedFixture),
     })
   })
 }

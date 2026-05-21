@@ -5,6 +5,7 @@ import { getSkillReference } from '../../../data/skillReferences'
 import {
   CompetitionClient,
   type CompetitionDetail,
+  type CompetitionFixtureSummary,
   type CompetitionSubmissionDetail,
 } from '../../../shared/api/competitionClient'
 import { resolveTeamRepositorySelection } from '../../../shared/repositories/createTeamRepository'
@@ -100,6 +101,49 @@ function getRemainingSlots(team: SavedTeam, template: RosterTemplate, positionId
   return Math.max(0, Math.min(positionRemaining, sharedRemaining))
 }
 
+async function loadCompetitionSupplementalData(
+  client: CompetitionClient,
+  competition: CompetitionDetail,
+  currentUserId: string,
+) {
+  const fixtureResult = await client
+    .listFixtures(competition.id)
+    .catch((): CompetitionFixtureSummary[] => [])
+  const submissionDetails: CompetitionSubmissionDetail | null = await (async () => {
+    const currentEntry = competition.entries.find((entry) => entry.userId === currentUserId) ?? null
+
+    if (!currentEntry?.submission) {
+      return null
+    }
+
+    const payload = await client.getSubmission(competition.id, currentEntry.id).catch(() => null)
+    return payload?.submission ?? null
+  })()
+
+  return {
+    fixtures: fixtureResult,
+    submission: submissionDetails,
+  }
+}
+
+function patchCompetitionEntry(
+  competitions: CompetitionDetail[],
+  competitionId: string,
+  entryId: string,
+  updater: (entry: CompetitionDetail['entries'][number]) => CompetitionDetail['entries'][number],
+) {
+  return competitions.map((competition) =>
+    competition.id !== competitionId
+      ? competition
+      : {
+          ...competition,
+          entries: competition.entries.map((entry) =>
+            entry.id === entryId ? updater(entry) : entry,
+          ),
+        },
+  )
+}
+
 export function TeamCreator() {
   const [templates, setTemplates] = useState<RosterTemplate[]>([])
   const [teams, setTeams] = useState<SavedTeamSummary[]>([])
@@ -113,6 +157,9 @@ export function TeamCreator() {
   const [competitions, setCompetitions] = useState<CompetitionDetail[]>([])
   const [competitionSubmissionDetails, setCompetitionSubmissionDetails] = useState<
     Record<string, CompetitionSubmissionDetail>
+  >({})
+  const [competitionFixtures, setCompetitionFixtures] = useState<
+    Record<string, CompetitionFixtureSummary[]>
   >({})
   const [isCompetitionLoading, setIsCompetitionLoading] = useState(false)
   const [competitionUserId, setCompetitionUserId] = useState('')
@@ -245,6 +292,7 @@ export function TeamCreator() {
         setTeams(nextTeams)
         setCompetitions([])
         setCompetitionSubmissionDetails({})
+        setCompetitionFixtures({})
         setSelectedCompetitionTeamIds({})
         setSelectedCompetitionTierIds({})
 
@@ -261,21 +309,24 @@ export function TeamCreator() {
             (competition): competition is CompetitionDetail => Boolean(competition),
           )
           const nextSubmissionDetails: Record<string, CompetitionSubmissionDetail> = {}
+          const nextFixtures: Record<string, CompetitionFixtureSummary[]> = {}
           const nextTeamSelections: Record<string, string> = {}
           const nextTierSelections: Record<string, string> = {}
           const currentUserId = await competitionClient.ensureUserId()
 
           for (const competition of resolvedCompetitions) {
-            const currentEntry = competition.entries.find((entry) => entry.userId === currentUserId) ?? null
+            const supplementalData = await loadCompetitionSupplementalData(
+              competitionClient,
+              competition,
+              currentUserId,
+            )
 
-            if (currentEntry?.submission) {
-              const payload = await competitionClient.getSubmission(competition.id, currentEntry.id)
+            nextFixtures[competition.id] = supplementalData.fixtures
 
-              if (payload) {
-                nextSubmissionDetails[competition.id] = payload.submission
-                nextTeamSelections[competition.id] = payload.submission.sourceTeamId ?? ''
-                nextTierSelections[competition.id] = payload.submission.tierId ?? ''
-              }
+            if (supplementalData.submission) {
+              nextSubmissionDetails[competition.id] = supplementalData.submission
+              nextTeamSelections[competition.id] = supplementalData.submission.sourceTeamId ?? ''
+              nextTierSelections[competition.id] = supplementalData.submission.tierId ?? ''
             }
           }
 
@@ -285,6 +336,7 @@ export function TeamCreator() {
 
           setCompetitions(resolvedCompetitions)
           setCompetitionSubmissionDetails(nextSubmissionDetails)
+          setCompetitionFixtures(nextFixtures)
           setSelectedCompetitionTeamIds(nextTeamSelections)
           setSelectedCompetitionTierIds(nextTierSelections)
           setCompetitionUserId(currentUserId)
@@ -332,6 +384,7 @@ export function TeamCreator() {
     if (!competitionClient) {
       setCompetitions([])
       setCompetitionSubmissionDetails({})
+      setCompetitionFixtures({})
       setCompetitionUserId('')
       return
     }
@@ -350,25 +403,29 @@ export function TeamCreator() {
         (competition): competition is CompetitionDetail => Boolean(competition),
       )
       const nextSubmissionDetails: Record<string, CompetitionSubmissionDetail> = {}
+      const nextFixtures: Record<string, CompetitionFixtureSummary[]> = {}
       const nextTeamSelections: Record<string, string> = {}
       const nextTierSelections: Record<string, string> = {}
 
       for (const competition of resolvedCompetitions) {
-        const currentEntry = competition.entries.find((entry) => entry.userId === currentUserId) ?? null
+        const supplementalData = await loadCompetitionSupplementalData(
+          competitionClient,
+          competition,
+          currentUserId,
+        )
 
-        if (currentEntry?.submission) {
-          const payload = await competitionClient.getSubmission(competition.id, currentEntry.id)
+        nextFixtures[competition.id] = supplementalData.fixtures
 
-          if (payload) {
-            nextSubmissionDetails[competition.id] = payload.submission
-            nextTeamSelections[competition.id] = payload.submission.sourceTeamId ?? ''
-            nextTierSelections[competition.id] = payload.submission.tierId ?? ''
-          }
+        if (supplementalData.submission) {
+          nextSubmissionDetails[competition.id] = supplementalData.submission
+          nextTeamSelections[competition.id] = supplementalData.submission.sourceTeamId ?? ''
+          nextTierSelections[competition.id] = supplementalData.submission.tierId ?? ''
         }
       }
 
       setCompetitions(resolvedCompetitions)
       setCompetitionSubmissionDetails(nextSubmissionDetails)
+      setCompetitionFixtures(nextFixtures)
       setSelectedCompetitionTeamIds((currentSelections) => ({
         ...currentSelections,
         ...nextTeamSelections,
@@ -384,98 +441,187 @@ export function TeamCreator() {
   }
 
   async function handleCreateCompetition() {
-    if (!competitionClient) {
-      setFeedback('Competition tools require the shared API repository mode.')
-      return
+    try {
+      if (!competitionClient) {
+        setFeedback('Competition tools require the shared API repository mode.')
+        return
+      }
+
+      if (!competitionForm.name.trim()) {
+        setFeedback('Competition name is required.')
+        return
+      }
+
+      const maxEntrants = Number.parseInt(competitionForm.maxEntrants, 10)
+
+      if (!Number.isFinite(maxEntrants) || maxEntrants <= 1) {
+        setFeedback('Competition seat count must be at least 2.')
+        return
+      }
+
+      await competitionClient.createCompetition({
+        name: competitionForm.name.trim(),
+        description: competitionForm.description.trim(),
+        maxEntrants,
+        submissionDeadline: competitionForm.submissionDeadline
+          ? new Date(competitionForm.submissionDeadline).toISOString()
+          : null,
+        allowUnofficialRosters: competitionForm.allowUnofficialRosters,
+      })
+      await refreshCompetitionState()
+      setCompetitionForm({
+        name: '',
+        description: '',
+        maxEntrants: '8',
+        submissionDeadline: '',
+        allowUnofficialRosters: false,
+      })
+      setFeedback('Competition created.')
+    } catch (error) {
+      setFeedback(error instanceof Error ? `Competition create failed: ${error.message}` : 'Competition create failed.')
     }
-
-    if (!competitionForm.name.trim()) {
-      setFeedback('Competition name is required.')
-      return
-    }
-
-    const maxEntrants = Number.parseInt(competitionForm.maxEntrants, 10)
-
-    if (!Number.isFinite(maxEntrants) || maxEntrants <= 1) {
-      setFeedback('Competition seat count must be at least 2.')
-      return
-    }
-
-    await competitionClient.createCompetition({
-      name: competitionForm.name.trim(),
-      description: competitionForm.description.trim(),
-      maxEntrants,
-      submissionDeadline: competitionForm.submissionDeadline
-        ? new Date(competitionForm.submissionDeadline).toISOString()
-        : null,
-      allowUnofficialRosters: competitionForm.allowUnofficialRosters,
-    })
-    await refreshCompetitionState()
-    setCompetitionForm({
-      name: '',
-      description: '',
-      maxEntrants: '8',
-      submissionDeadline: '',
-      allowUnofficialRosters: false,
-    })
-    setFeedback('Competition created.')
   }
 
   async function handleJoinCompetition(competitionId: string) {
-    if (!competitionClient) {
-      setFeedback('Competition tools require the shared API repository mode.')
-      return
-    }
+    try {
+      if (!competitionClient) {
+        setFeedback('Competition tools require the shared API repository mode.')
+        return
+      }
 
-    await competitionClient.joinCompetition(competitionId)
-    await refreshCompetitionState()
-    setFeedback('Joined competition.')
+      const joinedEntry = await competitionClient.joinCompetition(competitionId)
+      setCompetitions((currentCompetitions) =>
+        currentCompetitions.map((competition) =>
+          competition.id !== competitionId
+            ? competition
+            : {
+                ...competition,
+                entrantCount: competition.entrantCount + 1,
+                entries: [...competition.entries, joinedEntry],
+              },
+        ),
+      )
+      await refreshCompetitionState()
+      setFeedback('Joined competition.')
+    } catch (error) {
+      setFeedback(error instanceof Error ? `Competition join failed: ${error.message}` : 'Competition join failed.')
+    }
   }
 
   async function handleSubmitCompetitionTeam(competitionId: string, entryId: string) {
-    if (!competitionClient) {
-      setFeedback('Competition tools require the shared API repository mode.')
-      return
+    try {
+      if (!competitionClient) {
+        setFeedback('Competition tools require the shared API repository mode.')
+        return
+      }
+
+      const sourceTeamId = selectedCompetitionTeamIds[competitionId] ?? ''
+
+      if (!sourceTeamId) {
+        setFeedback('Choose a saved team before submitting to the competition.')
+        return
+      }
+
+      const existingSubmission = competitionSubmissionDetails[competitionId] ?? null
+      const tierId = (selectedCompetitionTierIds[competitionId] ?? '').trim()
+
+      if (existingSubmission) {
+        const updatedSubmission = await competitionClient.updateSubmission(competitionId, entryId, {
+          sourceTeamId,
+          tierId: tierId || null,
+          extraSkillsPackageJson: {},
+        })
+        setCompetitionSubmissionDetails((current) => ({
+          ...current,
+          [competitionId]: updatedSubmission,
+        }))
+        setCompetitions((currentCompetitions) =>
+          patchCompetitionEntry(currentCompetitions, competitionId, entryId, (entry) => ({
+            ...entry,
+            status: 'TEAM_SUBMITTED',
+            submittedAt: updatedSubmission.submittedAt,
+            approvedAt: null,
+            submission: {
+              id: updatedSubmission.id,
+              sourceTeamId: updatedSubmission.sourceTeamId,
+              teamName: updatedSubmission.teamName,
+              rosterTemplateId: updatedSubmission.rosterTemplateId,
+              submittedAt: updatedSubmission.submittedAt,
+            },
+          })),
+        )
+        await refreshCompetitionState()
+        setFeedback('Competition team submission updated.')
+      } else {
+        const createdSubmission = await competitionClient.submitTeam(competitionId, entryId, {
+          sourceTeamId,
+          tierId: tierId || null,
+          extraSkillsPackageJson: {},
+        })
+        setCompetitionSubmissionDetails((current) => ({
+          ...current,
+          [competitionId]: createdSubmission,
+        }))
+        setCompetitions((currentCompetitions) =>
+          patchCompetitionEntry(currentCompetitions, competitionId, entryId, (entry) => ({
+            ...entry,
+            status: 'TEAM_SUBMITTED',
+            submittedAt: createdSubmission.submittedAt,
+            approvedAt: null,
+            submission: {
+              id: createdSubmission.id,
+              sourceTeamId: createdSubmission.sourceTeamId,
+              teamName: createdSubmission.teamName,
+              rosterTemplateId: createdSubmission.rosterTemplateId,
+              submittedAt: createdSubmission.submittedAt,
+            },
+          })),
+        )
+        await refreshCompetitionState()
+        setFeedback('Competition team submitted.')
+      }
+    } catch (error) {
+      setFeedback(
+        error instanceof Error ? `Competition submission failed: ${error.message}` : 'Competition submission failed.',
+      )
     }
-
-    const sourceTeamId = selectedCompetitionTeamIds[competitionId] ?? ''
-
-    if (!sourceTeamId) {
-      setFeedback('Choose a saved team before submitting to the competition.')
-      return
-    }
-
-    const existingSubmission = competitionSubmissionDetails[competitionId] ?? null
-    const tierId = (selectedCompetitionTierIds[competitionId] ?? '').trim()
-
-    if (existingSubmission) {
-      await competitionClient.updateSubmission(competitionId, entryId, {
-        sourceTeamId,
-        tierId: tierId || null,
-        extraSkillsPackageJson: {},
-      })
-      setFeedback('Competition team submission updated.')
-    } else {
-      await competitionClient.submitTeam(competitionId, entryId, {
-        sourceTeamId,
-        tierId: tierId || null,
-        extraSkillsPackageJson: {},
-      })
-      setFeedback('Competition team submitted.')
-    }
-
-    await refreshCompetitionState()
   }
 
   async function handleApproveCompetitionSubmission(competitionId: string, entryId: string) {
-    if (!competitionClient) {
-      setFeedback('Competition tools require the shared API repository mode.')
-      return
-    }
+    try {
+      if (!competitionClient) {
+        setFeedback('Competition tools require the shared API repository mode.')
+        return
+      }
 
-    await competitionClient.approveSubmission(competitionId, entryId)
-    await refreshCompetitionState()
-    setFeedback('Competition team submission approved.')
+      const approvedEntry = await competitionClient.approveSubmission(competitionId, entryId)
+      setCompetitions((currentCompetitions) =>
+        patchCompetitionEntry(currentCompetitions, competitionId, entryId, () => approvedEntry),
+      )
+      await refreshCompetitionState()
+      setFeedback('Competition team submission approved.')
+    } catch (error) {
+      setFeedback(
+        error instanceof Error ? `Competition approval failed: ${error.message}` : 'Competition approval failed.',
+      )
+    }
+  }
+
+  async function handleGenerateCompetitionFixtures(competitionId: string) {
+    try {
+      if (!competitionClient) {
+        setFeedback('Competition tools require the shared API repository mode.')
+        return
+      }
+
+      await competitionClient.generateFixtures(competitionId)
+      await refreshCompetitionState()
+      setFeedback('Fixtures generated.')
+    } catch (error) {
+      setFeedback(
+        error instanceof Error ? `Fixture generation failed: ${error.message}` : 'Fixture generation failed.',
+      )
+    }
   }
 
   async function handleCreateTeam() {
@@ -983,6 +1129,7 @@ export function TeamCreator() {
                           const selectedTeamId = selectedCompetitionTeamIds[competition.id] ?? ''
                           const selectedTierId = selectedCompetitionTierIds[competition.id] ?? ''
                           const submission = competitionSubmissionDetails[competition.id] ?? null
+                          const fixtures = competitionFixtures[competition.id] ?? []
                           const isOwner = competition.createdByUserId === competitionUserId
 
                           return (
@@ -1081,6 +1228,43 @@ export function TeamCreator() {
                                   </button>
                                 </div>
                               )}
+
+                              <div className={styles.fixturePanel}>
+                                <div className={styles.fixturePanelHeader}>
+                                  <strong>Fixtures</strong>
+                                  {isOwner && fixtures.length === 0 ? (
+                                    <button
+                                      className={styles.secondaryButton}
+                                      onClick={() => void handleGenerateCompetitionFixtures(competition.id)}
+                                      type="button"
+                                    >
+                                      Generate Fixtures
+                                    </button>
+                                  ) : null}
+                                </div>
+                                {fixtures.length === 0 ? (
+                                  <p className={styles.helperText}>
+                                    No fixtures generated yet. Approved entries are required before a bracket can be created.
+                                  </p>
+                                ) : (
+                                  <div className={styles.fixtureList}>
+                                    {fixtures.map((fixture) => (
+                                      <div key={fixture.id} className={styles.fixtureCard}>
+                                        <div className={styles.fixtureMeta}>
+                                          <span>Round {fixture.roundNumber}</span>
+                                          <span>Match {fixture.bracketPosition ?? '-'}</span>
+                                          <span>{fixture.status}</span>
+                                        </div>
+                                        <div className={styles.fixtureTeams}>
+                                          <span>{fixture.homeEntry?.submission?.teamName ?? fixture.homeEntry?.user.displayName ?? 'TBD'}</span>
+                                          <span>vs</span>
+                                          <span>{fixture.awayEntry?.submission?.teamName ?? fixture.awayEntry?.user.displayName ?? 'TBD'}</span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </article>
                           )
                         })}

@@ -70,6 +70,19 @@ enum TournamentTeamSourceType {
   DIRECT_EVENT_BUILD
 }
 
+enum FixtureStatus {
+  PENDING
+  READY
+  IN_PROGRESS
+  COMPLETED
+  VOID
+}
+
+enum FixtureSourceType {
+  GENERATED
+  COMMISSIONER_OVERRIDE
+}
+
 model User {
   id                    String                    @id @default(cuid())
   displayName           String
@@ -197,6 +210,7 @@ model Competition {
   updatedAt              DateTime              @updatedAt
   createdBy              User                  @relation("CompetitionOwner", fields: [createdByUserId], references: [id])
   entries                CompetitionEntry[]
+  fixtures               Fixture[]
 }
 
 model CompetitionEntry {
@@ -214,6 +228,9 @@ model CompetitionEntry {
   competition   Competition            @relation(fields: [competitionId], references: [id])
   user          User                   @relation(fields: [userId], references: [id])
   submission    CompetitionTeamSubmission?
+  homeFixtures  Fixture[]              @relation("FixtureHomeEntry")
+  awayFixtures  Fixture[]              @relation("FixtureAwayEntry")
+  winningFixtures Fixture[]            @relation("FixtureWinnerEntry")
 
   @@unique([competitionId, userId])
   @@index([competitionId, status])
@@ -257,4 +274,28 @@ model CompetitionTeamSubmissionPlayer {
   competitionTeamSubmission   CompetitionTeamSubmission @relation(fields: [competitionTeamSubmissionId], references: [id])
 
   @@index([competitionTeamSubmissionId, displayOrder])
+}
+
+model Fixture {
+  id              String            @id @default(cuid())
+  competitionId   String
+  roundNumber     Int
+  bracketPosition Int?
+  homeEntryId     String?
+  awayEntryId     String?
+  status          FixtureStatus
+  sourceType      FixtureSourceType
+  scheduledAt     DateTime?
+  nextFixtureId   String?
+  winnerEntryId   String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  competition     Competition       @relation(fields: [competitionId], references: [id])
+  homeEntry       CompetitionEntry? @relation("FixtureHomeEntry", fields: [homeEntryId], references: [id])
+  awayEntry       CompetitionEntry? @relation("FixtureAwayEntry", fields: [awayEntryId], references: [id])
+  nextFixture     Fixture?          @relation("FixtureProgression", fields: [nextFixtureId], references: [id])
+  previousFixtures Fixture[]        @relation("FixtureProgression")
+  winnerEntry     CompetitionEntry? @relation("FixtureWinnerEntry", fields: [winnerEntryId], references: [id])
+
+  @@index([competitionId, roundNumber, bracketPosition])
 }

@@ -18,6 +18,9 @@
 - competition create, list, detail, and join are now live and smoke-tested
 - tournament team submission snapshots are now implemented
 - the API-backed team creator now has a working competition create, join, submit, update, and approve beta flow
+- knockout fixture generation is now implemented in the API
+- the API-backed team creator now shows fixtures and can generate them for approved knockout entries
+- competition cards now patch local state immediately after join, submit, approve, and generate actions
 
 ## What Not To Do Next
 
@@ -31,17 +34,19 @@
 ## Best Next Move
 
 - use `docs/architecture/2026-05-19_competition_backend_spec.md` as the implementation contract
-- the next concrete pass is now knockout fixture generation
+- the next concrete pass is now visible API identity control for real multi-user beta
 
 ## Concrete Next Implementation Pass
 
-1. add `Fixture`
-2. implement:
-   - `POST /competitions/:competitionId/fixtures/generate`
-   - `GET /competitions/:competitionId/fixtures`
-   - `PUT /competitions/:competitionId/fixtures/:fixtureId`
-3. generate knockout pairings from `TEAM_APPROVED` entries
-4. expose a simple commissioner-review fixture surface in the API-backed team creator
+1. expose current shared API user identity in team creator
+2. allow resetting or changing the current API-side display identity per browser profile
+3. support a clear commissioner / coach testing flow across normal and incognito windows
+4. then run the real multi-user beta:
+   - commissioner creates competition
+   - coaches join
+   - coaches submit
+   - commissioner approves
+   - commissioner generates fixtures
 
 ## After That
 

@@ -101,6 +101,48 @@ export type CompetitionSubmissionDetail = {
   }>
 }
 
+export type CompetitionFixtureSummary = {
+  id: string
+  competitionId: string
+  roundNumber: number
+  bracketPosition: number | null
+  status: 'PENDING' | 'READY' | 'IN_PROGRESS' | 'COMPLETED' | 'VOID'
+  sourceType: 'GENERATED' | 'COMMISSIONER_OVERRIDE'
+  scheduledAt: string | null
+  nextFixtureId: string | null
+  winnerEntryId: string | null
+  createdAt: string
+  updatedAt: string
+  homeEntry: {
+    id: string
+    userId: string
+    status: CompetitionEntrySummary['status']
+    user: {
+      id: string
+      displayName: string
+    }
+    submission: {
+      id: string
+      teamName: string
+      rosterTemplateId: string
+    } | null
+  } | null
+  awayEntry: {
+    id: string
+    userId: string
+    status: CompetitionEntrySummary['status']
+    user: {
+      id: string
+      displayName: string
+    }
+    submission: {
+      id: string
+      teamName: string
+      rosterTemplateId: string
+    } | null
+  } | null
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (response.ok) {
     return (await response.json()) as T
@@ -290,6 +332,34 @@ export class CompetitionClient {
     const payload = await parseResponse<{ entry: CompetitionEntrySummary }>(response)
 
     return payload.entry
+  }
+
+  async listFixtures(competitionId: string) {
+    const response = await this.fetchImpl(
+      `${this.baseUrl}/competitions/${encodeURIComponent(competitionId)}/fixtures`,
+    )
+    const payload = await parseResponse<{ fixtures: CompetitionFixtureSummary[] }>(response)
+
+    return payload.fixtures
+  }
+
+  async generateFixtures(competitionId: string) {
+    const requestedByUserId = await this.ensureUserId()
+    const response = await this.fetchImpl(
+      `${this.baseUrl}/competitions/${encodeURIComponent(competitionId)}/fixtures/generate`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requestedByUserId,
+        }),
+      },
+    )
+    const payload = await parseResponse<{ fixtures: CompetitionFixtureSummary[] }>(response)
+
+    return payload.fixtures
   }
 
   private async createOrLoadUserId() {
