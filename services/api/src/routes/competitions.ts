@@ -6,11 +6,17 @@ import {
   CompetitionVisibility,
   FixtureSourceType,
   FixtureStatus,
+  MatchSessionStatus,
   Prisma,
   TournamentTeamSourceType,
 } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import {
+  fetchMatchSessionByFixtureId,
+  generateUniqueSessionCode,
+  toMatchSessionSummary,
+} from './matchSessions.js'
 
 const competitionParamsSchema = z.object({
   competitionId: z.string().min(1),
@@ -72,6 +78,10 @@ const updateFixtureBodySchema = z.object({
   homeEntryId: z.string().min(1).nullable().optional(),
   awayEntryId: z.string().min(1).nullable().optional(),
   scheduledAt: z.string().datetime({ offset: true }).nullable().optional(),
+})
+
+const createFixtureMatchSessionBodySchema = z.object({
+  requestedByUserId: z.string().min(1),
 })
 
 function toIsoString(value: Date | null) {
@@ -1289,6 +1299,190 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
 
     return reply.send({
       fixtures: fixtures.map(toFixtureSummary),
+    })
+  })
+
+  app.get('/competitions/:competitionId/fixtures/:fixtureId/match-session', async (request, reply) => {
+    const paramsResult = fixtureParamsSchema.safeParse(request.params)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid fixture id.',
+      })
+    }
+
+    const fixture = await app.prisma.fixture.findFirst({
+      where: {
+        id: paramsResult.data.fixtureId,
+        competitionId: paramsResult.data.competitionId,
+      },
+      select: {
+        id: true,
+      },
+    })
+
+    if (!fixture) {
+      return reply.code(404).send({
+        message: 'Fixture not found.',
+      })
+    }
+
+    const matchSession = await fetchMatchSessionByFixtureId(app, fixture.id)
+
+    if (!matchSession) {
+      return reply.send({
+        matchSession: null,
+      })
+    }
+
+    return reply.send({
+      matchSession: {
+        ...toMatchSessionSummary(matchSession),
+        homeTeam: matchSession.homeTeam,
+        awayTeam: matchSession.awayTeam,
+      },
+    })
+  })
+
+  app.post('/competitions/:competitionId/fixtures/:fixtureId/match-session', async (request, reply) => {
+    const paramsResult = fixtureParamsSchema.safeParse(request.params)
+    const bodyResult = createFixtureMatchSessionBodySchema.safeParse(request.body)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid fixture id.',
+      })
+    }
+
+    if (!bodyResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid fixture match session payload.',
+        issues: bodyResult.error.issues,
+      })
+    }
+
+    const fixture = await app.prisma.fixture.findFirst({
+      where: {
+        id: paramsResult.data.fixtureId,
+        competitionId: paramsResult.data.competitionId,
+      },
+      include: {
+        competition: true,
+        homeEntry: {
+          include: {
+            submission: true,
+          },
+        },
+        awayEntry: {
+          include: {
+            submission: true,
+          },
+        },
+      },
+    })
+
+    if (!fixture) {
+      return reply.code(404).send({
+        message: 'Fixture not found.',
+      })
+    }
+
+    if (fixture.competition.createdByUserId !== bodyResult.data.requestedByUserId) {
+      return reply.code(403).send({
+        message: 'Only the competition owner can create a fixture match room.',
+      })
+    }
+
+    const existingSession = await fetchMatchSessionByFixtureId(app, fixture.id)
+
+    if (existingSession) {
+      return reply.send({
+        matchSession: {
+          ...toMatchSessionSummary(existingSession),
+          homeTeam: existingSession.homeTeam,
+          awayTeam: existingSession.awayTeam,
+        },
+      })
+    }
+
+    if (fixture.status !== FixtureStatus.READY) {
+      return reply.code(409).send({
+        message: 'Only ready fixtures can create a live match room.',
+      })
+    }
+
+    if (!fixture.homeEntry?.submission || !fixture.awayEntry?.submission) {
+      return reply.code(409).send({
+        message: 'Both fixture sides need approved submitted teams before a live match room can be created.',
+      })
+    }
+
+    if (!fixture.homeEntry.submission.sourceTeamId || !fixture.awayEntry.submission.sourceTeamId) {
+      return reply.code(409).send({
+        message: 'Live match room creation currently requires submitted teams copied from saved teams.',
+      })
+    }
+
+    const sessionCode = await generateUniqueSessionCode(app)
+    const createdSession = await app.prisma.matchSession.create({
+      data: {
+        fixtureId: fixture.id,
+        leagueId: null,
+        homeTeamId: fixture.homeEntry.submission.sourceTeamId,
+        awayTeamId: fixture.awayEntry.submission.sourceTeamId,
+        sessionCode,
+        status: MatchSessionStatus.PENDING,
+        createdByUserId: bodyResult.data.requestedByUserId,
+      },
+    })
+
+    const matchSession = await app.prisma.matchSession.findUnique({
+      where: {
+        id: createdSession.id,
+      },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                displayName: true,
+              },
+            },
+          },
+          orderBy: {
+            side: 'asc',
+          },
+        },
+        homeTeam: {
+          select: {
+            id: true,
+            name: true,
+            ownerUserId: true,
+          },
+        },
+        awayTeam: {
+          select: {
+            id: true,
+            name: true,
+            ownerUserId: true,
+          },
+        },
+      },
+    })
+
+    if (!matchSession) {
+      return reply.code(500).send({
+        message: 'Fixture match room was created but could not be reloaded.',
+      })
+    }
+
+    return reply.code(201).send({
+      matchSession: {
+        ...toMatchSessionSummary(matchSession),
+        homeTeam: matchSession.homeTeam,
+        awayTeam: matchSession.awayTeam,
+      },
     })
   })
 

@@ -3,6 +3,7 @@ import {
   MatchSessionSide,
   MatchSessionStatus,
   TeamStatus,
+  type Prisma,
 } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
@@ -77,6 +78,40 @@ function toSavedTeamRecord(team: {
   }
 }
 
+function toSavedTeamRecordFromSubmission(submission: {
+  id: string
+  rosterTemplateId: string
+  teamName: string
+  players: Array<{
+    id: string
+    positionTemplateId: string
+    name: string
+    shirtNumber: number | null
+    currentValue: number
+    extraSkills: string[]
+    statAdjustments: Prisma.JsonValue
+  }>
+}) {
+  return {
+    id: submission.id,
+    rosterTemplateId: submission.rosterTemplateId,
+    name: submission.teamName,
+    status: TeamStatus.ACTIVE,
+    players: submission.players.map((player) => ({
+      id: player.id,
+      teamId: submission.id,
+      positionTemplateId: player.positionTemplateId,
+      name: player.name,
+      shirtNumber: player.shirtNumber,
+      currentValue: player.currentValue,
+      spp: 0,
+      nigglingInjuries: 0,
+      extraSkills: player.extraSkills,
+      statAdjustments: statAdjustmentsSchema.parse(player.statAdjustments),
+    })),
+  }
+}
+
 function toParticipantSummary(participant: {
   id: string
   userId: string
@@ -99,6 +134,7 @@ function toParticipantSummary(participant: {
 function toMatchSessionSummary(session: {
   id: string
   leagueId: string | null
+  fixtureId: string | null
   homeTeamId: string
   awayTeamId: string
   sessionCode: string
@@ -120,6 +156,7 @@ function toMatchSessionSummary(session: {
   return {
     id: session.id,
     leagueId: session.leagueId,
+    fixtureId: session.fixtureId,
     homeTeamId: session.homeTeamId,
     awayTeamId: session.awayTeamId,
     sessionCode: session.sessionCode,
@@ -155,7 +192,7 @@ async function generateUniqueSessionCode(app: FastifyInstance) {
   throw new Error('Could not generate a unique match session code.')
 }
 
-async function fetchMatchSessionById(app: FastifyInstance, sessionId: string) {
+export async function fetchMatchSessionById(app: FastifyInstance, sessionId: string) {
   return app.prisma.matchSession.findUnique({
     where: {
       id: sessionId,
@@ -192,7 +229,7 @@ async function fetchMatchSessionById(app: FastifyInstance, sessionId: string) {
   })
 }
 
-async function fetchMatchSessionByCode(app: FastifyInstance, sessionCode: string) {
+export async function fetchMatchSessionByCode(app: FastifyInstance, sessionCode: string) {
   return app.prisma.matchSession.findUnique({
     where: {
       sessionCode,
@@ -228,6 +265,45 @@ async function fetchMatchSessionByCode(app: FastifyInstance, sessionCode: string
     },
   })
 }
+
+export async function fetchMatchSessionByFixtureId(app: FastifyInstance, fixtureId: string) {
+  return app.prisma.matchSession.findUnique({
+    where: {
+      fixtureId,
+    },
+    include: {
+      participants: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              displayName: true,
+            },
+          },
+        },
+        orderBy: {
+          side: 'asc',
+        },
+      },
+      homeTeam: {
+        select: {
+          id: true,
+          name: true,
+          ownerUserId: true,
+        },
+      },
+      awayTeam: {
+        select: {
+          id: true,
+          name: true,
+          ownerUserId: true,
+        },
+      },
+    },
+  })
+}
+
+export { generateUniqueSessionCode, toMatchSessionSummary }
 
 export async function registerMatchSessionRoutes(app: FastifyInstance) {
   app.post('/match-sessions', async (request, reply) => {
@@ -414,6 +490,20 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         participants: true,
         homeTeam: true,
         awayTeam: true,
+        fixture: {
+          include: {
+            homeEntry: {
+              select: {
+                userId: true,
+              },
+            },
+            awayEntry: {
+              select: {
+                userId: true,
+              },
+            },
+          },
+        },
       },
     })
 
@@ -461,10 +551,23 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
     }
 
     const requestedTeam = bodyResult.data.side === MatchSessionSide.HOME ? session.homeTeam : session.awayTeam
+    const requiredUserId = session.fixture
+      ? bodyResult.data.side === MatchSessionSide.HOME
+        ? session.fixture.homeEntry?.userId ?? null
+        : session.fixture.awayEntry?.userId ?? null
+      : requestedTeam.ownerUserId
 
-    if (requestedTeam.ownerUserId !== user.id) {
+    if (!requiredUserId) {
       return reply.code(409).send({
-        message: 'User can only join the side owned by their team.',
+        message: 'That side is not currently assigned for this session.',
+      })
+    }
+
+    if (requiredUserId !== user.id) {
+      return reply.code(409).send({
+        message: session.fixture
+          ? 'User can only join the side assigned to their competition entry.'
+          : 'User can only join the side owned by their team.',
       })
     }
 
@@ -558,6 +661,36 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
             },
           },
         },
+        fixture: {
+          include: {
+            homeEntry: {
+              include: {
+                submission: {
+                  include: {
+                    players: {
+                      orderBy: {
+                        displayOrder: 'asc',
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            awayEntry: {
+              include: {
+                submission: {
+                  include: {
+                    players: {
+                      orderBy: {
+                        displayOrder: 'asc',
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     })
 
@@ -567,11 +700,18 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       })
     }
 
+    const homeSubmission = session.fixture?.homeEntry?.submission ?? null
+    const awaySubmission = session.fixture?.awayEntry?.submission ?? null
+
     return reply.send({
       matchSession: toMatchSessionSummary(session),
       teams: {
-        home: toSavedTeamRecord(session.homeTeam),
-        away: toSavedTeamRecord(session.awayTeam),
+        home: homeSubmission
+          ? toSavedTeamRecordFromSubmission(homeSubmission)
+          : toSavedTeamRecord(session.homeTeam),
+        away: awaySubmission
+          ? toSavedTeamRecordFromSubmission(awaySubmission)
+          : toSavedTeamRecord(session.awayTeam),
       },
     })
   })

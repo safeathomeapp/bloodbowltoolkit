@@ -148,6 +148,39 @@ export type CompetitionFixtureSummary = {
   } | null
 }
 
+export type CompetitionFixtureMatchSession = {
+  id: string
+  fixtureId: string | null
+  leagueId: string | null
+  homeTeamId: string
+  awayTeamId: string
+  sessionCode: string
+  status: 'PENDING' | 'ACTIVE' | 'CLOSED'
+  createdByUserId: string
+  createdAt: string
+  updatedAt: string
+  participants: Array<{
+    id: string
+    userId: string
+    teamId: string
+    side: 'HOME' | 'AWAY'
+    user: {
+      id: string
+      displayName: string
+    }
+  }>
+  homeTeam?: {
+    id: string
+    name: string
+    ownerUserId: string
+  }
+  awayTeam?: {
+    id: string
+    name: string
+    ownerUserId: string
+  }
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (response.ok) {
     return (await response.json()) as T
@@ -373,6 +406,34 @@ export class CompetitionClient {
     const payload = await parseResponse<{ fixtures: CompetitionFixtureSummary[] }>(response)
 
     return payload.fixtures
+  }
+
+  async getFixtureMatchSession(competitionId: string, fixtureId: string) {
+    const response = await this.fetchImpl(
+      `${this.baseUrl}/competitions/${encodeURIComponent(competitionId)}/fixtures/${encodeURIComponent(fixtureId)}/match-session`,
+    )
+    const payload = await parseResponse<{ matchSession: CompetitionFixtureMatchSession | null }>(response)
+
+    return payload.matchSession
+  }
+
+  async createFixtureMatchSession(competitionId: string, fixtureId: string) {
+    const requestedByUserId = await this.ensureUserId()
+    const response = await this.fetchImpl(
+      `${this.baseUrl}/competitions/${encodeURIComponent(competitionId)}/fixtures/${encodeURIComponent(fixtureId)}/match-session`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requestedByUserId,
+        }),
+      },
+    )
+    const payload = await parseResponse<{ matchSession: CompetitionFixtureMatchSession }>(response)
+
+    return payload.matchSession
   }
 
   async switchIdentity(displayName: string) {

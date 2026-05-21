@@ -6,6 +6,7 @@ import {
   CompetitionClient,
   type CompetitionDetail,
   type CompetitionFixtureSummary,
+  type CompetitionFixtureMatchSession,
   type CompetitionSubmissionDetail,
   type SharedApiUser,
 } from '../../../shared/api/competitionClient'
@@ -120,6 +121,12 @@ async function loadCompetitionSupplementalData(
   const fixtureResult = await client
     .listFixtures(competition.id)
     .catch((): CompetitionFixtureSummary[] => [])
+  const fixtureSessionEntries = await Promise.all(
+    fixtureResult.map(async (fixture) => [
+      fixture.id,
+      await client.getFixtureMatchSession(competition.id, fixture.id).catch(() => null),
+    ] as const),
+  )
   const submissionDetails: CompetitionSubmissionDetail | null = await (async () => {
     const currentEntry = competition.entries.find((entry) => entry.userId === currentUserId) ?? null
 
@@ -133,6 +140,10 @@ async function loadCompetitionSupplementalData(
 
   return {
     fixtures: fixtureResult,
+    fixtureSessions: Object.fromEntries(fixtureSessionEntries) as Record<
+      string,
+      CompetitionFixtureMatchSession | null
+    >,
     submission: submissionDetails,
   }
 }
@@ -171,6 +182,9 @@ export function TeamCreator() {
   >({})
   const [competitionFixtures, setCompetitionFixtures] = useState<
     Record<string, CompetitionFixtureSummary[]>
+  >({})
+  const [competitionFixtureSessions, setCompetitionFixtureSessions] = useState<
+    Record<string, CompetitionFixtureMatchSession | null>
   >({})
   const [isCompetitionLoading, setIsCompetitionLoading] = useState(false)
   const [competitionUserId, setCompetitionUserId] = useState('')
@@ -309,6 +323,7 @@ export function TeamCreator() {
         setCompetitions([])
         setCompetitionSubmissionDetails({})
         setCompetitionFixtures({})
+        setCompetitionFixtureSessions({})
         setSelectedCompetitionTeamIds({})
         setSelectedCompetitionTierIds({})
 
@@ -327,6 +342,7 @@ export function TeamCreator() {
           )
           const nextSubmissionDetails: Record<string, CompetitionSubmissionDetail> = {}
           const nextFixtures: Record<string, CompetitionFixtureSummary[]> = {}
+          const nextFixtureSessions: Record<string, CompetitionFixtureMatchSession | null> = {}
           const nextTeamSelections: Record<string, string> = {}
           const nextTierSelections: Record<string, string> = {}
           const currentUserId = currentUser.id
@@ -339,6 +355,7 @@ export function TeamCreator() {
             )
 
             nextFixtures[competition.id] = supplementalData.fixtures
+            Object.assign(nextFixtureSessions, supplementalData.fixtureSessions)
 
             if (supplementalData.submission) {
               nextSubmissionDetails[competition.id] = supplementalData.submission
@@ -354,6 +371,7 @@ export function TeamCreator() {
           setCompetitions(resolvedCompetitions)
           setCompetitionSubmissionDetails(nextSubmissionDetails)
           setCompetitionFixtures(nextFixtures)
+          setCompetitionFixtureSessions(nextFixtureSessions)
           setSelectedCompetitionTeamIds(nextTeamSelections)
           setSelectedCompetitionTierIds(nextTierSelections)
           setCompetitionUserId(currentUserId)
@@ -406,6 +424,7 @@ export function TeamCreator() {
       setCompetitions([])
       setCompetitionSubmissionDetails({})
       setCompetitionFixtures({})
+      setCompetitionFixtureSessions({})
       setCompetitionUserId('')
       setCurrentApiUser(null)
       return
@@ -427,6 +446,7 @@ export function TeamCreator() {
       )
       const nextSubmissionDetails: Record<string, CompetitionSubmissionDetail> = {}
       const nextFixtures: Record<string, CompetitionFixtureSummary[]> = {}
+      const nextFixtureSessions: Record<string, CompetitionFixtureMatchSession | null> = {}
       const nextTeamSelections: Record<string, string> = {}
       const nextTierSelections: Record<string, string> = {}
 
@@ -438,6 +458,7 @@ export function TeamCreator() {
         )
 
         nextFixtures[competition.id] = supplementalData.fixtures
+        Object.assign(nextFixtureSessions, supplementalData.fixtureSessions)
 
         if (supplementalData.submission) {
           nextSubmissionDetails[competition.id] = supplementalData.submission
@@ -449,6 +470,7 @@ export function TeamCreator() {
       setCompetitions(resolvedCompetitions)
       setCompetitionSubmissionDetails(nextSubmissionDetails)
       setCompetitionFixtures(nextFixtures)
+      setCompetitionFixtureSessions(nextFixtureSessions)
       setSelectedCompetitionTeamIds((currentSelections) => ({
         ...currentSelections,
         ...nextTeamSelections,
@@ -647,6 +669,26 @@ export function TeamCreator() {
     } catch (error) {
       setFeedback(
         error instanceof Error ? `Fixture generation failed: ${error.message}` : 'Fixture generation failed.',
+      )
+    }
+  }
+
+  async function handleCreateFixtureMatchSession(competitionId: string, fixtureId: string) {
+    try {
+      if (!competitionClient) {
+        setFeedback('Competition tools require the shared API repository mode.')
+        return
+      }
+
+      const matchSession = await competitionClient.createFixtureMatchSession(competitionId, fixtureId)
+      setCompetitionFixtureSessions((current) => ({
+        ...current,
+        [fixtureId]: matchSession,
+      }))
+      setFeedback(`Match room ready. Session code: ${matchSession.sessionCode}.`)
+    } catch (error) {
+      setFeedback(
+        error instanceof Error ? `Match room creation failed: ${error.message}` : 'Match room creation failed.',
       )
     }
   }
@@ -1435,20 +1477,50 @@ export function TeamCreator() {
                                   </p>
                                 ) : (
                                   <div className={styles.fixtureList}>
-                                    {fixtures.map((fixture) => (
-                                      <div key={fixture.id} className={styles.fixtureCard}>
-                                        <div className={styles.fixtureMeta}>
-                                          <span>Round {fixture.roundNumber}</span>
-                                          <span>Match {fixture.bracketPosition ?? '-'}</span>
-                                          <span>{fixture.status}</span>
+                                    {fixtures.map((fixture) => {
+                                      const fixtureMatchSession = competitionFixtureSessions[fixture.id] ?? null
+                                      const canCreateMatchRoom =
+                                        isOwner &&
+                                        fixture.status === 'READY' &&
+                                        Boolean(fixture.homeEntry?.submission && fixture.awayEntry?.submission) &&
+                                        !fixtureMatchSession
+
+                                      return (
+                                        <div key={fixture.id} className={styles.fixtureCard}>
+                                          <div className={styles.fixtureMeta}>
+                                            <span>Round {fixture.roundNumber}</span>
+                                            <span>Match {fixture.bracketPosition ?? '-'}</span>
+                                            <span>{fixture.status}</span>
+                                          </div>
+                                          <div className={styles.fixtureTeams}>
+                                            <span>{fixture.homeEntry?.submission?.teamName ?? fixture.homeEntry?.user.displayName ?? 'TBD'}</span>
+                                            <span>vs</span>
+                                            <span>{fixture.awayEntry?.submission?.teamName ?? fixture.awayEntry?.user.displayName ?? 'TBD'}</span>
+                                          </div>
+                                          {fixtureMatchSession ? (
+                                            <div className={styles.inlineSuccess}>
+                                              Match room code: {fixtureMatchSession.sessionCode} ({fixtureMatchSession.status})
+                                            </div>
+                                          ) : null}
+                                          {canCreateMatchRoom ? (
+                                            <div className={styles.competitionActionRow}>
+                                              <button
+                                                className={styles.secondaryButton}
+                                                onClick={() =>
+                                                  void handleCreateFixtureMatchSession(
+                                                    competition.id,
+                                                    fixture.id,
+                                                  )
+                                                }
+                                                type="button"
+                                              >
+                                                Create Match Room
+                                              </button>
+                                            </div>
+                                          ) : null}
                                         </div>
-                                        <div className={styles.fixtureTeams}>
-                                          <span>{fixture.homeEntry?.submission?.teamName ?? fixture.homeEntry?.user.displayName ?? 'TBD'}</span>
-                                          <span>vs</span>
-                                          <span>{fixture.awayEntry?.submission?.teamName ?? fixture.awayEntry?.user.displayName ?? 'TBD'}</span>
-                                        </div>
-                                      </div>
-                                    ))}
+                                      )
+                                    })}
                                   </div>
                                 )}
                               </div>

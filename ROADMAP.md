@@ -230,11 +230,11 @@ See:
 
 ## Immediate Next Step
 
-- build the fixture layer on top of the new competition spine:
-  - knockout fixture generation from approved entries
-  - commissioner override support
-  - simple fixture review surface
-  - keep the path open for fixture-backed live matches next
+- build the first live-match tool layer on top of fixture-attached rooms:
+  - shared turn timer
+  - bank time tracking
+  - halftime bank reset
+  - enough shared state for both players to view the same clock
 - continue using `docs/architecture/2026-05-19_competition_backend_spec.md` as the backend contract
 
 ## Deferred Until Proven Necessary

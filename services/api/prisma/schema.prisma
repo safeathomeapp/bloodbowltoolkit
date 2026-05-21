@@ -165,6 +165,7 @@ model TeamPlayer {
 model MatchSession {
   id             String                   @id @default(cuid())
   leagueId       String?
+  fixtureId      String?                  @unique
   homeTeamId     String
   awayTeamId     String
   sessionCode    String                   @unique
@@ -173,6 +174,7 @@ model MatchSession {
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt
   league         League?                  @relation(fields: [leagueId], references: [id])
+  fixture        Fixture?                 @relation(fields: [fixtureId], references: [id])
   homeTeam       Team                     @relation("HomeTeam", fields: [homeTeamId], references: [id])
   awayTeam       Team                     @relation("AwayTeam", fields: [awayTeamId], references: [id])
   createdBy      User                     @relation("MatchSessionCreator", fields: [createdByUserId], references: [id])
@@ -296,6 +298,7 @@ model Fixture {
   nextFixture     Fixture?          @relation("FixtureProgression", fields: [nextFixtureId], references: [id])
   previousFixtures Fixture[]        @relation("FixtureProgression")
   winnerEntry     CompetitionEntry? @relation("FixtureWinnerEntry", fields: [winnerEntryId], references: [id])
+  matchSession    MatchSession?
 
   @@index([competitionId, roundNumber, bracketPosition])
 }
