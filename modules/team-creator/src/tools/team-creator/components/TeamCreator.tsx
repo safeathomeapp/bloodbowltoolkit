@@ -52,6 +52,12 @@ type IdentityFormState = {
   displayName: string
 }
 
+type SubmissionInspectionState = {
+  competitionName: string
+  coachName: string
+  submission: CompetitionSubmissionDetail
+}
+
 const repositorySelection = resolveTeamRepositorySelection()
 const repository = repositorySelection.repository
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() ?? ''
@@ -181,6 +187,7 @@ export function TeamCreator() {
   const [identityForm, setIdentityForm] = useState<IdentityFormState>({
     displayName: '',
   })
+  const [inspectedSubmission, setInspectedSubmission] = useState<SubmissionInspectionState | null>(null)
 
   const draftRuleReferences: Record<string, ReferenceModalContent> = {
     rerolls: {
@@ -640,6 +647,37 @@ export function TeamCreator() {
     } catch (error) {
       setFeedback(
         error instanceof Error ? `Fixture generation failed: ${error.message}` : 'Fixture generation failed.',
+      )
+    }
+  }
+
+  async function handleInspectCompetitionSubmission(
+    competitionId: string,
+    competitionName: string,
+    entryId: string,
+    coachName: string,
+  ) {
+    try {
+      if (!competitionClient) {
+        setFeedback('Competition tools require the shared API repository mode.')
+        return
+      }
+
+      const payload = await competitionClient.getSubmission(competitionId, entryId)
+
+      if (!payload) {
+        setFeedback('That submitted team could not be loaded.')
+        return
+      }
+
+      setInspectedSubmission({
+        competitionName,
+        coachName,
+        submission: payload.submission,
+      })
+    } catch (error) {
+      setFeedback(
+        error instanceof Error ? `Submission review failed: ${error.message}` : 'Submission review failed.',
       )
     }
   }
@@ -1346,15 +1384,31 @@ export function TeamCreator() {
                                             <span>{entry.user.displayName}</span>
                                             <span>{entry.status}</span>
                                           </div>
-                                          <button
-                                            className={styles.secondaryButton}
-                                            onClick={() =>
-                                              void handleApproveCompetitionSubmission(competition.id, entry.id)
-                                            }
-                                            type="button"
-                                          >
-                                            Approve Submission
-                                          </button>
+                                          <div className={styles.competitionActionRow}>
+                                            <button
+                                              className={styles.secondaryButton}
+                                              onClick={() =>
+                                                void handleInspectCompetitionSubmission(
+                                                  competition.id,
+                                                  competition.name,
+                                                  entry.id,
+                                                  entry.user.displayName,
+                                                )
+                                              }
+                                              type="button"
+                                            >
+                                              View Team
+                                            </button>
+                                            <button
+                                              className={styles.secondaryButton}
+                                              onClick={() =>
+                                                void handleApproveCompetitionSubmission(competition.id, entry.id)
+                                              }
+                                              type="button"
+                                            >
+                                              Approve Submission
+                                            </button>
+                                          </div>
                                         </div>
                                       ))}
                                     </div>
@@ -1432,6 +1486,63 @@ export function TeamCreator() {
               <p className={styles.skillModalMeta}>Type: {activeReference.type}</p>
               <p className={styles.skillModalExcerpt}>{activeReference.excerpt}</p>
               <p className={styles.skillModalPage}>Reference: page {activeReference.page}</p>
+            </div>
+          </div>
+        ) : null}
+        {inspectedSubmission ? (
+          <div
+            className={styles.skillModalBackdrop}
+            onClick={() => setInspectedSubmission(null)}
+            role="presentation"
+          >
+            <div
+              className={styles.submissionModal}
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+            >
+              <button
+                className={styles.skillModalClose}
+                onClick={() => setInspectedSubmission(null)}
+                type="button"
+                aria-label="Close submission details"
+              >
+                ×
+              </button>
+              <h2 className={styles.skillModalTitle}>{inspectedSubmission.submission.teamName}</h2>
+              <p className={styles.skillModalMeta}>Competition: {inspectedSubmission.competitionName}</p>
+              <p className={styles.skillModalMeta}>Coach: {inspectedSubmission.coachName}</p>
+              <p className={styles.skillModalMeta}>
+                Roster: {templates.find((template) => template.id === inspectedSubmission.submission.rosterTemplateId)?.name ?? inspectedSubmission.submission.rosterTemplateId}
+              </p>
+              <p className={styles.skillModalMeta}>
+                Team Value: {formatGold(inspectedSubmission.submission.teamValue)} gp
+                {inspectedSubmission.submission.tierId ? ` • ${inspectedSubmission.submission.tierId}` : ''}
+              </p>
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Name</th>
+                      <th>Position</th>
+                      <th>Value</th>
+                      <th>Skills</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inspectedSubmission.submission.players.map((player, index) => (
+                      <tr key={player.id}>
+                        <td>{player.shirtNumber ?? index + 1}</td>
+                        <td>{player.name}</td>
+                        <td>{player.positionTemplateId}</td>
+                        <td>{formatGold(player.currentValue)} gp</td>
+                        <td>{player.extraSkills.length > 0 ? player.extraSkills.join(', ') : 'None'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         ) : null}

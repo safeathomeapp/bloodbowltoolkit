@@ -23,6 +23,7 @@
 - competition cards now patch local state immediately after join, submit, approve, and generate actions
 - the API-backed team creator now exposes visible shared API identity control for multi-window testing
 - competition owners can now approve other users' submitted teams from the owner review section
+- competition owners can now inspect submitted team snapshots before approval
 
 ## What Not To Do Next
 
@@ -36,20 +37,20 @@
 ## Best Next Move
 
 - use `docs/architecture/2026-05-19_competition_backend_spec.md` as the implementation contract
-- the next concrete pass is now read-only submitted-team inspection before approval
+- the next concrete pass is now fixture-attached live match room scaffolding
 
 ## Concrete Next Implementation Pass
 
-1. add a read-only submitted-team inspection action in owner review
-2. show roster summary and player list from the frozen competition submission snapshot
-3. keep the approval path on the same screen
-4. then rerun the multi-user commissioner beta with pre-approval team inspection
+1. attach a live match room to a generated fixture
+2. expose fixture-to-live-match creation and lookup in the API
+3. preload both submitted teams from fixture context
+4. wire block dice to consume live match context instead of ad hoc session setup
 
 ## After That
 
-1. attach live match rooms to fixtures
-2. add turn timer and bank time
-3. add small event log and turn-end confirmation
+1. add turn timer and bank time
+2. add small event log and turn-end confirmation
+3. add final match signoff
 4. only then return to broader progression and richer league administration
 
 ## Integration Goal

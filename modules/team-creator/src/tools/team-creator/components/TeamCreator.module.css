@@ -863,6 +863,17 @@
   padding: 28px;
 }
 
+.submissionModal {
+  position: relative;
+  width: min(980px, 100%);
+  max-height: min(80vh, 900px);
+  overflow: auto;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.2);
+  padding: 28px;
+}
+
 .skillModalClose {
   position: absolute;
   top: 12px;
