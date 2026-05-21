@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 
 import styles from './TeamCreator.module.css'
 import { getSkillReference } from '../../../data/skillReferences'
+import {
+  CompetitionClient,
+  type CompetitionDetail,
+  type CompetitionSubmissionDetail,
+} from '../../../shared/api/competitionClient'
 import { resolveTeamRepositorySelection } from '../../../shared/repositories/createTeamRepository'
+import { BrowserLocalStorageStore } from '../../../shared/storage/keyValueStore'
 import {
   TEAM_CREATOR_EXCHANGE_FORMAT,
   TEAM_CREATOR_EXCHANGE_VERSION,
@@ -32,8 +38,24 @@ type ReferenceModalContent = {
   page: number
 }
 
+type CompetitionCreateFormState = {
+  name: string
+  description: string
+  maxEntrants: string
+  submissionDeadline: string
+  allowUnofficialRosters: boolean
+}
+
 const repositorySelection = resolveTeamRepositorySelection()
 const repository = repositorySelection.repository
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() ?? ''
+const competitionClient =
+  typeof window !== 'undefined' && repositorySelection.mode === 'api' && apiBaseUrl
+    ? new CompetitionClient({
+        baseUrl: apiBaseUrl,
+        store: new BrowserLocalStorageStore(window.localStorage),
+      })
+    : null
 
 function formatGold(value: number) {
   return value.toLocaleString('en-GB')
@@ -82,12 +104,27 @@ export function TeamCreator() {
   const [templates, setTemplates] = useState<RosterTemplate[]>([])
   const [teams, setTeams] = useState<SavedTeamSummary[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
-  const [libraryView, setLibraryView] = useState<'CREATE' | 'LOAD'>('CREATE')
+  const [libraryView, setLibraryView] = useState<'CREATE' | 'LOAD' | 'COMPETITIONS'>('CREATE')
   const [activeTeam, setActiveTeam] = useState<SavedTeam | null>(null)
   const [selectedPositionId, setSelectedPositionId] = useState('')
   const [activeReference, setActiveReference] = useState<ReferenceModalContent | null>(null)
   const [feedback, setFeedback] = useState('')
   const [isLoading, setIsLoading] = useState(true)
+  const [competitions, setCompetitions] = useState<CompetitionDetail[]>([])
+  const [competitionSubmissionDetails, setCompetitionSubmissionDetails] = useState<
+    Record<string, CompetitionSubmissionDetail>
+  >({})
+  const [isCompetitionLoading, setIsCompetitionLoading] = useState(false)
+  const [competitionUserId, setCompetitionUserId] = useState('')
+  const [competitionForm, setCompetitionForm] = useState<CompetitionCreateFormState>({
+    name: '',
+    description: '',
+    maxEntrants: '8',
+    submissionDeadline: '',
+    allowUnofficialRosters: false,
+  })
+  const [selectedCompetitionTeamIds, setSelectedCompetitionTeamIds] = useState<Record<string, string>>({})
+  const [selectedCompetitionTierIds, setSelectedCompetitionTierIds] = useState<Record<string, string>>({})
 
   const draftRuleReferences: Record<string, ReferenceModalContent> = {
     rerolls: {
@@ -198,12 +235,61 @@ export function TeamCreator() {
         )
 
         const nextTeams = await repository.listTeams()
+        const nextCompetitions =
+          competitionClient ? await competitionClient.listCompetitions() : []
 
         if (isDisposed) {
           return
         }
 
         setTeams(nextTeams)
+        setCompetitions([])
+        setCompetitionSubmissionDetails({})
+        setSelectedCompetitionTeamIds({})
+        setSelectedCompetitionTierIds({})
+
+        if (competitionClient) {
+          const competitionDetails = await Promise.all(
+            nextCompetitions.map(async (competition) => competitionClient.getCompetition(competition.id)),
+          )
+
+          if (isDisposed) {
+            return
+          }
+
+          const resolvedCompetitions = competitionDetails.filter(
+            (competition): competition is CompetitionDetail => Boolean(competition),
+          )
+          const nextSubmissionDetails: Record<string, CompetitionSubmissionDetail> = {}
+          const nextTeamSelections: Record<string, string> = {}
+          const nextTierSelections: Record<string, string> = {}
+          const currentUserId = await competitionClient.ensureUserId()
+
+          for (const competition of resolvedCompetitions) {
+            const currentEntry = competition.entries.find((entry) => entry.userId === currentUserId) ?? null
+
+            if (currentEntry?.submission) {
+              const payload = await competitionClient.getSubmission(competition.id, currentEntry.id)
+
+              if (payload) {
+                nextSubmissionDetails[competition.id] = payload.submission
+                nextTeamSelections[competition.id] = payload.submission.sourceTeamId ?? ''
+                nextTierSelections[competition.id] = payload.submission.tierId ?? ''
+              }
+            }
+          }
+
+          if (isDisposed) {
+            return
+          }
+
+          setCompetitions(resolvedCompetitions)
+          setCompetitionSubmissionDetails(nextSubmissionDetails)
+          setSelectedCompetitionTeamIds(nextTeamSelections)
+          setSelectedCompetitionTierIds(nextTierSelections)
+          setCompetitionUserId(currentUserId)
+        }
+
         setFeedback('')
       } catch (error) {
         if (!isDisposed) {
@@ -240,6 +326,156 @@ export function TeamCreator() {
         : (nextTemplates[0]?.id ?? ''),
     )
     setFeedback('')
+  }
+
+  async function refreshCompetitionState() {
+    if (!competitionClient) {
+      setCompetitions([])
+      setCompetitionSubmissionDetails({})
+      setCompetitionUserId('')
+      return
+    }
+
+    setIsCompetitionLoading(true)
+
+    try {
+      const [competitionSummaries, currentUserId] = await Promise.all([
+        competitionClient.listCompetitions(),
+        competitionClient.ensureUserId(),
+      ])
+      const competitionDetails = await Promise.all(
+        competitionSummaries.map(async (competition) => competitionClient.getCompetition(competition.id)),
+      )
+      const resolvedCompetitions = competitionDetails.filter(
+        (competition): competition is CompetitionDetail => Boolean(competition),
+      )
+      const nextSubmissionDetails: Record<string, CompetitionSubmissionDetail> = {}
+      const nextTeamSelections: Record<string, string> = {}
+      const nextTierSelections: Record<string, string> = {}
+
+      for (const competition of resolvedCompetitions) {
+        const currentEntry = competition.entries.find((entry) => entry.userId === currentUserId) ?? null
+
+        if (currentEntry?.submission) {
+          const payload = await competitionClient.getSubmission(competition.id, currentEntry.id)
+
+          if (payload) {
+            nextSubmissionDetails[competition.id] = payload.submission
+            nextTeamSelections[competition.id] = payload.submission.sourceTeamId ?? ''
+            nextTierSelections[competition.id] = payload.submission.tierId ?? ''
+          }
+        }
+      }
+
+      setCompetitions(resolvedCompetitions)
+      setCompetitionSubmissionDetails(nextSubmissionDetails)
+      setSelectedCompetitionTeamIds((currentSelections) => ({
+        ...currentSelections,
+        ...nextTeamSelections,
+      }))
+      setSelectedCompetitionTierIds((currentSelections) => ({
+        ...currentSelections,
+        ...nextTierSelections,
+      }))
+      setCompetitionUserId(currentUserId)
+    } finally {
+      setIsCompetitionLoading(false)
+    }
+  }
+
+  async function handleCreateCompetition() {
+    if (!competitionClient) {
+      setFeedback('Competition tools require the shared API repository mode.')
+      return
+    }
+
+    if (!competitionForm.name.trim()) {
+      setFeedback('Competition name is required.')
+      return
+    }
+
+    const maxEntrants = Number.parseInt(competitionForm.maxEntrants, 10)
+
+    if (!Number.isFinite(maxEntrants) || maxEntrants <= 1) {
+      setFeedback('Competition seat count must be at least 2.')
+      return
+    }
+
+    await competitionClient.createCompetition({
+      name: competitionForm.name.trim(),
+      description: competitionForm.description.trim(),
+      maxEntrants,
+      submissionDeadline: competitionForm.submissionDeadline
+        ? new Date(competitionForm.submissionDeadline).toISOString()
+        : null,
+      allowUnofficialRosters: competitionForm.allowUnofficialRosters,
+    })
+    await refreshCompetitionState()
+    setCompetitionForm({
+      name: '',
+      description: '',
+      maxEntrants: '8',
+      submissionDeadline: '',
+      allowUnofficialRosters: false,
+    })
+    setFeedback('Competition created.')
+  }
+
+  async function handleJoinCompetition(competitionId: string) {
+    if (!competitionClient) {
+      setFeedback('Competition tools require the shared API repository mode.')
+      return
+    }
+
+    await competitionClient.joinCompetition(competitionId)
+    await refreshCompetitionState()
+    setFeedback('Joined competition.')
+  }
+
+  async function handleSubmitCompetitionTeam(competitionId: string, entryId: string) {
+    if (!competitionClient) {
+      setFeedback('Competition tools require the shared API repository mode.')
+      return
+    }
+
+    const sourceTeamId = selectedCompetitionTeamIds[competitionId] ?? ''
+
+    if (!sourceTeamId) {
+      setFeedback('Choose a saved team before submitting to the competition.')
+      return
+    }
+
+    const existingSubmission = competitionSubmissionDetails[competitionId] ?? null
+    const tierId = (selectedCompetitionTierIds[competitionId] ?? '').trim()
+
+    if (existingSubmission) {
+      await competitionClient.updateSubmission(competitionId, entryId, {
+        sourceTeamId,
+        tierId: tierId || null,
+        extraSkillsPackageJson: {},
+      })
+      setFeedback('Competition team submission updated.')
+    } else {
+      await competitionClient.submitTeam(competitionId, entryId, {
+        sourceTeamId,
+        tierId: tierId || null,
+        extraSkillsPackageJson: {},
+      })
+      setFeedback('Competition team submitted.')
+    }
+
+    await refreshCompetitionState()
+  }
+
+  async function handleApproveCompetitionSubmission(competitionId: string, entryId: string) {
+    if (!competitionClient) {
+      setFeedback('Competition tools require the shared API repository mode.')
+      return
+    }
+
+    await competitionClient.approveSubmission(competitionId, entryId)
+    await refreshCompetitionState()
+    setFeedback('Competition team submission approved.')
   }
 
   async function handleCreateTeam() {
@@ -512,7 +748,13 @@ export function TeamCreator() {
 
         <div className={styles.pageFrame}>
           <div className={styles.centerTitleBlock}>
-            <h1 className={styles.pageTitle}>{libraryView === 'CREATE' ? 'Create New Team' : 'Load Saved Team'}</h1>
+            <h1 className={styles.pageTitle}>
+              {libraryView === 'CREATE'
+                ? 'Create New Team'
+                : libraryView === 'LOAD'
+                  ? 'Load Saved Team'
+                  : 'Competitions'}
+            </h1>
           </div>
 
           <nav className={styles.libraryNav} aria-label="Team vault workflows">
@@ -529,6 +771,13 @@ export function TeamCreator() {
               type="button"
             >
               Load Saved Team
+            </button>
+            <button
+              className={libraryView === 'COMPETITIONS' ? styles.libraryNavButtonActive : styles.libraryNavButton}
+              onClick={() => setLibraryView('COMPETITIONS')}
+              type="button"
+            >
+              Competitions
             </button>
           </nav>
 
@@ -612,7 +861,7 @@ export function TeamCreator() {
                 </section>
               )}
             </section>
-          ) : (
+          ) : libraryView === 'LOAD' ? (
             <section className={styles.librarySinglePane}>
               <div className={styles.loadSheet}>
                 {teams.length === 0 ? (
@@ -633,6 +882,219 @@ export function TeamCreator() {
                   ))
                 )}
               </div>
+            </section>
+          ) : (
+            <section className={styles.librarySinglePane}>
+              {competitionClient ? (
+                <>
+                  <section className={styles.competitionPanel}>
+                    <div className={styles.panelHeader}>
+                      <div>
+                        <p className={styles.sectionKicker}>Knockout Setup</p>
+                        <h2 className={styles.panelHeadline}>Create Competition</h2>
+                      </div>
+                    </div>
+                    <div className={styles.competitionFormGrid}>
+                      <label className={styles.field}>
+                        <span>Name</span>
+                        <input
+                          value={competitionForm.name}
+                          onChange={(event) =>
+                            setCompetitionForm((current) => ({ ...current, name: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className={styles.field}>
+                        <span>Description</span>
+                        <input
+                          value={competitionForm.description}
+                          onChange={(event) =>
+                            setCompetitionForm((current) => ({ ...current, description: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className={styles.field}>
+                        <span>Seats</span>
+                        <input
+                          type="number"
+                          min="2"
+                          value={competitionForm.maxEntrants}
+                          onChange={(event) =>
+                            setCompetitionForm((current) => ({ ...current, maxEntrants: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className={styles.field}>
+                        <span>Submission Deadline</span>
+                        <input
+                          type="datetime-local"
+                          value={competitionForm.submissionDeadline}
+                          onChange={(event) =>
+                            setCompetitionForm((current) => ({
+                              ...current,
+                              submissionDeadline: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className={styles.toggleField}>
+                        <span>Allow Unofficial Rosters</span>
+                        <input
+                          type="checkbox"
+                          checked={competitionForm.allowUnofficialRosters}
+                          onChange={(event) =>
+                            setCompetitionForm((current) => ({
+                              ...current,
+                              allowUnofficialRosters: event.target.checked,
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+                    <button className={styles.primaryButton} onClick={() => void handleCreateCompetition()} type="button">
+                      Create Knockout Competition
+                    </button>
+                  </section>
+
+                  <section className={styles.competitionPanel}>
+                    <div className={styles.panelHeader}>
+                      <div>
+                        <p className={styles.sectionKicker}>Shared API</p>
+                        <h2 className={styles.panelHeadline}>Competition Vault</h2>
+                      </div>
+                      <button
+                        className={styles.secondaryButton}
+                        onClick={() => void refreshCompetitionState()}
+                        type="button"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+
+                    {isCompetitionLoading ? (
+                      <p className={styles.helperText}>Refreshing competitions...</p>
+                    ) : competitions.length === 0 ? (
+                      <p className={styles.emptyState}>No competitions created yet.</p>
+                    ) : (
+                      <div className={styles.competitionList}>
+                        {competitions.map((competition) => {
+                          const currentEntry =
+                            competition.entries.find((entry) => entry.userId === competitionUserId) ?? null
+                          const selectedTeamId = selectedCompetitionTeamIds[competition.id] ?? ''
+                          const selectedTierId = selectedCompetitionTierIds[competition.id] ?? ''
+                          const submission = competitionSubmissionDetails[competition.id] ?? null
+                          const isOwner = competition.createdByUserId === competitionUserId
+
+                          return (
+                            <article key={competition.id} className={styles.competitionCard}>
+                              <div className={styles.competitionCardHeader}>
+                                <div>
+                                  <h3 className={styles.competitionName}>{competition.name}</h3>
+                                  <p className={styles.metaLine}>
+                                    {competition.format} • {competition.status} • {competition.entrantCount}/{competition.maxEntrants} entrants
+                                  </p>
+                                  {competition.description ? (
+                                    <p className={styles.helperText}>{competition.description}</p>
+                                  ) : null}
+                                </div>
+                                <div className={styles.competitionMetaBlock}>
+                                  <span>{isOwner ? 'Owner' : 'Participant View'}</span>
+                                  <span>{competition.submissionDeadline ? `Deadline ${competition.submissionDeadline.slice(0, 16).replace('T', ' ')}` : 'No deadline set'}</span>
+                                </div>
+                              </div>
+
+                              {currentEntry ? (
+                                <div className={styles.competitionEntryPanel}>
+                                  <p className={styles.metaLine}>Entry status: {currentEntry.status}</p>
+                                  <div className={styles.competitionSubmissionGrid}>
+                                    <label className={styles.field}>
+                                      <span>Saved Team</span>
+                                      <select
+                                        value={selectedTeamId}
+                                        onChange={(event) =>
+                                          setSelectedCompetitionTeamIds((current) => ({
+                                            ...current,
+                                            [competition.id]: event.target.value,
+                                          }))
+                                        }
+                                      >
+                                        <option value="">Choose team</option>
+                                        {teams.map((team) => (
+                                          <option key={team.id} value={team.id}>
+                                            {team.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <label className={styles.field}>
+                                      <span>Tier</span>
+                                      <input
+                                        value={selectedTierId}
+                                        onChange={(event) =>
+                                          setSelectedCompetitionTierIds((current) => ({
+                                            ...current,
+                                            [competition.id]: event.target.value,
+                                          }))
+                                        }
+                                        placeholder="Tier 1"
+                                      />
+                                    </label>
+                                  </div>
+                                  <div className={styles.competitionActionRow}>
+                                    <button
+                                      className={styles.primaryButton}
+                                      onClick={() => void handleSubmitCompetitionTeam(competition.id, currentEntry.id)}
+                                      type="button"
+                                      disabled={!selectedTeamId}
+                                    >
+                                      {submission ? 'Update Submission' : 'Submit Team'}
+                                    </button>
+                                    {submission && isOwner && currentEntry.status === 'TEAM_SUBMITTED' ? (
+                                      <button
+                                        className={styles.secondaryButton}
+                                        onClick={() =>
+                                          void handleApproveCompetitionSubmission(competition.id, currentEntry.id)
+                                        }
+                                        type="button"
+                                      >
+                                        Approve Submission
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                  {submission ? (
+                                    <div className={styles.inlineSuccess}>
+                                      Submitted team: {submission.teamName} ({submission.players.length} players)
+                                      {submission.tierId ? ` • ${submission.tierId}` : ''}
+                                    </div>
+                                  ) : (
+                                    <p className={styles.helperText}>No team submitted for this competition yet.</p>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className={styles.competitionActionRow}>
+                                  <button
+                                    className={styles.primaryButton}
+                                    onClick={() => void handleJoinCompetition(competition.id)}
+                                    type="button"
+                                  >
+                                    Join Competition
+                                  </button>
+                                </div>
+                              )}
+                            </article>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </section>
+                </>
+              ) : (
+                <section className={styles.competitionPanel}>
+                  <p className={styles.emptyState}>
+                    Competition tools are available only when the team creator is running against the shared API.
+                  </p>
+                </section>
+              )}
             </section>
           )}
 

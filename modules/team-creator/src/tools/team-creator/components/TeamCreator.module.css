@@ -177,6 +177,69 @@
   gap: 18px;
 }
 
+.competitionPanel {
+  display: grid;
+  gap: 16px;
+  background: #fffdf9;
+  border: 1px solid rgba(194, 153, 117, 0.28);
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.competitionFormGrid,
+.competitionSubmissionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.competitionList {
+  display: grid;
+  gap: 14px;
+}
+
+.competitionCard {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(137, 65, 51, 0.16);
+  border-radius: 16px;
+  background: #fff;
+  padding: 16px;
+}
+
+.competitionCardHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+  flex-wrap: wrap;
+}
+
+.competitionName {
+  margin: 0 0 6px;
+  color: #31231e;
+  font-size: 1.15rem;
+}
+
+.competitionMetaBlock {
+  display: grid;
+  gap: 6px;
+  color: #685447;
+  text-align: right;
+  font-size: 0.88rem;
+}
+
+.competitionEntryPanel {
+  display: grid;
+  gap: 12px;
+}
+
+.competitionActionRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .cloneSectionTitle {
   margin: 0 0 6px;
   color: #292929;
@@ -728,7 +791,9 @@
   .draftControlStrip,
   .financialGrid,
   .draftSummaryDeck,
-  .breakdownGrid {
+  .breakdownGrid,
+  .competitionFormGrid,
+  .competitionSubmissionGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -749,6 +814,8 @@
   .financialGrid,
   .draftSummaryDeck,
   .breakdownGrid,
+  .competitionFormGrid,
+  .competitionSubmissionGrid,
   .loadRowButton,
   .summaryLedger,
   .staffLedger {

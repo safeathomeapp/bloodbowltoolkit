@@ -4,6 +4,7 @@ This service is the planned shared backend for:
 
 - users
 - leagues
+- competitions
 - shared teams
 - match sessions
 - block-dice preload context
@@ -17,6 +18,7 @@ This scaffold is intentionally thin. It currently establishes:
 - Prisma client wiring
 - route registration boundaries for:
   - users
+  - competitions
   - leagues
   - teams
   - match sessions
@@ -25,6 +27,14 @@ Implemented route slice:
 
 - `POST /users`
 - `GET /users/:userId`
+- `POST /competitions`
+- `GET /competitions`
+- `GET /competitions/:competitionId`
+- `POST /competitions/:competitionId/join`
+- `GET /competitions/:competitionId/entries/:entryId/submission`
+- `POST /competitions/:competitionId/entries/:entryId/submission`
+- `PUT /competitions/:competitionId/entries/:entryId/submission`
+- `POST /competitions/:competitionId/entries/:entryId/approve`
 - `POST /leagues`
 - `GET /leagues/:leagueId`
 - `POST /leagues/:leagueId/join`
@@ -45,6 +55,21 @@ Still placeholder-only:
 - no remaining route placeholders in the MVP slice
 
 It does not yet implement the full domain workflow.
+
+Current competition scope:
+
+- shared `Competition` parent model
+- `CompetitionEntry` join flow
+- knockout-capable competition creation fields
+- commissioner-owned competition detail and entrant listing
+- tournament team submission snapshots copied from saved teams
+- submission update and approval flow
+
+Not implemented yet in the competition layer:
+
+- fixture generation
+- fixture-backed live matches
+- timer, event log, and signoff flows
 
 ## Development
 

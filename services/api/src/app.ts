@@ -1,6 +1,7 @@
 import Fastify from 'fastify'
 
 import { registerPrisma } from './plugins/prisma.js'
+import { registerCompetitionRoutes } from './routes/competitions.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerLeagueRoutes } from './routes/leagues.js'
 import { registerMatchSessionRoutes } from './routes/matchSessions.js'
@@ -26,6 +27,7 @@ export async function buildApp() {
   await registerPrisma(app)
   await registerHealthRoutes(app)
   await registerUserRoutes(app)
+  await registerCompetitionRoutes(app)
   await registerLeagueRoutes(app)
   await registerTeamRoutes(app)
   await registerMatchSessionRoutes(app)

@@ -29,6 +29,47 @@ enum MatchSessionSide {
   AWAY
 }
 
+enum CompetitionType {
+  LEAGUE
+  TOURNAMENT
+}
+
+enum CompetitionFormat {
+  KNOCKOUT
+  SWISS
+  ROUND_ROBIN
+}
+
+enum CompetitionVisibility {
+  PRIVATE
+  INVITE_ONLY
+  OPEN
+}
+
+enum CompetitionStatus {
+  DRAFT
+  OPEN_FOR_JOIN
+  TEAM_SUBMISSION_OPEN
+  IN_PROGRESS
+  COMPLETED
+  ARCHIVED
+}
+
+enum CompetitionEntryStatus {
+  JOINED
+  TEAM_PENDING
+  TEAM_SUBMITTED
+  TEAM_APPROVED
+  ELIMINATED
+  COMPLETED
+  WITHDRAWN
+}
+
+enum TournamentTeamSourceType {
+  COPIED_FROM_TEAM
+  DIRECT_EVENT_BUILD
+}
+
 model User {
   id                    String                    @id @default(cuid())
   displayName           String
@@ -39,6 +80,8 @@ model User {
   ownedTeams            Team[]
   createdMatchSessions  MatchSession[]            @relation("MatchSessionCreator")
   matchParticipants     MatchSessionParticipant[]
+  createdCompetitions   Competition[]             @relation("CompetitionOwner")
+  competitionEntries    CompetitionEntry[]
 }
 
 model League {
@@ -86,6 +129,7 @@ model Team {
   homeSessions          MatchSession[] @relation("HomeTeam")
   awaySessions          MatchSession[] @relation("AwayTeam")
   sessionParticipants   MatchSessionParticipant[]
+  competitionSubmissions CompetitionTeamSubmission[]
 }
 
 model TeamPlayer {
@@ -134,4 +178,83 @@ model MatchSessionParticipant {
 
   @@unique([matchSessionId, userId])
   @@unique([matchSessionId, side])
+}
+
+model Competition {
+  id                     String                @id @default(cuid())
+  createdByUserId        String
+  name                   String
+  description            String?
+  type                   CompetitionType
+  format                 CompetitionFormat
+  status                 CompetitionStatus
+  visibility             CompetitionVisibility
+  maxEntrants            Int
+  submissionDeadline     DateTime?
+  allowUnofficialRosters Boolean               @default(false)
+  configJson             Json
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  createdBy              User                  @relation("CompetitionOwner", fields: [createdByUserId], references: [id])
+  entries                CompetitionEntry[]
+}
+
+model CompetitionEntry {
+  id            String                 @id @default(cuid())
+  competitionId String
+  userId        String
+  status        CompetitionEntryStatus
+  joinedAt      DateTime               @default(now())
+  submittedAt   DateTime?
+  approvedAt    DateTime?
+  seed          Int?
+  notes         String?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  competition   Competition            @relation(fields: [competitionId], references: [id])
+  user          User                   @relation(fields: [userId], references: [id])
+  submission    CompetitionTeamSubmission?
+
+  @@unique([competitionId, userId])
+  @@index([competitionId, status])
+}
+
+model CompetitionTeamSubmission {
+  id                     String                      @id @default(cuid())
+  competitionEntryId     String                      @unique
+  sourceType             TournamentTeamSourceType
+  sourceTeamId           String?
+  rosterTemplateId       String
+  teamName               String
+  tierId                 String?
+  teamValue              Int
+  draftBudget            Int
+  rerollCount            Int
+  assistantCoachCount    Int
+  cheerleaderCount       Int
+  dedicatedFans          Int
+  apothecaryPurchased    Boolean
+  extraSkillsPackageJson Json
+  submittedAt            DateTime
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+  competitionEntry       CompetitionEntry            @relation(fields: [competitionEntryId], references: [id])
+  sourceTeam             Team?                       @relation(fields: [sourceTeamId], references: [id])
+  players                CompetitionTeamSubmissionPlayer[]
+}
+
+model CompetitionTeamSubmissionPlayer {
+  id                          String                    @id @default(cuid())
+  competitionTeamSubmissionId String
+  sourcePlayerId              String?
+  positionTemplateId          String
+  name                        String
+  shirtNumber                 Int?
+  currentValue                Int
+  displayOrder                Int
+  extraSkills                 String[]
+  statAdjustments             Json
+  competitionTeamSubmission   CompetitionTeamSubmission @relation(fields: [competitionTeamSubmissionId], references: [id])
+
+  @@index([competitionTeamSubmissionId, displayOrder])
 }

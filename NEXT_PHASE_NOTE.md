@@ -11,6 +11,13 @@
 - CORS is enabled for local frontend-to-API development across ports
 - match-session endpoints are now implemented and smoke-tested in the API
 - block dice can now load a match session by code and pre-assign blue and red teams from shared API data
+- the next domain layer is no longer just sessions; it is full competition structure above them
+- leagues will use live progressing teams
+- tournaments will use static submitted team snapshots
+- `Competition` and `CompetitionEntry` are now implemented in the API
+- competition create, list, detail, and join are now live and smoke-tested
+- tournament team submission snapshots are now implemented
+- the API-backed team creator now has a working competition create, join, submit, update, and approve beta flow
 
 ## What Not To Do Next
 
@@ -18,24 +25,30 @@
 - do not rewrite block dice in order to add leagues
 - do not split the backend into broader architecture than the MVP needs
 - do not distort the existing saved-team model without a clear contract reason
-- do not start standings, results, or redraft before shared team persistence is live
+- do not model tournaments as if they were live progressing league teams
+- do not jump straight into standings, rich results, or redraft before competition entries and fixtures are correct
 
 ## Best Next Move
 
-- reduce the manual session setup path across the frontend modules
+- use `docs/architecture/2026-05-19_competition_backend_spec.md` as the implementation contract
+- the next concrete pass is now knockout fixture generation
 
 ## Concrete Next Implementation Pass
 
-1. add a frontend path to create or select a match session from shared team data
-2. keep block dice consuming shared session preload rather than direct ad hoc team imports where possible
-3. reduce the current manual dev/test cross-app handoff needed to get a session code
-4. after that, revisit block-dice UX polish around active side, source clarity, and imported placement flow
+1. add `Fixture`
+2. implement:
+   - `POST /competitions/:competitionId/fixtures/generate`
+   - `GET /competitions/:competitionId/fixtures`
+   - `PUT /competitions/:competitionId/fixtures/:fixtureId`
+3. generate knockout pairings from `TEAM_APPROVED` entries
+4. expose a simple commissioner-review fixture surface in the API-backed team creator
 
 ## After That
 
-1. remove more of the temporary export/import bridge from the main flow
-2. then return to progression fields once shared team identity is stable
-3. only after that expand into richer league or fixture administration
+1. attach live match rooms to fixtures
+2. add turn timer and bank time
+3. add small event log and turn-end confirmation
+4. only then return to broader progression and richer league administration
 
 ## Integration Goal
 

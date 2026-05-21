@@ -88,6 +88,31 @@ The team creator MVP has already done its main job:
 
 The next blocker is shared persistence and shared match/session loading.
 
+## Competition Direction
+
+The product direction is now clearer than `teams plus tools`.
+
+The toolkit is becoming a full Blood Bowl competition aid system:
+
+- competitions are created and administered by a commissioner
+- users join competitions first and can submit teams later
+- one user can enter only one team per competition
+- leagues and tournaments share most infrastructure
+- leagues use live progressing teams
+- tournaments use static submitted team snapshots
+- live matches happen in one shared room used by both players
+- in-match tooling should include:
+  - block calculator
+  - turn timer with bank time
+  - SPP and event logging
+  - turn-end confirmation
+  - final signoff
+
+See:
+
+- `docs/architecture/2026-05-19_competition_domain_model.md`
+- `docs/architecture/2026-05-19_competition_backend_spec.md`
+
 ## Execution Order
 
 ### Phase 1: Lock The Existing Frontend MVPs
@@ -118,24 +143,51 @@ The next blocker is shared persistence and shared match/session loading.
   - joining a league
   - saving teams under a user or league context
   - creating or loading a match session
+- this phase is now largely in place for the MVP backend slice
 
-### Phase 4: Replace Local-Only Team Loading
+### Phase 4: Introduce Competition Domain
+
+- add a shared `Competition` parent model
+- start with knockout-first tournament support
+- keep extension hooks for:
+  - swiss
+  - round robin
+- define:
+  - competition entries
+  - team submission deadline
+  - live league team links
+  - static tournament team snapshots
+  - fixture generation with commissioner override hooks
+
+### Phase 5: Replace Local-Only Team Loading
 
 - migrate the team creator away from browser-only storage as the main path
 - keep local-only mode only if still useful as a fallback or temporary offline mode
 - remove the need for manual export/import to move teams between apps or devices
 
-### Phase 5: Preload Teams Into Block Dice From Match Context
+### Phase 6: Preload Teams Into Block Dice From Match Context
 
 - allow block dice to open with attacker and defender context already known
 - support:
   - player-selected team assignment
   - fixture or match-code loading
-  - session-based side designation
+- session-based side designation
 - keep block-dice calculation logic independent from progression and event logic
 - treat this as a data-source integration, not a rewrite
 
-### Phase 6: Add Player Progression On Top Of Shared Teams
+### Phase 7: Add Live Match Room Tools
+
+- move from loose sessions toward shared live match rooms attached to fixtures
+- start small:
+  - turn timer
+  - bank time
+  - bank reset at halftime
+  - small SPP event log
+  - turn-end confirmation
+  - final signoff
+- keep this implementation extensible for fuller match administration later
+
+### Phase 8: Add Player Progression On Top Of Shared Teams
 
 - add editable player progression fields to the roster editor
 - support:
@@ -148,7 +200,7 @@ The next blocker is shared persistence and shared match/session loading.
 - keep progression as mutable player state, not as edits to the roster template
 - apply this only once the shared team identity and storage model are stable
 
-### Phase 7: Introduce Ruleset Profiles And Event Overlays
+### Phase 9: Introduce Ruleset Profiles And Event Overlays
 
 - add a `ruleset profile` concept above the base team
 - first profiles should cover:
@@ -165,7 +217,7 @@ The next blocker is shared persistence and shared match/session loading.
 - make these saveable as explicit event entries or applied views
 - do not overwrite the underlying base team silently
 
-### Phase 8: League Tooling
+### Phase 10: League Tooling
 
 - add competition and league workflows only after team and progression models are stable
 - support:
@@ -178,13 +230,12 @@ The next blocker is shared persistence and shared match/session loading.
 
 ## Immediate Next Step
 
-- define the minimal shared backend/domain contract and scaffold `services/api/`
-- first implementation target:
-  - create league
-  - join league
-  - save team under a shared identity
-  - create or resolve a match session
-  - preload block dice with the two participating teams
+- build the fixture layer on top of the new competition spine:
+  - knockout fixture generation from approved entries
+  - commissioner override support
+  - simple fixture review surface
+  - keep the path open for fixture-backed live matches next
+- continue using `docs/architecture/2026-05-19_competition_backend_spec.md` as the backend contract
 
 ## Deferred Until Proven Necessary
 

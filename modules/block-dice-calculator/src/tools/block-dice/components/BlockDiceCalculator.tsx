@@ -13,7 +13,12 @@ import {
   readAvailableTeamsFromWindow,
   storeImportedTeamsExchange,
 } from '../../../shared/integration/teamCreatorStore'
-import { fetchBlockDiceSessionContextByCode } from '../../../shared/integration/matchSessionApi'
+import {
+  createBlockDiceSessionContext,
+  fetchBlockDiceSessionContextByCode,
+  fetchSharedTeams,
+  type SharedTeamSummary,
+} from '../../../shared/integration/matchSessionApi'
 import type { ImportedBlockDicePlayer, ImportedBlockDiceTeam } from '../../../shared/integration/teamImport'
 
 const GRID_SIZE = 7
@@ -263,8 +268,14 @@ export function BlockDiceCalculator() {
   const [teamLoaderTarget, setTeamLoaderTarget] = useState<TeamLoaderTarget>(null)
   const [teamImportFeedback, setTeamImportFeedback] = useState('')
   const [isSessionLoaderOpen, setIsSessionLoaderOpen] = useState(false)
+  const [isCreateSessionOpen, setIsCreateSessionOpen] = useState(false)
   const [sessionCodeInput, setSessionCodeInput] = useState('')
   const [isSessionLoading, setIsSessionLoading] = useState(false)
+  const [sharedTeams, setSharedTeams] = useState<SharedTeamSummary[]>([])
+  const [isSharedTeamsLoading, setIsSharedTeamsLoading] = useState(false)
+  const [createSessionHomeTeamId, setCreateSessionHomeTeamId] = useState('')
+  const [createSessionAwayTeamId, setCreateSessionAwayTeamId] = useState('')
+  const [isCreatingSession, setIsCreatingSession] = useState(false)
   const longPressTimerRef = useRef<number | null>(null)
   const suppressClickRef = useRef(false)
   const teamImportInputRef = useRef<HTMLInputElement | null>(null)
@@ -722,6 +733,11 @@ export function BlockDiceCalculator() {
     setIsSessionLoaderOpen(true)
   }
 
+  const openCreateSession = () => {
+    setIsHeaderMenuOpen(false)
+    setIsCreateSessionOpen(true)
+  }
+
   const handleTeamImportFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0]
 
@@ -755,36 +771,118 @@ export function BlockDiceCalculator() {
     }
   }
 
+  const applySessionContext = (options: {
+    homeTeam: Parameters<typeof buildTeamCreatorExchangePackage>[0][number]
+    awayTeam: Parameters<typeof buildTeamCreatorExchangePackage>[0][number]
+    sessionCode: string
+  }) => {
+    if (typeof window !== 'undefined') {
+      storeImportedTeamsExchange(
+        window.localStorage,
+        buildTeamCreatorExchangePackage([options.homeTeam, options.awayTeam]),
+      )
+    }
+
+    setImportedTeamIds({
+      A: options.homeTeam.id,
+      B: options.awayTeam.id,
+    })
+    setSelectedImportedPlayerIds(defaultSelectedImportedPlayerIds)
+    setSelectedEditPlayerIds({ A: null, B: null })
+    setSessionCodeInput(options.sessionCode)
+    setTeamImportFeedback(
+      `Loaded session ${options.sessionCode}. Blue: ${options.homeTeam.name}. Red: ${options.awayTeam.name}.`,
+    )
+  }
+
   const handleLoadSessionByCode = async () => {
     setIsSessionLoading(true)
 
     try {
       const sessionContext = await fetchBlockDiceSessionContextByCode(sessionCodeInput)
-
-      if (typeof window !== 'undefined') {
-        storeImportedTeamsExchange(
-          window.localStorage,
-          buildTeamCreatorExchangePackage([sessionContext.teams.home, sessionContext.teams.away]),
-        )
-      }
-
-      setImportedTeamIds({
-        A: sessionContext.teams.home.id,
-        B: sessionContext.teams.away.id,
-      })
-      setSelectedImportedPlayerIds(defaultSelectedImportedPlayerIds)
-      setSelectedEditPlayerIds({ A: null, B: null })
-      setSessionCodeInput(sessionContext.matchSession.sessionCode)
       setIsSessionLoaderOpen(false)
-      setTeamImportFeedback(
-        `Loaded session ${sessionContext.matchSession.sessionCode}. Blue: ${sessionContext.teams.home.name}. Red: ${sessionContext.teams.away.name}.`,
-      )
+      applySessionContext({
+        homeTeam: sessionContext.teams.home,
+        awayTeam: sessionContext.teams.away,
+        sessionCode: sessionContext.matchSession.sessionCode,
+      })
     } catch (error) {
       setTeamImportFeedback(
         error instanceof Error ? `Session load failed: ${error.message}` : 'Session load failed.',
       )
     } finally {
       setIsSessionLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!isCreateSessionOpen) {
+      return
+    }
+
+    let isDisposed = false
+
+    async function loadSharedTeams() {
+      setIsSharedTeamsLoading(true)
+
+      try {
+        const nextTeams = await fetchSharedTeams()
+
+        if (isDisposed) {
+          return
+        }
+
+        setSharedTeams(nextTeams)
+        setCreateSessionHomeTeamId((current) => current || nextTeams[0]?.id || '')
+        setCreateSessionAwayTeamId((current) => {
+          if (current) {
+            return current
+          }
+
+          const fallbackAway = nextTeams.find((team) => team.id !== (nextTeams[0]?.id ?? ''))
+          return fallbackAway?.id ?? ''
+        })
+      } catch (error) {
+        if (!isDisposed) {
+          setTeamImportFeedback(
+            error instanceof Error ? `Shared team load failed: ${error.message}` : 'Shared team load failed.',
+          )
+        }
+      } finally {
+        if (!isDisposed) {
+          setIsSharedTeamsLoading(false)
+        }
+      }
+    }
+
+    void loadSharedTeams()
+
+    return () => {
+      isDisposed = true
+    }
+  }, [isCreateSessionOpen])
+
+  const handleCreateSession = async () => {
+    setIsCreatingSession(true)
+
+    try {
+      const sessionContext = await createBlockDiceSessionContext(
+        createSessionHomeTeamId,
+        createSessionAwayTeamId,
+      )
+
+      setIsCreateSessionOpen(false)
+      applySessionContext({
+        homeTeam: sessionContext.teams.home,
+        awayTeam: sessionContext.teams.away,
+        sessionCode: sessionContext.matchSession.sessionCode,
+      })
+    } catch (error) {
+      setTeamImportFeedback(
+        error instanceof Error ? `Session creation failed: ${error.message}` : 'Session creation failed.',
+      )
+    } finally {
+      setIsCreatingSession(false)
     }
   }
 
@@ -1080,6 +1178,13 @@ export function BlockDiceCalculator() {
                       onClick={() => openTeamLoader('B')}
                     >
                       Load red team
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.menuItem}
+                      onClick={openCreateSession}
+                    >
+                      Create session
                     </button>
                     <button
                       type="button"
@@ -1705,6 +1810,91 @@ export function BlockDiceCalculator() {
               </button>
               <p className={styles.statusNote}>
                 This loads the home team to blue and the away team to red through the shared API.
+              </p>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isCreateSessionOpen ? (
+        <div
+          className={styles.bottomSheetBackdrop}
+          role="presentation"
+          onClick={() => setIsCreateSessionOpen(false)}
+        >
+          <section
+            className={styles.bottomSheet}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="session-create-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.bottomSheetHeader}>
+              <div>
+                <p className={styles.eyebrow}>Shared Session</p>
+                <p id="session-create-title" className={styles.resultHeadline}>
+                  Create Match Session
+                </p>
+              </div>
+              <button
+                type="button"
+                className={styles.teamToggle}
+                onClick={() => setIsCreateSessionOpen(false)}
+              >
+                CLOSE
+              </button>
+            </div>
+
+            <div className={styles.teamLoaderList}>
+              <label className={styles.sessionLoaderField}>
+                <span className={styles.playerCardControlLabel}>Blue team</span>
+                <select
+                  className={styles.sessionLoaderInput}
+                  value={createSessionHomeTeamId}
+                  onChange={(event) => setCreateSessionHomeTeamId(event.target.value)}
+                  disabled={isSharedTeamsLoading || sharedTeams.length === 0}
+                >
+                  {sharedTeams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.sessionLoaderField}>
+                <span className={styles.playerCardControlLabel}>Red team</span>
+                <select
+                  className={styles.sessionLoaderInput}
+                  value={createSessionAwayTeamId}
+                  onChange={(event) => setCreateSessionAwayTeamId(event.target.value)}
+                  disabled={isSharedTeamsLoading || sharedTeams.length === 0}
+                >
+                  {sharedTeams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className={styles.teamLoaderButton}
+                onClick={() => void handleCreateSession()}
+                disabled={
+                  isCreatingSession ||
+                  isSharedTeamsLoading ||
+                  !createSessionHomeTeamId ||
+                  !createSessionAwayTeamId
+                }
+              >
+                {isCreatingSession ? 'Creating session...' : 'Create and load session'}
+              </button>
+              <p className={styles.statusNote}>
+                {isSharedTeamsLoading
+                  ? 'Loading shared API teams...'
+                  : sharedTeams.length === 0
+                    ? 'No shared API teams found yet.'
+                    : 'This creates a session code and loads blue/red directly into block dice.'}
               </p>
             </div>
           </section>

@@ -6,6 +6,29 @@ export interface MatchSessionTeamSummary {
   ownerUserId: string
 }
 
+export interface SharedTeamSummary {
+  id: string
+  rosterTemplateId: string
+  name: string
+  status: 'DRAFT' | 'ACTIVE' | 'RETIRED'
+  playerCount: number
+  totalValue: number
+  updatedAt: string
+}
+
+export interface SharedTeamRecord extends TeamCreatorSavedTeamRecord {
+  ownerUserId: string
+  leagueId: string | null
+  draftBudget: number
+  rerollCount: number
+  assistantCoachCount: number
+  cheerleaderCount: number
+  dedicatedFans: number
+  apothecaryPurchased: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 export interface MatchSessionParticipantSummary {
   id: string
   userId: string
@@ -82,4 +105,59 @@ export async function fetchBlockDiceSessionContextByCode(sessionCode: string) {
       `${baseUrl}/match-sessions/${encodeURIComponent(sessionLookup.matchSession.id)}/block-dice-context`,
     ),
   )
+}
+
+export async function fetchSharedTeams() {
+  const baseUrl = buildApiBaseUrl()
+  const payload = await parseResponse<{ teams: SharedTeamSummary[] }>(
+    await fetch(`${baseUrl}/teams`),
+  )
+
+  return payload.teams
+}
+
+export async function fetchSharedTeam(teamId: string) {
+  const baseUrl = buildApiBaseUrl()
+  const payload = await parseResponse<{ team: SharedTeamRecord }>(
+    await fetch(`${baseUrl}/teams/${encodeURIComponent(teamId)}`),
+  )
+
+  return payload.team
+}
+
+export async function createBlockDiceSessionContext(homeTeamId: string, awayTeamId: string) {
+  const baseUrl = buildApiBaseUrl()
+
+  if (!homeTeamId || !awayTeamId) {
+    throw new Error('Choose both teams before creating a session.')
+  }
+
+  if (homeTeamId === awayTeamId) {
+    throw new Error('Choose two different teams.')
+  }
+
+  const homeTeam = await fetchSharedTeam(homeTeamId)
+  const sessionPayload = {
+    homeTeamId,
+    awayTeamId,
+    createdByUserId: homeTeam.ownerUserId,
+  }
+
+  const createdSession = await parseResponse<{ matchSession: MatchSessionSummary }>(
+    await fetch(`${baseUrl}/match-sessions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(sessionPayload),
+    }),
+  )
+
+  const context = await parseResponse<BlockDiceSessionContextResponse>(
+    await fetch(
+      `${baseUrl}/match-sessions/${encodeURIComponent(createdSession.matchSession.id)}/block-dice-context`,
+    ),
+  )
+
+  return context
 }
