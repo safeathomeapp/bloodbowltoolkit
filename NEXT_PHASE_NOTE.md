@@ -28,6 +28,7 @@
 - block dice can now load fixture-backed tournament rooms through session codes
 - match rooms now expose shared turn timer and bank-time state
 - block dice now shows and controls the shared room timer
+- match rooms now support shared event logging, turn confirmation, and final signoff
 
 ## What Not To Do Next
 
@@ -41,18 +42,18 @@
 ## Best Next Move
 
 - use `docs/architecture/2026-05-19_competition_backend_spec.md` as the implementation contract
-- the shared match-event log and turn confirmation layer is now implemented and browser-tested
+- the shared live-match closeout flow is now implemented and browser-tested
 
 ## Concrete Next Implementation Pass
 
-1. add final match signoff on top of the shared turn record
-2. keep match closeout explicit and shared between both sides
-3. avoid applying progression or standings logic directly from unsigned match data
-4. keep progression application as the pass after signoff semantics are stable
+1. define the first progression application pass from signed match data
+2. keep tournament and league consequences separate
+3. avoid mutating persistent teams from unsigned or reopened room state
+4. keep standings and broader administration behind the progression contract
 
 ## After That
 
-1. add final match signoff
+1. add progression application on top of signed match data
 2. then return to broader progression and richer league administration
 3. keep league and tournament overlays cleanly separated
 4. do not couple progression application too early

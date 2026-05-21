@@ -24,8 +24,10 @@ import {
   fetchMatchSessionTimer,
   fetchSharedTeams,
   resetMatchSessionHalf,
+  signOffMatchSession,
   startMatchSessionTimer,
   type MatchSessionEventSummary,
+  type MatchSessionFinalSignoff,
   type MatchSessionTimerState,
   type MatchSessionTurnConfirmation,
   type SharedTeamSummary,
@@ -318,6 +320,7 @@ export function BlockDiceCalculator() {
   const [sessionTimer, setSessionTimer] = useState<MatchSessionTimerState | null>(null)
   const [sessionEvents, setSessionEvents] = useState<MatchSessionEventSummary[]>([])
   const [sessionTurnConfirmation, setSessionTurnConfirmation] = useState<MatchSessionTurnConfirmation | null>(null)
+  const [sessionFinalSignoff, setSessionFinalSignoff] = useState<MatchSessionFinalSignoff | null>(null)
   const [selectedSessionEventType, setSelectedSessionEventType] =
     useState<MatchSessionEventSummary['eventType']>('TOUCHDOWN')
   const [selectedSessionEventTeamSide, setSelectedSessionEventTeamSide] =
@@ -951,6 +954,7 @@ export function BlockDiceCalculator() {
       setSessionTimer(null)
       setSessionEvents([])
       setSessionTurnConfirmation(null)
+      setSessionFinalSignoff(null)
       return
     }
 
@@ -1002,6 +1006,7 @@ export function BlockDiceCalculator() {
         if (!isDisposed) {
           setSessionEvents(payload.events)
           setSessionTurnConfirmation(payload.confirmation)
+          setSessionFinalSignoff(payload.signoff)
         }
       } catch (error) {
         if (!isDisposed) {
@@ -1036,6 +1041,10 @@ export function BlockDiceCalculator() {
     try {
       const timer = await startMatchSessionTimer(currentSessionId, side)
       setSessionTimer(timer)
+      const payload = await fetchMatchSessionEvents(currentSessionId)
+      setSessionEvents(payload.events)
+      setSessionTurnConfirmation(payload.confirmation)
+      setSessionFinalSignoff(payload.signoff)
     } catch (error) {
       setTeamImportFeedback(
         error instanceof Error ? `Timer start failed: ${error.message}` : 'Timer start failed.',
@@ -1054,6 +1063,7 @@ export function BlockDiceCalculator() {
       const payload = await fetchMatchSessionEvents(currentSessionId)
       setSessionEvents(payload.events)
       setSessionTurnConfirmation(payload.confirmation)
+      setSessionFinalSignoff(payload.signoff)
     } catch (error) {
       setTeamImportFeedback(
         error instanceof Error ? `Turn end failed: ${error.message}` : 'Turn end failed.',
@@ -1072,6 +1082,7 @@ export function BlockDiceCalculator() {
       const payload = await fetchMatchSessionEvents(currentSessionId)
       setSessionEvents(payload.events)
       setSessionTurnConfirmation(payload.confirmation)
+      setSessionFinalSignoff(payload.signoff)
     } catch (error) {
       setTeamImportFeedback(
         error instanceof Error ? `Half reset failed: ${error.message}` : 'Half reset failed.',
@@ -1097,6 +1108,7 @@ export function BlockDiceCalculator() {
       const payload = await fetchMatchSessionEvents(currentSessionId)
       setSessionEvents(payload.events)
       setSessionTurnConfirmation(payload.confirmation)
+      setSessionFinalSignoff(payload.signoff)
       setSessionEventPlayerNumberInput('')
       setSessionEventNotes('')
     } catch (error) {
@@ -1119,6 +1131,7 @@ export function BlockDiceCalculator() {
       const payload = await fetchMatchSessionEvents(currentSessionId)
       setSessionEvents(payload.events)
       setSessionTurnConfirmation(payload.confirmation)
+      setSessionFinalSignoff(payload.signoff)
     } catch (error) {
       setTeamImportFeedback(
         error instanceof Error ? `Match event delete failed: ${error.message}` : 'Match event delete failed.',
@@ -1140,6 +1153,24 @@ export function BlockDiceCalculator() {
       setTeamImportFeedback(
         error instanceof Error ? `Turn confirmation failed: ${error.message}` : 'Turn confirmation failed.',
       )
+    }
+  }
+
+  const handleFinalSessionSignoff = async (side: 'HOME' | 'AWAY') => {
+    if (!currentSessionId) {
+      return
+    }
+
+    try {
+      setIsSessionEventLoading(true)
+      const signoff = await signOffMatchSession(currentSessionId, side)
+      setSessionFinalSignoff(signoff)
+    } catch (error) {
+      setTeamImportFeedback(
+        error instanceof Error ? `Final signoff failed: ${error.message}` : 'Final signoff failed.',
+      )
+    } finally {
+      setIsSessionEventLoading(false)
     }
   }
 
@@ -1371,6 +1402,13 @@ export function BlockDiceCalculator() {
     : []
   const homeTurnConfirmed = sessionTurnConfirmation?.homeConfirmed ?? false
   const awayTurnConfirmed = sessionTurnConfirmation?.awayConfirmed ?? false
+  const homeFinalSignedOff = sessionFinalSignoff?.homeSignedOff ?? false
+  const awayFinalSignedOff = sessionFinalSignoff?.awaySignedOff ?? false
+  const isCurrentSessionClosed = sessionFinalSignoff?.status === 'CLOSED'
+  const sessionEventTotals = LIVE_MATCH_EVENT_OPTIONS.map((eventType) => ({
+    eventType,
+    total: sessionFinalSignoff?.eventTotals[eventType] ?? 0,
+  })).filter((entry) => entry.total > 0)
 
   return (
     <div className={styles.layout}>
@@ -1525,7 +1563,7 @@ export function BlockDiceCalculator() {
                   type="button"
                   className={styles.actionButtonPrimary}
                   onClick={() => void handleStartSessionTurn()}
-                  disabled={isSessionTimerLoading}
+                  disabled={isSessionTimerLoading || isCurrentSessionClosed}
                 >
                   {sessionTimer.isRunning ? 'Restart turn' : `Start ${timerActiveTeamLabel} turn`}
                 </button>
@@ -1533,7 +1571,7 @@ export function BlockDiceCalculator() {
                   type="button"
                   className={styles.actionButtonSecondary}
                   onClick={() => void handleEndSessionTurn()}
-                  disabled={isSessionTimerLoading}
+                  disabled={isSessionTimerLoading || isCurrentSessionClosed}
                 >
                   End turn
                 </button>
@@ -1541,11 +1579,14 @@ export function BlockDiceCalculator() {
                   type="button"
                   className={styles.actionButtonSecondary}
                   onClick={() => void handleResetSessionHalf()}
-                  disabled={isSessionTimerLoading}
+                  disabled={isSessionTimerLoading || isCurrentSessionClosed}
                 >
                   Next half
                 </button>
               </div>
+              {isCurrentSessionClosed ? (
+                <p className={styles.statusNote}>This match room is closed after final signoff.</p>
+              ) : null}
             </section>
           ) : null}
           {currentSessionId && sessionTimer ? (
@@ -1615,7 +1656,7 @@ export function BlockDiceCalculator() {
                   type="button"
                   className={styles.actionButtonPrimary}
                   onClick={() => void handleCreateSessionEvent()}
-                  disabled={isSessionEventLoading}
+                  disabled={isSessionEventLoading || isCurrentSessionClosed}
                 >
                   Add event
                 </button>
@@ -1623,7 +1664,7 @@ export function BlockDiceCalculator() {
                   type="button"
                   className={styles.actionButtonSecondary}
                   onClick={() => void handleConfirmSessionTurn('HOME')}
-                  disabled={isSessionEventLoading || homeTurnConfirmed}
+                  disabled={isSessionEventLoading || homeTurnConfirmed || isCurrentSessionClosed}
                 >
                   {homeTurnConfirmed ? 'Blue confirmed' : 'Confirm blue'}
                 </button>
@@ -1631,7 +1672,7 @@ export function BlockDiceCalculator() {
                   type="button"
                   className={styles.actionButtonSecondary}
                   onClick={() => void handleConfirmSessionTurn('AWAY')}
-                  disabled={isSessionEventLoading || awayTurnConfirmed}
+                  disabled={isSessionEventLoading || awayTurnConfirmed || isCurrentSessionClosed}
                 >
                   {awayTurnConfirmed ? 'Red confirmed' : 'Confirm red'}
                 </button>
@@ -1660,13 +1701,77 @@ export function BlockDiceCalculator() {
                         type="button"
                         className={styles.actionButtonSecondary}
                         onClick={() => void handleDeleteSessionEvent(event.id)}
-                        disabled={isSessionEventLoading}
+                        disabled={isSessionEventLoading || isCurrentSessionClosed}
                       >
                         Remove
                       </button>
                     </article>
                   ))}
                 </div>
+              )}
+            </section>
+          ) : null}
+          {currentSessionId && sessionTimer && sessionFinalSignoff ? (
+            <section className={styles.eventPanel} aria-label="Final match signoff">
+              <div className={styles.timerHeader}>
+                <div>
+                  <p className={styles.eyebrow}>Final Signoff</p>
+                  <p className={styles.resultHeadline}>
+                    {isCurrentSessionClosed ? 'Match room closed' : 'Waiting for both sides to sign off'}
+                  </p>
+                </div>
+              </div>
+              <div className={styles.confirmationStatusRow}>
+                <span className={homeFinalSignedOff ? styles.confirmedPill : styles.pendingPill}>
+                  Blue {homeFinalSignedOff ? 'signed off' : 'pending'}
+                </span>
+                <span className={awayFinalSignedOff ? styles.confirmedPill : styles.pendingPill}>
+                  Red {awayFinalSignedOff ? 'signed off' : 'pending'}
+                </span>
+              </div>
+              <div className={styles.eventList}>
+                <article className={styles.eventCard}>
+                  <div className={styles.eventMeta}>
+                    <strong>Total logged events</strong>
+                    <span>{sessionFinalSignoff.totalEvents}</span>
+                  </div>
+                  {sessionEventTotals.length === 0 ? (
+                    <p className={styles.eventNote}>No match events have been logged yet.</p>
+                  ) : (
+                    <div className={styles.eventMeta}>
+                      {sessionEventTotals.map((entry) => (
+                        <span key={entry.eventType}>
+                          {toEventTypeLabel(entry.eventType)} {entry.total}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </article>
+              </div>
+              <div className={styles.timerActionRow}>
+                <button
+                  type="button"
+                  className={styles.actionButtonPrimary}
+                  onClick={() => void handleFinalSessionSignoff('HOME')}
+                  disabled={isSessionEventLoading || homeFinalSignedOff || isCurrentSessionClosed}
+                >
+                  {homeFinalSignedOff ? 'Blue signed off' : 'Sign off blue'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.actionButtonSecondary}
+                  onClick={() => void handleFinalSessionSignoff('AWAY')}
+                  disabled={isSessionEventLoading || awayFinalSignedOff || isCurrentSessionClosed}
+                >
+                  {awayFinalSignedOff ? 'Red signed off' : 'Sign off red'}
+                </button>
+              </div>
+              {sessionFinalSignoff.closedAt ? (
+                <p className={styles.statusNote}>Closed at {new Date(sessionFinalSignoff.closedAt).toLocaleString()}.</p>
+              ) : (
+                <p className={styles.statusNote}>
+                  Final signoff should happen only after the event log is complete for the match.
+                </p>
               )}
             </section>
           ) : null}

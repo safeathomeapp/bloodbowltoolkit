@@ -188,6 +188,9 @@ model MatchSession {
   timerTurnStartedAt DateTime?
   timerHomeBankRemainingSeconds Int?
   timerAwayBankRemainingSeconds Int?
+  homeFinalSignoffAt DateTime?
+  awayFinalSignoffAt DateTime?
+  closedAt       DateTime?
   createdByUserId String
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt

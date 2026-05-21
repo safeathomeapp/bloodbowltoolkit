@@ -32,6 +32,7 @@ const matchSessionEventTypes = [
 ] as const
 
 type MatchSessionEventTypeValue = (typeof matchSessionEventTypes)[number]
+type MatchSessionStatusValue = 'PENDING' | 'ACTIVE' | 'CLOSED'
 
 const matchSessionParamsSchema = z.object({
   sessionId: z.string().min(1),
@@ -68,6 +69,10 @@ const createMatchSessionEventBodySchema = z.object({
 
 const confirmTurnBodySchema = z.object({
   confirmedSide: z.nativeEnum(MatchSessionSide),
+})
+
+const finalSignoffBodySchema = z.object({
+  signedOffSide: z.nativeEnum(MatchSessionSide),
 })
 
 function toIsoString(value: Date) {
@@ -273,6 +278,7 @@ function getDefaultTimerConfig() {
 
 const timerStateSelect = {
   id: true,
+  status: true,
   timerEnabled: true,
   timerTurnSeconds: true,
   timerBankSeconds: true,
@@ -283,6 +289,9 @@ const timerStateSelect = {
   timerTurnStartedAt: true,
   timerHomeBankRemainingSeconds: true,
   timerAwayBankRemainingSeconds: true,
+  homeFinalSignoffAt: true,
+  awayFinalSignoffAt: true,
+  closedAt: true,
 } satisfies Prisma.MatchSessionSelect
 
 function toMatchSessionEventSummary(event: {
@@ -346,6 +355,47 @@ function toTurnConfirmationSummary(confirmation: {
     createdAt: toIsoString(confirmation.createdAt),
     updatedAt: toIsoString(confirmation.updatedAt),
   }
+}
+
+function createMatchSessionEventTotals(events: Array<{ eventType: MatchSessionEventTypeValue }>) {
+  const totals: Record<MatchSessionEventTypeValue, number> = {
+    TOUCHDOWN: 0,
+    CASUALTY: 0,
+    COMPLETION: 0,
+    INTERCEPTION: 0,
+    MVP_ASSIGNMENT: 0,
+  }
+
+  for (const event of events) {
+    totals[event.eventType] += 1
+  }
+
+  return totals
+}
+
+function toFinalSignoffSummary(input: {
+  status: MatchSessionStatusValue
+  homeFinalSignoffAt: Date | null
+  awayFinalSignoffAt: Date | null
+  closedAt: Date | null
+  events: Array<{ eventType: MatchSessionEventTypeValue }>
+}) {
+  const eventTotals = createMatchSessionEventTotals(input.events)
+
+  return {
+    status: input.status,
+    homeFinalSignoffAt: input.homeFinalSignoffAt ? toIsoString(input.homeFinalSignoffAt) : null,
+    awayFinalSignoffAt: input.awayFinalSignoffAt ? toIsoString(input.awayFinalSignoffAt) : null,
+    homeSignedOff: Boolean(input.homeFinalSignoffAt),
+    awaySignedOff: Boolean(input.awayFinalSignoffAt),
+    closedAt: input.closedAt ? toIsoString(input.closedAt) : null,
+    eventTotals,
+    totalEvents: input.events.length,
+  }
+}
+
+function isClosedMatchSession(session: { status: MatchSessionStatus }) {
+  return session.status === MatchSessionStatus.CLOSED
 }
 
 function createSessionCode() {
@@ -965,6 +1015,13 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       },
       events: events.map(toMatchSessionEventSummary),
       confirmation: toTurnConfirmationSummary(currentTurnConfirmation),
+      signoff: toFinalSignoffSummary({
+        status: session.status,
+        homeFinalSignoffAt: session.homeFinalSignoffAt,
+        awayFinalSignoffAt: session.awayFinalSignoffAt,
+        closedAt: session.closedAt,
+        events,
+      }),
     })
   })
 
@@ -995,6 +1052,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
     if (!session) {
       return reply.code(404).send({
         message: 'Match session not found.',
+      })
+    }
+
+    if (isClosedMatchSession(session)) {
+      return reply.code(409).send({
+        message: 'Closed match sessions cannot be modified.',
       })
     }
 
@@ -1035,6 +1098,17 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         },
       })
 
+      await transaction.matchSession.update({
+        where: {
+          id: session.id,
+        },
+        data: {
+          homeFinalSignoffAt: null,
+          awayFinalSignoffAt: null,
+          closedAt: null,
+        },
+      })
+
       return createdEvent
     })
 
@@ -1065,6 +1139,28 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       })
     }
 
+    const session = await app.prisma.matchSession.findUnique({
+      where: {
+        id: paramsResult.data.sessionId,
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    })
+
+    if (!session) {
+      return reply.code(404).send({
+        message: 'Match session not found.',
+      })
+    }
+
+    if (isClosedMatchSession(session)) {
+      return reply.code(409).send({
+        message: 'Closed match sessions cannot be modified.',
+      })
+    }
+
     await app.prisma.$transaction(async (transaction) => {
       await transaction.matchSessionEvent.delete({
         where: {
@@ -1092,6 +1188,17 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         update: {
           homeConfirmedAt: null,
           awayConfirmedAt: null,
+        },
+      })
+
+      await transaction.matchSession.update({
+        where: {
+          id: event.matchSessionId,
+        },
+        data: {
+          homeFinalSignoffAt: null,
+          awayFinalSignoffAt: null,
+          closedAt: null,
         },
       })
     })
@@ -1129,6 +1236,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       })
     }
 
+    if (isClosedMatchSession(session)) {
+      return reply.code(409).send({
+        message: 'Closed match sessions cannot be modified.',
+      })
+    }
+
     const confirmation = await app.prisma.matchSessionTurnConfirmation.upsert({
       where: {
         matchSessionId_half_turnNumber_side: {
@@ -1163,6 +1276,80 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
     })
   })
 
+  app.post('/match-sessions/:sessionId/final-signoff', async (request, reply) => {
+    const paramsResult = timerActionParamsSchema.safeParse(request.params)
+    const bodyResult = finalSignoffBodySchema.safeParse(request.body)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid match session id.',
+      })
+    }
+
+    if (!bodyResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid final signoff payload.',
+        issues: bodyResult.error.issues,
+      })
+    }
+
+    const session = await app.prisma.matchSession.findUnique({
+      where: {
+        id: paramsResult.data.sessionId,
+      },
+      include: {
+        events: true,
+      },
+    })
+
+    if (!session) {
+      return reply.code(404).send({
+        message: 'Match session not found.',
+      })
+    }
+
+    if (session.events.length === 0) {
+      return reply.code(409).send({
+        message: 'Log at least one match event before final signoff.',
+      })
+    }
+
+    const now = new Date()
+    const updatedSession = await app.prisma.matchSession.update({
+      where: {
+        id: session.id,
+      },
+      data:
+        bodyResult.data.signedOffSide === MatchSessionSide.HOME
+          ? {
+              homeFinalSignoffAt: now,
+              status: session.awayFinalSignoffAt ? MatchSessionStatus.CLOSED : session.status,
+              closedAt: session.awayFinalSignoffAt ? now : null,
+            }
+          : {
+              awayFinalSignoffAt: now,
+              status: session.homeFinalSignoffAt ? MatchSessionStatus.CLOSED : session.status,
+              closedAt: session.homeFinalSignoffAt ? now : null,
+            },
+      select: {
+        status: true,
+        homeFinalSignoffAt: true,
+        awayFinalSignoffAt: true,
+        closedAt: true,
+      },
+    })
+
+    return reply.send({
+      signoff: toFinalSignoffSummary({
+        status: updatedSession.status,
+        homeFinalSignoffAt: updatedSession.homeFinalSignoffAt,
+        awayFinalSignoffAt: updatedSession.awayFinalSignoffAt,
+        closedAt: updatedSession.closedAt,
+        events: session.events,
+      }),
+    })
+  })
+
   app.get('/match-sessions/:sessionId/timer', async (request, reply) => {
     const paramsResult = timerActionParamsSchema.safeParse(request.params)
 
@@ -1178,6 +1365,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       },
       select: {
         id: true,
+        status: true,
         timerEnabled: true,
         timerTurnSeconds: true,
         timerBankSeconds: true,
@@ -1225,6 +1413,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       },
       select: {
         id: true,
+        status: true,
         timerEnabled: true,
         timerTurnSeconds: true,
         timerBankSeconds: true,
@@ -1244,6 +1433,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       })
     }
 
+    if (isClosedMatchSession(session)) {
+      return reply.code(409).send({
+        message: 'Closed match sessions cannot be modified.',
+      })
+    }
+
     const updatedSession = await app.prisma.matchSession.update({
       where: {
         id: session.id,
@@ -1258,9 +1453,13 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
           session.timerAwayBankRemainingSeconds ?? session.timerBankSeconds ?? getDefaultTimerConfig().bankSeconds,
         timerActiveSide: bodyResult.data.side ?? session.timerActiveSide,
         timerTurnStartedAt: new Date(),
+        homeFinalSignoffAt: null,
+        awayFinalSignoffAt: null,
+        closedAt: null,
       },
       select: {
         id: true,
+        status: true,
         timerEnabled: true,
         timerTurnSeconds: true,
         timerBankSeconds: true,
@@ -1271,6 +1470,9 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         timerTurnStartedAt: true,
         timerHomeBankRemainingSeconds: true,
         timerAwayBankRemainingSeconds: true,
+        homeFinalSignoffAt: true,
+        awayFinalSignoffAt: true,
+        closedAt: true,
       },
     })
 
@@ -1294,6 +1496,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       },
       select: {
         id: true,
+        status: true,
         timerEnabled: true,
         timerTurnSeconds: true,
         timerBankSeconds: true,
@@ -1310,6 +1513,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
     if (!session) {
       return reply.code(404).send({
         message: 'Match session not found.',
+      })
+    }
+
+    if (isClosedMatchSession(session)) {
+      return reply.code(409).send({
+        message: 'Closed match sessions cannot be modified.',
       })
     }
 
@@ -1353,9 +1562,13 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         timerActiveSide: nextActiveSide,
         timerCurrentTurnNumber: nextTurnNumber,
         timerTurnStartedAt: null,
+        homeFinalSignoffAt: null,
+        awayFinalSignoffAt: null,
+        closedAt: null,
       },
       select: {
         id: true,
+        status: true,
         timerEnabled: true,
         timerTurnSeconds: true,
         timerBankSeconds: true,
@@ -1366,6 +1579,9 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         timerTurnStartedAt: true,
         timerHomeBankRemainingSeconds: true,
         timerAwayBankRemainingSeconds: true,
+        homeFinalSignoffAt: true,
+        awayFinalSignoffAt: true,
+        closedAt: true,
       },
     })
 
@@ -1389,6 +1605,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       },
       select: {
         id: true,
+        status: true,
         timerEnabled: true,
         timerTurnSeconds: true,
         timerBankSeconds: true,
@@ -1408,6 +1625,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       })
     }
 
+    if (isClosedMatchSession(session)) {
+      return reply.code(409).send({
+        message: 'Closed match sessions cannot be modified.',
+      })
+    }
+
     const baseBankSeconds = session.timerBankSeconds ?? getDefaultTimerConfig().bankSeconds
     const updatedSession = await app.prisma.matchSession.update({
       where: {
@@ -1424,9 +1647,13 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         timerAwayBankRemainingSeconds: session.timerBankResetsAtHalf
           ? baseBankSeconds
           : session.timerAwayBankRemainingSeconds ?? baseBankSeconds,
+        homeFinalSignoffAt: null,
+        awayFinalSignoffAt: null,
+        closedAt: null,
       },
       select: {
         id: true,
+        status: true,
         timerEnabled: true,
         timerTurnSeconds: true,
         timerBankSeconds: true,
@@ -1437,6 +1664,9 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         timerTurnStartedAt: true,
         timerHomeBankRemainingSeconds: true,
         timerAwayBankRemainingSeconds: true,
+        homeFinalSignoffAt: true,
+        awayFinalSignoffAt: true,
+        closedAt: true,
       },
     })
 

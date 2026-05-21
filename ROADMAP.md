@@ -230,10 +230,10 @@ See:
 
 ## Immediate Next Step
 
-- build final match signoff on top of the live timer and event log:
-  - room-level home and away signoff
-  - event-summary-aware closeout
-  - keep the shape compatible with later progression application
+- define and implement the first progression application pass on top of signed match data:
+  - signed match event mapping
+  - persistent team and player updates
+  - clean separation between league progression and tournament closeout
 - continue using `docs/architecture/2026-05-19_competition_backend_spec.md` as the backend contract
 
 ## Deferred Until Proven Necessary

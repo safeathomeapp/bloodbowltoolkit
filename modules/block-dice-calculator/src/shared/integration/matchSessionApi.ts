@@ -97,6 +97,17 @@ export interface MatchSessionTurnConfirmation {
   updatedAt: string | null
 }
 
+export interface MatchSessionFinalSignoff {
+  status: 'PENDING' | 'ACTIVE' | 'CLOSED'
+  homeFinalSignoffAt: string | null
+  awayFinalSignoffAt: string | null
+  homeSignedOff: boolean
+  awaySignedOff: boolean
+  closedAt: string | null
+  eventTotals: Record<MatchSessionEventSummary['eventType'], number>
+  totalEvents: number
+}
+
 export interface BlockDiceSessionContextResponse {
   matchSession: MatchSessionSummary
   teams: {
@@ -113,6 +124,7 @@ export interface MatchSessionEventsResponse {
   }
   events: MatchSessionEventSummary[]
   confirmation: MatchSessionTurnConfirmation
+  signoff: MatchSessionFinalSignoff
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -333,4 +345,27 @@ export async function confirmMatchSessionTurn(
   )
 
   return payload.confirmation
+}
+
+export async function signOffMatchSession(
+  sessionId: string,
+  signedOffSide: 'HOME' | 'AWAY',
+) {
+  const baseUrl = buildApiBaseUrl()
+  const payload = await parseResponse<{ signoff: MatchSessionFinalSignoff }>(
+    await fetch(
+      `${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/final-signoff`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          signedOffSide,
+        }),
+      },
+    ),
+  )
+
+  return payload.signoff
 }
