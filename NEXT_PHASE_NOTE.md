@@ -21,6 +21,8 @@
 - knockout fixture generation is now implemented in the API
 - the API-backed team creator now shows fixtures and can generate them for approved knockout entries
 - competition cards now patch local state immediately after join, submit, approve, and generate actions
+- the API-backed team creator now exposes visible shared API identity control for multi-window testing
+- competition owners can now approve other users' submitted teams from the owner review section
 
 ## What Not To Do Next
 
@@ -34,19 +36,14 @@
 ## Best Next Move
 
 - use `docs/architecture/2026-05-19_competition_backend_spec.md` as the implementation contract
-- the next concrete pass is now visible API identity control for real multi-user beta
+- the next concrete pass is now read-only submitted-team inspection before approval
 
 ## Concrete Next Implementation Pass
 
-1. expose current shared API user identity in team creator
-2. allow resetting or changing the current API-side display identity per browser profile
-3. support a clear commissioner / coach testing flow across normal and incognito windows
-4. then run the real multi-user beta:
-   - commissioner creates competition
-   - coaches join
-   - coaches submit
-   - commissioner approves
-   - commissioner generates fixtures
+1. add a read-only submitted-team inspection action in owner review
+2. show roster summary and player list from the frozen competition submission snapshot
+3. keep the approval path on the same screen
+4. then rerun the multi-user commissioner beta with pre-approval team inspection
 
 ## After That
 

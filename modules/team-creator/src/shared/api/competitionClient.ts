@@ -5,6 +5,11 @@ const DEFAULT_DISPLAY_NAME = 'Local Coach'
 
 type FetchLike = typeof fetch
 
+export type SharedApiUser = {
+  id: string
+  displayName: string
+}
+
 export type CompetitionSummary = {
   id: string
   name: string
@@ -187,6 +192,14 @@ export class CompetitionClient {
     return this.userIdPromise
   }
 
+  async getCurrentUser() {
+    const userId = await this.ensureUserId()
+    const response = await this.fetchImpl(`${this.baseUrl}/users/${encodeURIComponent(userId)}`)
+    const payload = await parseResponse<{ user: SharedApiUser }>(response)
+
+    return payload.user
+  }
+
   async listCompetitions() {
     const response = await this.fetchImpl(`${this.baseUrl}/competitions`)
     const payload = await parseResponse<{ competitions: CompetitionSummary[] }>(response)
@@ -360,6 +373,35 @@ export class CompetitionClient {
     const payload = await parseResponse<{ fixtures: CompetitionFixtureSummary[] }>(response)
 
     return payload.fixtures
+  }
+
+  async switchIdentity(displayName: string) {
+    const normalizedDisplayName = displayName.trim()
+
+    if (!normalizedDisplayName) {
+      throw new Error('Display name is required.')
+    }
+
+    const response = await this.fetchImpl(`${this.baseUrl}/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        displayName: normalizedDisplayName,
+      }),
+    })
+    const payload = await parseResponse<{ user: SharedApiUser }>(response)
+
+    this.store.setItem(API_USER_ID_KEY, payload.user.id)
+    this.userIdPromise = Promise.resolve(payload.user.id)
+
+    return payload.user
+  }
+
+  clearIdentity() {
+    this.store.removeItem(API_USER_ID_KEY)
+    this.userIdPromise = null
   }
 
   private async createOrLoadUserId() {

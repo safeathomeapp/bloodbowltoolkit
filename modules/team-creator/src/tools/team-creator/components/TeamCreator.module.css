@@ -186,6 +186,38 @@
   padding: 18px;
 }
 
+.identityPanel {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.identityCard {
+  display: grid;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid rgba(137, 65, 51, 0.16);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.identityCard strong {
+  color: #31231e;
+  font-size: 1.05rem;
+}
+
+.identityCard span {
+  color: #685447;
+  font-size: 0.84rem;
+  word-break: break-word;
+}
+
+.identityControls {
+  display: grid;
+  gap: 12px;
+}
+
 .competitionFormGrid,
 .competitionSubmissionGrid {
   display: grid;
@@ -238,6 +270,40 @@
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.reviewPanel {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid rgba(137, 65, 51, 0.12);
+  padding-top: 14px;
+}
+
+.reviewList {
+  display: grid;
+  gap: 10px;
+}
+
+.reviewCard {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid rgba(137, 65, 51, 0.12);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fffdfa;
+}
+
+.reviewMeta {
+  display: grid;
+  gap: 4px;
+  color: #685447;
+}
+
+.reviewMeta strong {
+  color: #31231e;
 }
 
 .fixturePanel {
@@ -838,6 +904,7 @@
   .financialGrid,
   .draftSummaryDeck,
   .breakdownGrid,
+  .identityPanel,
   .competitionFormGrid,
   .competitionSubmissionGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -860,6 +927,7 @@
   .financialGrid,
   .draftSummaryDeck,
   .breakdownGrid,
+  .identityPanel,
   .competitionFormGrid,
   .competitionSubmissionGrid,
   .loadRowButton,

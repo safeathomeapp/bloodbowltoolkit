@@ -7,6 +7,7 @@ import {
   type CompetitionDetail,
   type CompetitionFixtureSummary,
   type CompetitionSubmissionDetail,
+  type SharedApiUser,
 } from '../../../shared/api/competitionClient'
 import { resolveTeamRepositorySelection } from '../../../shared/repositories/createTeamRepository'
 import { BrowserLocalStorageStore } from '../../../shared/storage/keyValueStore'
@@ -45,6 +46,10 @@ type CompetitionCreateFormState = {
   maxEntrants: string
   submissionDeadline: string
   allowUnofficialRosters: boolean
+}
+
+type IdentityFormState = {
+  displayName: string
 }
 
 const repositorySelection = resolveTeamRepositorySelection()
@@ -163,6 +168,7 @@ export function TeamCreator() {
   >({})
   const [isCompetitionLoading, setIsCompetitionLoading] = useState(false)
   const [competitionUserId, setCompetitionUserId] = useState('')
+  const [currentApiUser, setCurrentApiUser] = useState<SharedApiUser | null>(null)
   const [competitionForm, setCompetitionForm] = useState<CompetitionCreateFormState>({
     name: '',
     description: '',
@@ -172,6 +178,9 @@ export function TeamCreator() {
   })
   const [selectedCompetitionTeamIds, setSelectedCompetitionTeamIds] = useState<Record<string, string>>({})
   const [selectedCompetitionTierIds, setSelectedCompetitionTierIds] = useState<Record<string, string>>({})
+  const [identityForm, setIdentityForm] = useState<IdentityFormState>({
+    displayName: '',
+  })
 
   const draftRuleReferences: Record<string, ReferenceModalContent> = {
     rerolls: {
@@ -297,6 +306,7 @@ export function TeamCreator() {
         setSelectedCompetitionTierIds({})
 
         if (competitionClient) {
+          const currentUser = await competitionClient.getCurrentUser()
           const competitionDetails = await Promise.all(
             nextCompetitions.map(async (competition) => competitionClient.getCompetition(competition.id)),
           )
@@ -312,7 +322,7 @@ export function TeamCreator() {
           const nextFixtures: Record<string, CompetitionFixtureSummary[]> = {}
           const nextTeamSelections: Record<string, string> = {}
           const nextTierSelections: Record<string, string> = {}
-          const currentUserId = await competitionClient.ensureUserId()
+          const currentUserId = currentUser.id
 
           for (const competition of resolvedCompetitions) {
             const supplementalData = await loadCompetitionSupplementalData(
@@ -340,6 +350,10 @@ export function TeamCreator() {
           setSelectedCompetitionTeamIds(nextTeamSelections)
           setSelectedCompetitionTierIds(nextTierSelections)
           setCompetitionUserId(currentUserId)
+          setCurrentApiUser(currentUser)
+          setIdentityForm({
+            displayName: currentUser.displayName,
+          })
         }
 
         setFeedback('')
@@ -386,16 +400,18 @@ export function TeamCreator() {
       setCompetitionSubmissionDetails({})
       setCompetitionFixtures({})
       setCompetitionUserId('')
+      setCurrentApiUser(null)
       return
     }
 
     setIsCompetitionLoading(true)
 
     try {
-      const [competitionSummaries, currentUserId] = await Promise.all([
+      const [competitionSummaries, currentUser] = await Promise.all([
         competitionClient.listCompetitions(),
-        competitionClient.ensureUserId(),
+        competitionClient.getCurrentUser(),
       ])
+      const currentUserId = currentUser.id
       const competitionDetails = await Promise.all(
         competitionSummaries.map(async (competition) => competitionClient.getCompetition(competition.id)),
       )
@@ -435,6 +451,10 @@ export function TeamCreator() {
         ...nextTierSelections,
       }))
       setCompetitionUserId(currentUserId)
+      setCurrentApiUser(currentUser)
+      setIdentityForm({
+        displayName: currentUser.displayName,
+      })
     } finally {
       setIsCompetitionLoading(false)
     }
@@ -622,6 +642,36 @@ export function TeamCreator() {
         error instanceof Error ? `Fixture generation failed: ${error.message}` : 'Fixture generation failed.',
       )
     }
+  }
+
+  async function handleSwitchApiIdentity() {
+    try {
+      if (!competitionClient) {
+        setFeedback('Identity tools require the shared API repository mode.')
+        return
+      }
+
+      const nextUser = await competitionClient.switchIdentity(identityForm.displayName)
+      setCurrentApiUser(nextUser)
+      setCompetitionUserId(nextUser.id)
+      setFeedback(`Switched shared API identity to ${nextUser.displayName}. Reloading...`)
+      window.location.reload()
+    } catch (error) {
+      setFeedback(
+        error instanceof Error ? `Identity switch failed: ${error.message}` : 'Identity switch failed.',
+      )
+    }
+  }
+
+  function handleResetApiIdentity() {
+    if (!competitionClient) {
+      setFeedback('Identity tools require the shared API repository mode.')
+      return
+    }
+
+    competitionClient.clearIdentity()
+    setFeedback('Shared API identity cleared. Reloading...')
+    window.location.reload()
   }
 
   async function handleCreateTeam() {
@@ -1036,6 +1086,54 @@ export function TeamCreator() {
                   <section className={styles.competitionPanel}>
                     <div className={styles.panelHeader}>
                       <div>
+                        <p className={styles.sectionKicker}>Shared API Identity</p>
+                        <h2 className={styles.panelHeadline}>Current Competition User</h2>
+                      </div>
+                    </div>
+                    <div className={styles.identityPanel}>
+                      <div className={styles.identityCard}>
+                        <strong>{currentApiUser?.displayName ?? 'Unknown user'}</strong>
+                        <span>{currentApiUser?.id ?? 'No user id loaded'}</span>
+                      </div>
+                      <div className={styles.identityControls}>
+                        <label className={styles.field}>
+                          <span>Switch Display Name</span>
+                          <input
+                            value={identityForm.displayName}
+                            onChange={(event) =>
+                              setIdentityForm({
+                                displayName: event.target.value,
+                              })
+                            }
+                            placeholder="Commissioner"
+                          />
+                        </label>
+                        <div className={styles.competitionActionRow}>
+                          <button
+                            className={styles.primaryButton}
+                            onClick={() => void handleSwitchApiIdentity()}
+                            type="button"
+                          >
+                            Create / Switch Identity
+                          </button>
+                          <button
+                            className={styles.secondaryButton}
+                            onClick={handleResetApiIdentity}
+                            type="button"
+                          >
+                            Reset Identity
+                          </button>
+                        </div>
+                        <p className={styles.helperText}>
+                          Use normal and incognito windows with different display names to test commissioner and coach flows.
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className={styles.competitionPanel}>
+                    <div className={styles.panelHeader}>
+                      <div>
                         <p className={styles.sectionKicker}>Knockout Setup</p>
                         <h2 className={styles.panelHeadline}>Create Competition</h2>
                       </div>
@@ -1126,6 +1224,9 @@ export function TeamCreator() {
                         {competitions.map((competition) => {
                           const currentEntry =
                             competition.entries.find((entry) => entry.userId === competitionUserId) ?? null
+                          const submittedEntries = competition.entries.filter(
+                            (entry) => entry.status === 'TEAM_SUBMITTED' && entry.submission,
+                          )
                           const selectedTeamId = selectedCompetitionTeamIds[competition.id] ?? ''
                           const selectedTierId = selectedCompetitionTierIds[competition.id] ?? ''
                           const submission = competitionSubmissionDetails[competition.id] ?? null
@@ -1228,6 +1329,38 @@ export function TeamCreator() {
                                   </button>
                                 </div>
                               )}
+
+                              {isOwner ? (
+                                <div className={styles.reviewPanel}>
+                                  <div className={styles.fixturePanelHeader}>
+                                    <strong>Submission Review</strong>
+                                  </div>
+                                  {submittedEntries.length === 0 ? (
+                                    <p className={styles.helperText}>No submitted teams are currently awaiting approval.</p>
+                                  ) : (
+                                    <div className={styles.reviewList}>
+                                      {submittedEntries.map((entry) => (
+                                        <div key={entry.id} className={styles.reviewCard}>
+                                          <div className={styles.reviewMeta}>
+                                            <strong>{entry.submission?.teamName ?? 'Unnamed submission'}</strong>
+                                            <span>{entry.user.displayName}</span>
+                                            <span>{entry.status}</span>
+                                          </div>
+                                          <button
+                                            className={styles.secondaryButton}
+                                            onClick={() =>
+                                              void handleApproveCompetitionSubmission(competition.id, entry.id)
+                                            }
+                                            type="button"
+                                          >
+                                            Approve Submission
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : null}
 
                               <div className={styles.fixturePanel}>
                                 <div className={styles.fixturePanelHeader}>
