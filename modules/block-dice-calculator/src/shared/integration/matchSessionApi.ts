@@ -43,6 +43,7 @@ export interface MatchSessionParticipantSummary {
 export interface MatchSessionSummary {
   id: string
   leagueId: string | null
+  fixtureId?: string | null
   homeTeamId: string
   awayTeamId: string
   sessionCode: string
@@ -53,6 +54,22 @@ export interface MatchSessionSummary {
   participants: MatchSessionParticipantSummary[]
   homeTeam?: MatchSessionTeamSummary
   awayTeam?: MatchSessionTeamSummary
+}
+
+export interface MatchSessionTimerState {
+  enabled: boolean
+  turnSeconds: number
+  bankSeconds: number
+  bankResetsAtHalf: boolean
+  currentHalf: number
+  currentTurnNumber: number
+  activeSide: 'HOME' | 'AWAY'
+  turnStartedAt: string | null
+  serverNow: string
+  perTurnRemainingSeconds: number
+  homeBankRemainingSeconds: number
+  awayBankRemainingSeconds: number
+  isRunning: boolean
 }
 
 export interface BlockDiceSessionContextResponse {
@@ -160,4 +177,58 @@ export async function createBlockDiceSessionContext(homeTeamId: string, awayTeam
   )
 
   return context
+}
+
+export async function fetchMatchSessionTimer(sessionId: string) {
+  const baseUrl = buildApiBaseUrl()
+  const payload = await parseResponse<{ timer: MatchSessionTimerState }>(
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/timer`),
+  )
+
+  return payload.timer
+}
+
+export async function startMatchSessionTimer(sessionId: string, side?: 'HOME' | 'AWAY') {
+  const baseUrl = buildApiBaseUrl()
+  const payload = await parseResponse<{ timer: MatchSessionTimerState }>(
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/timer/start`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(side ? { side } : {}),
+    }),
+  )
+
+  return payload.timer
+}
+
+export async function endMatchSessionTurn(sessionId: string) {
+  const baseUrl = buildApiBaseUrl()
+  const payload = await parseResponse<{ timer: MatchSessionTimerState }>(
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/timer/end-turn`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    }),
+  )
+
+  return payload.timer
+}
+
+export async function resetMatchSessionHalf(sessionId: string) {
+  const baseUrl = buildApiBaseUrl()
+  const payload = await parseResponse<{ timer: MatchSessionTimerState }>(
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/timer/reset-half`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    }),
+  )
+
+  return payload.timer
 }

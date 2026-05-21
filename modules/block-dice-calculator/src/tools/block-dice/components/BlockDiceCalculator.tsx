@@ -15,8 +15,13 @@ import {
 } from '../../../shared/integration/teamCreatorStore'
 import {
   createBlockDiceSessionContext,
+  endMatchSessionTurn,
   fetchBlockDiceSessionContextByCode,
+  fetchMatchSessionTimer,
   fetchSharedTeams,
+  resetMatchSessionHalf,
+  startMatchSessionTimer,
+  type MatchSessionTimerState,
   type SharedTeamSummary,
 } from '../../../shared/integration/matchSessionApi'
 import type { ImportedBlockDicePlayer, ImportedBlockDiceTeam } from '../../../shared/integration/teamImport'
@@ -199,6 +204,13 @@ function getExplanationEntryMeta(tone: 'SUCCESS' | 'WARNING' | 'MUTED') {
   }
 }
 
+function formatClock(totalSeconds: number) {
+  const clampedSeconds = Math.max(0, totalSeconds)
+  const minutes = Math.floor(clampedSeconds / 60)
+  const seconds = clampedSeconds % 60
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
 export function BlockDiceCalculator() {
   const persistedState = loadPersistedState()
   const savedTeams = readAvailableTeamsFromWindow()
@@ -270,7 +282,10 @@ export function BlockDiceCalculator() {
   const [isSessionLoaderOpen, setIsSessionLoaderOpen] = useState(false)
   const [isCreateSessionOpen, setIsCreateSessionOpen] = useState(false)
   const [sessionCodeInput, setSessionCodeInput] = useState('')
+  const [currentSessionId, setCurrentSessionId] = useState('')
+  const [sessionTimer, setSessionTimer] = useState<MatchSessionTimerState | null>(null)
   const [isSessionLoading, setIsSessionLoading] = useState(false)
+  const [isSessionTimerLoading, setIsSessionTimerLoading] = useState(false)
   const [sharedTeams, setSharedTeams] = useState<SharedTeamSummary[]>([])
   const [isSharedTeamsLoading, setIsSharedTeamsLoading] = useState(false)
   const [createSessionHomeTeamId, setCreateSessionHomeTeamId] = useState('')
@@ -772,6 +787,7 @@ export function BlockDiceCalculator() {
   }
 
   const applySessionContext = (options: {
+    sessionId: string
     homeTeam: Parameters<typeof buildTeamCreatorExchangePackage>[0][number]
     awayTeam: Parameters<typeof buildTeamCreatorExchangePackage>[0][number]
     sessionCode: string
@@ -789,6 +805,7 @@ export function BlockDiceCalculator() {
     })
     setSelectedImportedPlayerIds(defaultSelectedImportedPlayerIds)
     setSelectedEditPlayerIds({ A: null, B: null })
+    setCurrentSessionId(options.sessionId)
     setSessionCodeInput(options.sessionCode)
     setTeamImportFeedback(
       `Loaded session ${options.sessionCode}. Blue: ${options.homeTeam.name}. Red: ${options.awayTeam.name}.`,
@@ -802,6 +819,7 @@ export function BlockDiceCalculator() {
       const sessionContext = await fetchBlockDiceSessionContextByCode(sessionCodeInput)
       setIsSessionLoaderOpen(false)
       applySessionContext({
+        sessionId: sessionContext.matchSession.id,
         homeTeam: sessionContext.teams.home,
         awayTeam: sessionContext.teams.away,
         sessionCode: sessionContext.matchSession.sessionCode,
@@ -873,6 +891,7 @@ export function BlockDiceCalculator() {
 
       setIsCreateSessionOpen(false)
       applySessionContext({
+        sessionId: sessionContext.matchSession.id,
         homeTeam: sessionContext.teams.home,
         awayTeam: sessionContext.teams.away,
         sessionCode: sessionContext.matchSession.sessionCode,
@@ -883,6 +902,91 @@ export function BlockDiceCalculator() {
       )
     } finally {
       setIsCreatingSession(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!currentSessionId) {
+      setSessionTimer(null)
+      return
+    }
+
+    let isDisposed = false
+
+    async function loadTimer() {
+      try {
+        const timer = await fetchMatchSessionTimer(currentSessionId)
+
+        if (!isDisposed) {
+          setSessionTimer(timer)
+        }
+      } catch (error) {
+        if (!isDisposed) {
+          setTeamImportFeedback(
+            error instanceof Error ? `Session timer load failed: ${error.message}` : 'Session timer load failed.',
+          )
+        }
+      } finally {
+        if (!isDisposed) {
+          setIsSessionTimerLoading(false)
+        }
+      }
+    }
+
+    setIsSessionTimerLoading(true)
+    void loadTimer()
+    const intervalId = window.setInterval(() => {
+      void loadTimer()
+    }, 1000)
+
+    return () => {
+      isDisposed = true
+      window.clearInterval(intervalId)
+    }
+  }, [currentSessionId])
+
+  const handleStartSessionTurn = async (side?: 'HOME' | 'AWAY') => {
+    if (!currentSessionId) {
+      return
+    }
+
+    try {
+      const timer = await startMatchSessionTimer(currentSessionId, side)
+      setSessionTimer(timer)
+    } catch (error) {
+      setTeamImportFeedback(
+        error instanceof Error ? `Timer start failed: ${error.message}` : 'Timer start failed.',
+      )
+    }
+  }
+
+  const handleEndSessionTurn = async () => {
+    if (!currentSessionId) {
+      return
+    }
+
+    try {
+      const timer = await endMatchSessionTurn(currentSessionId)
+      setSessionTimer(timer)
+    } catch (error) {
+      setTeamImportFeedback(
+        error instanceof Error ? `Turn end failed: ${error.message}` : 'Turn end failed.',
+      )
+    }
+  }
+
+  const handleResetSessionHalf = async () => {
+    if (!currentSessionId) {
+      return
+    }
+
+    try {
+      const timer = await resetMatchSessionHalf(currentSessionId)
+      setSessionTimer(timer)
+    } catch (error) {
+      setTeamImportFeedback(
+        error instanceof Error ? `Half reset failed: ${error.message}` : 'Half reset failed.',
+      )
     }
   }
 
@@ -1094,6 +1198,10 @@ export function BlockDiceCalculator() {
   const currentCandidatePositionLabel = currentCandidate
     ? `${currentCandidate.position.row + 1},${currentCandidate.position.col + 1}`
     : null
+  const timerActiveTeamLabel = sessionTimer?.activeSide === 'HOME' ? 'BLUE' : 'RED'
+  const timerTurnClockLabel = sessionTimer ? formatClock(sessionTimer.perTurnRemainingSeconds) : '--:--'
+  const timerHomeBankLabel = sessionTimer ? formatClock(sessionTimer.homeBankRemainingSeconds) : '--:--'
+  const timerAwayBankLabel = sessionTimer ? formatClock(sessionTimer.awayBankRemainingSeconds) : '--:--'
 
   return (
     <div className={styles.layout}>
@@ -1221,6 +1329,55 @@ export function BlockDiceCalculator() {
           />
           {teamImportFeedback ? (
             <p className={styles.statusNote}>{teamImportFeedback}</p>
+          ) : null}
+          {currentSessionId && sessionTimer ? (
+            <section className={styles.timerPanel} aria-label="Live match timer">
+              <div className={styles.timerHeader}>
+                <div>
+                  <p className={styles.eyebrow}>Live Match Timer</p>
+                  <p className={styles.resultHeadline}>
+                    Half {sessionTimer.currentHalf} · Turn {sessionTimer.currentTurnNumber} · {timerActiveTeamLabel}
+                  </p>
+                </div>
+                <p className={styles.timerClock}>{timerTurnClockLabel}</p>
+              </div>
+              <div className={styles.timerBankRow}>
+                <p className={styles.timerBankCard}>
+                  <span>Blue bank</span>
+                  <strong>{timerHomeBankLabel}</strong>
+                </p>
+                <p className={styles.timerBankCard}>
+                  <span>Red bank</span>
+                  <strong>{timerAwayBankLabel}</strong>
+                </p>
+              </div>
+              <div className={styles.timerActionRow}>
+                <button
+                  type="button"
+                  className={styles.actionButtonPrimary}
+                  onClick={() => void handleStartSessionTurn()}
+                  disabled={isSessionTimerLoading}
+                >
+                  {sessionTimer.isRunning ? 'Restart turn' : `Start ${timerActiveTeamLabel} turn`}
+                </button>
+                <button
+                  type="button"
+                  className={styles.actionButtonSecondary}
+                  onClick={() => void handleEndSessionTurn()}
+                  disabled={isSessionTimerLoading}
+                >
+                  End turn
+                </button>
+                <button
+                  type="button"
+                  className={styles.actionButtonSecondary}
+                  onClick={() => void handleResetSessionHalf()}
+                  disabled={isSessionTimerLoading}
+                >
+                  Next half
+                </button>
+              </div>
+            </section>
           ) : null}
         </div>
 

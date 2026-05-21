@@ -277,6 +277,12 @@ export class CompetitionClient {
         allowUnofficialRosters: input.allowUnofficialRosters,
         configJson: {
           allowByes: true,
+          timerPolicy: {
+            enabled: true,
+            perTurnSeconds: 180,
+            bankSeconds: 300,
+            bankResetsAtHalf: true,
+          },
         },
       }),
     })

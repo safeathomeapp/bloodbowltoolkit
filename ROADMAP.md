@@ -230,11 +230,11 @@ See:
 
 ## Immediate Next Step
 
-- build the first live-match tool layer on top of fixture-attached rooms:
-  - shared turn timer
-  - bank time tracking
-  - halftime bank reset
-  - enough shared state for both players to view the same clock
+- build the first shared match-administration layer on top of the live timer:
+  - small event log
+  - SPP-relevant event entry
+  - turn-end confirmation
+  - keep the shape compatible with later final signoff
 - continue using `docs/architecture/2026-05-19_competition_backend_spec.md` as the backend contract
 
 ## Deferred Until Proven Necessary

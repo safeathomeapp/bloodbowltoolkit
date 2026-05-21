@@ -26,6 +26,8 @@
 - competition owners can now inspect submitted team snapshots before approval
 - fixture-attached match rooms can now be created from generated fixtures
 - block dice can now load fixture-backed tournament rooms through session codes
+- match rooms now expose shared turn timer and bank-time state
+- block dice now shows and controls the shared room timer
 
 ## What Not To Do Next
 
@@ -39,21 +41,21 @@
 ## Best Next Move
 
 - use `docs/architecture/2026-05-19_competition_backend_spec.md` as the implementation contract
-- the next concrete pass is now shared turn-timer and bank-time support for live match rooms
+- the next concrete pass is now small match event logging plus turn-end confirmation
 
 ## Concrete Next Implementation Pass
 
-1. add timer state to shared live match rooms
-2. support per-turn clock plus bank time
-3. support halftime bank reset
-4. surface the timer in the live block-dice session flow
+1. add a small shared match-event log
+2. capture the first SPP-relevant event types cleanly
+3. add turn-end confirmation on top of the live timer flow
+4. keep final signoff as the pass after that
 
 ## After That
 
-1. add small event log and turn-end confirmation
-2. add final match signoff
-3. then return to broader progression and richer league administration
-4. keep league and tournament overlays cleanly separated
+1. add final match signoff
+2. then return to broader progression and richer league administration
+3. keep league and tournament overlays cleanly separated
+4. do not couple progression application too early
 
 ## Integration Goal
 

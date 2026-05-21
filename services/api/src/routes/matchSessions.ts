@@ -36,8 +36,20 @@ const joinMatchSessionBodySchema = z.object({
   side: z.nativeEnum(MatchSessionSide),
 })
 
+const timerActionParamsSchema = z.object({
+  sessionId: z.string().min(1),
+})
+
+const startTimerBodySchema = z.object({
+  side: z.nativeEnum(MatchSessionSide).optional(),
+})
+
 function toIsoString(value: Date) {
   return value.toISOString()
+}
+
+function clampNonNegative(value: number) {
+  return value < 0 ? 0 : value
 }
 
 function toSavedTeamRecord(team: {
@@ -165,6 +177,71 @@ function toMatchSessionSummary(session: {
     createdAt: toIsoString(session.createdAt),
     updatedAt: toIsoString(session.updatedAt),
     participants: session.participants.map(toParticipantSummary),
+  }
+}
+
+function toTimerStateSummary(session: {
+  timerEnabled: boolean
+  timerTurnSeconds: number | null
+  timerBankSeconds: number | null
+  timerBankResetsAtHalf: boolean
+  timerCurrentHalf: number
+  timerCurrentTurnNumber: number
+  timerActiveSide: MatchSessionSide
+  timerTurnStartedAt: Date | null
+  timerHomeBankRemainingSeconds: number | null
+  timerAwayBankRemainingSeconds: number | null
+}) {
+  const now = new Date()
+  const defaults = getDefaultTimerConfig()
+  const turnSeconds = session.timerTurnSeconds ?? defaults.perTurnSeconds
+  const baseBankSeconds = session.timerBankSeconds ?? defaults.bankSeconds
+  const homeBankRemainingSeconds = session.timerHomeBankRemainingSeconds ?? baseBankSeconds
+  const awayBankRemainingSeconds = session.timerAwayBankRemainingSeconds ?? baseBankSeconds
+  const elapsedSeconds = session.timerTurnStartedAt
+    ? Math.max(0, Math.floor((now.getTime() - session.timerTurnStartedAt.getTime()) / 1000))
+    : 0
+  const overtimeSeconds = session.timerTurnStartedAt
+    ? Math.max(0, elapsedSeconds - turnSeconds)
+    : 0
+  const perTurnRemainingSeconds = session.timerTurnStartedAt
+    ? clampNonNegative(turnSeconds - elapsedSeconds)
+    : turnSeconds
+
+  const activeBankRemainingSeconds =
+    session.timerActiveSide === MatchSessionSide.HOME
+      ? clampNonNegative(homeBankRemainingSeconds - overtimeSeconds)
+      : clampNonNegative(awayBankRemainingSeconds - overtimeSeconds)
+
+  return {
+    enabled: session.timerEnabled,
+    turnSeconds,
+    bankSeconds: baseBankSeconds,
+    bankResetsAtHalf: session.timerBankResetsAtHalf,
+    currentHalf: session.timerCurrentHalf,
+    currentTurnNumber: session.timerCurrentTurnNumber,
+    activeSide: session.timerActiveSide,
+    turnStartedAt: session.timerTurnStartedAt ? toIsoString(session.timerTurnStartedAt) : null,
+    serverNow: toIsoString(now),
+    perTurnRemainingSeconds,
+    homeBankRemainingSeconds:
+      session.timerActiveSide === MatchSessionSide.HOME
+        ? activeBankRemainingSeconds
+        : homeBankRemainingSeconds,
+    awayBankRemainingSeconds:
+      session.timerActiveSide === MatchSessionSide.AWAY
+        ? activeBankRemainingSeconds
+        : awayBankRemainingSeconds,
+    isRunning: Boolean(session.timerTurnStartedAt),
+  }
+}
+
+function getDefaultTimerConfig() {
+  return {
+    enabled: true,
+    perTurnSeconds: 180,
+    bankSeconds: 300,
+    bankResetsAtHalf: true,
   }
 }
 
@@ -388,6 +465,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       }
     }
 
+    const timerConfig = getDefaultTimerConfig()
     const sessionCode = await generateUniqueSessionCode(app)
     const createdSession = await app.prisma.matchSession.create({
       data: {
@@ -396,6 +474,15 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         awayTeamId: bodyResult.data.awayTeamId,
         sessionCode,
         status: MatchSessionStatus.PENDING,
+        timerEnabled: timerConfig.enabled,
+        timerTurnSeconds: timerConfig.perTurnSeconds,
+        timerBankSeconds: timerConfig.bankSeconds,
+        timerBankResetsAtHalf: timerConfig.bankResetsAtHalf,
+        timerCurrentHalf: 1,
+        timerCurrentTurnNumber: 1,
+        timerActiveSide: MatchSessionSide.HOME,
+        timerHomeBankRemainingSeconds: timerConfig.bankSeconds,
+        timerAwayBankRemainingSeconds: timerConfig.bankSeconds,
         createdByUserId: creator.id,
       },
     })
@@ -713,6 +800,288 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
           ? toSavedTeamRecordFromSubmission(awaySubmission)
           : toSavedTeamRecord(session.awayTeam),
       },
+    })
+  })
+
+  app.get('/match-sessions/:sessionId/timer', async (request, reply) => {
+    const paramsResult = timerActionParamsSchema.safeParse(request.params)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid match session id.',
+      })
+    }
+
+    const session = await app.prisma.matchSession.findUnique({
+      where: {
+        id: paramsResult.data.sessionId,
+      },
+      select: {
+        id: true,
+        timerEnabled: true,
+        timerTurnSeconds: true,
+        timerBankSeconds: true,
+        timerBankResetsAtHalf: true,
+        timerCurrentHalf: true,
+        timerCurrentTurnNumber: true,
+        timerActiveSide: true,
+        timerTurnStartedAt: true,
+        timerHomeBankRemainingSeconds: true,
+        timerAwayBankRemainingSeconds: true,
+      },
+    })
+
+    if (!session) {
+      return reply.code(404).send({
+        message: 'Match session not found.',
+      })
+    }
+
+    return reply.send({
+      timer: toTimerStateSummary(session),
+    })
+  })
+
+  app.post('/match-sessions/:sessionId/timer/start', async (request, reply) => {
+    const paramsResult = timerActionParamsSchema.safeParse(request.params)
+    const bodyResult = startTimerBodySchema.safeParse(request.body)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid match session id.',
+      })
+    }
+
+    if (!bodyResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid timer start payload.',
+        issues: bodyResult.error.issues,
+      })
+    }
+
+    const session = await app.prisma.matchSession.findUnique({
+      where: {
+        id: paramsResult.data.sessionId,
+      },
+      select: {
+        id: true,
+        timerEnabled: true,
+        timerTurnSeconds: true,
+        timerBankSeconds: true,
+        timerBankResetsAtHalf: true,
+        timerCurrentHalf: true,
+        timerCurrentTurnNumber: true,
+        timerActiveSide: true,
+        timerTurnStartedAt: true,
+        timerHomeBankRemainingSeconds: true,
+        timerAwayBankRemainingSeconds: true,
+      },
+    })
+
+    if (!session) {
+      return reply.code(404).send({
+        message: 'Match session not found.',
+      })
+    }
+
+    const updatedSession = await app.prisma.matchSession.update({
+      where: {
+        id: session.id,
+      },
+      data: {
+        timerEnabled: true,
+        timerTurnSeconds: session.timerTurnSeconds ?? getDefaultTimerConfig().perTurnSeconds,
+        timerBankSeconds: session.timerBankSeconds ?? getDefaultTimerConfig().bankSeconds,
+        timerHomeBankRemainingSeconds:
+          session.timerHomeBankRemainingSeconds ?? session.timerBankSeconds ?? getDefaultTimerConfig().bankSeconds,
+        timerAwayBankRemainingSeconds:
+          session.timerAwayBankRemainingSeconds ?? session.timerBankSeconds ?? getDefaultTimerConfig().bankSeconds,
+        timerActiveSide: bodyResult.data.side ?? session.timerActiveSide,
+        timerTurnStartedAt: new Date(),
+      },
+      select: {
+        id: true,
+        timerEnabled: true,
+        timerTurnSeconds: true,
+        timerBankSeconds: true,
+        timerBankResetsAtHalf: true,
+        timerCurrentHalf: true,
+        timerCurrentTurnNumber: true,
+        timerActiveSide: true,
+        timerTurnStartedAt: true,
+        timerHomeBankRemainingSeconds: true,
+        timerAwayBankRemainingSeconds: true,
+      },
+    })
+
+    return reply.send({
+      timer: toTimerStateSummary(updatedSession),
+    })
+  })
+
+  app.post('/match-sessions/:sessionId/timer/end-turn', async (request, reply) => {
+    const paramsResult = timerActionParamsSchema.safeParse(request.params)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid match session id.',
+      })
+    }
+
+    const session = await app.prisma.matchSession.findUnique({
+      where: {
+        id: paramsResult.data.sessionId,
+      },
+      select: {
+        id: true,
+        timerEnabled: true,
+        timerTurnSeconds: true,
+        timerBankSeconds: true,
+        timerBankResetsAtHalf: true,
+        timerCurrentHalf: true,
+        timerCurrentTurnNumber: true,
+        timerActiveSide: true,
+        timerTurnStartedAt: true,
+        timerHomeBankRemainingSeconds: true,
+        timerAwayBankRemainingSeconds: true,
+      },
+    })
+
+    if (!session) {
+      return reply.code(404).send({
+        message: 'Match session not found.',
+      })
+    }
+
+    const defaults = getDefaultTimerConfig()
+    const turnSeconds = session.timerTurnSeconds ?? defaults.perTurnSeconds
+    const baseBankSeconds = session.timerBankSeconds ?? defaults.bankSeconds
+    const homeBankRemainingSeconds = session.timerHomeBankRemainingSeconds ?? baseBankSeconds
+    const awayBankRemainingSeconds = session.timerAwayBankRemainingSeconds ?? baseBankSeconds
+    const elapsedSeconds = session.timerTurnStartedAt
+      ? Math.max(0, Math.floor((Date.now() - session.timerTurnStartedAt.getTime()) / 1000))
+      : 0
+    const overtimeSeconds = session.timerTurnStartedAt
+      ? Math.max(0, elapsedSeconds - turnSeconds)
+      : 0
+
+    const nextHomeBankRemainingSeconds =
+      session.timerActiveSide === MatchSessionSide.HOME
+        ? clampNonNegative(homeBankRemainingSeconds - overtimeSeconds)
+        : homeBankRemainingSeconds
+    const nextAwayBankRemainingSeconds =
+      session.timerActiveSide === MatchSessionSide.AWAY
+        ? clampNonNegative(awayBankRemainingSeconds - overtimeSeconds)
+        : awayBankRemainingSeconds
+
+    const nextActiveSide =
+      session.timerActiveSide === MatchSessionSide.HOME
+        ? MatchSessionSide.AWAY
+        : MatchSessionSide.HOME
+    const nextTurnNumber =
+      session.timerActiveSide === MatchSessionSide.AWAY
+        ? session.timerCurrentTurnNumber + 1
+        : session.timerCurrentTurnNumber
+
+    const updatedSession = await app.prisma.matchSession.update({
+      where: {
+        id: session.id,
+      },
+      data: {
+        timerHomeBankRemainingSeconds: nextHomeBankRemainingSeconds,
+        timerAwayBankRemainingSeconds: nextAwayBankRemainingSeconds,
+        timerActiveSide: nextActiveSide,
+        timerCurrentTurnNumber: nextTurnNumber,
+        timerTurnStartedAt: null,
+      },
+      select: {
+        id: true,
+        timerEnabled: true,
+        timerTurnSeconds: true,
+        timerBankSeconds: true,
+        timerBankResetsAtHalf: true,
+        timerCurrentHalf: true,
+        timerCurrentTurnNumber: true,
+        timerActiveSide: true,
+        timerTurnStartedAt: true,
+        timerHomeBankRemainingSeconds: true,
+        timerAwayBankRemainingSeconds: true,
+      },
+    })
+
+    return reply.send({
+      timer: toTimerStateSummary(updatedSession),
+    })
+  })
+
+  app.post('/match-sessions/:sessionId/timer/reset-half', async (request, reply) => {
+    const paramsResult = timerActionParamsSchema.safeParse(request.params)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid match session id.',
+      })
+    }
+
+    const session = await app.prisma.matchSession.findUnique({
+      where: {
+        id: paramsResult.data.sessionId,
+      },
+      select: {
+        id: true,
+        timerEnabled: true,
+        timerTurnSeconds: true,
+        timerBankSeconds: true,
+        timerBankResetsAtHalf: true,
+        timerCurrentHalf: true,
+        timerCurrentTurnNumber: true,
+        timerActiveSide: true,
+        timerTurnStartedAt: true,
+        timerHomeBankRemainingSeconds: true,
+        timerAwayBankRemainingSeconds: true,
+      },
+    })
+
+    if (!session) {
+      return reply.code(404).send({
+        message: 'Match session not found.',
+      })
+    }
+
+    const baseBankSeconds = session.timerBankSeconds ?? getDefaultTimerConfig().bankSeconds
+    const updatedSession = await app.prisma.matchSession.update({
+      where: {
+        id: session.id,
+      },
+      data: {
+        timerCurrentHalf: session.timerCurrentHalf + 1,
+        timerCurrentTurnNumber: 1,
+        timerActiveSide: MatchSessionSide.HOME,
+        timerTurnStartedAt: null,
+        timerHomeBankRemainingSeconds: session.timerBankResetsAtHalf
+          ? baseBankSeconds
+          : session.timerHomeBankRemainingSeconds ?? baseBankSeconds,
+        timerAwayBankRemainingSeconds: session.timerBankResetsAtHalf
+          ? baseBankSeconds
+          : session.timerAwayBankRemainingSeconds ?? baseBankSeconds,
+      },
+      select: {
+        id: true,
+        timerEnabled: true,
+        timerTurnSeconds: true,
+        timerBankSeconds: true,
+        timerBankResetsAtHalf: true,
+        timerCurrentHalf: true,
+        timerCurrentTurnNumber: true,
+        timerActiveSide: true,
+        timerTurnStartedAt: true,
+        timerHomeBankRemainingSeconds: true,
+        timerAwayBankRemainingSeconds: true,
+      },
+    })
+
+    return reply.send({
+      timer: toTimerStateSummary(updatedSession),
     })
   })
 }

@@ -170,6 +170,16 @@ model MatchSession {
   awayTeamId     String
   sessionCode    String                   @unique
   status         MatchSessionStatus
+  timerEnabled   Boolean                  @default(false)
+  timerTurnSeconds Int?
+  timerBankSeconds Int?
+  timerBankResetsAtHalf Boolean           @default(true)
+  timerCurrentHalf Int                    @default(1)
+  timerCurrentTurnNumber Int              @default(1)
+  timerActiveSide MatchSessionSide        @default(HOME)
+  timerTurnStartedAt DateTime?
+  timerHomeBankRemainingSeconds Int?
+  timerAwayBankRemainingSeconds Int?
   createdByUserId String
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt

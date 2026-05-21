@@ -8,6 +8,7 @@ declare module 'fastify' {
 }
 
 export async function registerPrisma(app: FastifyInstance) {
+  process.env.PRISMA_CLIENT_ENGINE_TYPE ??= 'library'
   const prisma = new PrismaClient()
 
   await prisma.$connect()

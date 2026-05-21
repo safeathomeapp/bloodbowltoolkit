@@ -88,6 +88,32 @@ function toIsoString(value: Date | null) {
   return value ? value.toISOString() : null
 }
 
+function parseTimerPolicy(configJson: Prisma.JsonValue) {
+  const rawConfig =
+    typeof configJson === 'object' && configJson !== null && !Array.isArray(configJson)
+      ? (configJson as Record<string, unknown>)
+      : {}
+  const rawTimerPolicy =
+    typeof rawConfig.timerPolicy === 'object' &&
+    rawConfig.timerPolicy !== null &&
+    !Array.isArray(rawConfig.timerPolicy)
+      ? (rawConfig.timerPolicy as Record<string, unknown>)
+      : {}
+
+  return {
+    enabled: rawTimerPolicy.enabled === false ? false : true,
+    perTurnSeconds:
+      typeof rawTimerPolicy.perTurnSeconds === 'number' && rawTimerPolicy.perTurnSeconds > 0
+        ? Math.floor(rawTimerPolicy.perTurnSeconds)
+        : 180,
+    bankSeconds:
+      typeof rawTimerPolicy.bankSeconds === 'number' && rawTimerPolicy.bankSeconds >= 0
+        ? Math.floor(rawTimerPolicy.bankSeconds)
+        : 300,
+    bankResetsAtHalf: rawTimerPolicy.bankResetsAtHalf === false ? false : true,
+  }
+}
+
 function toCompetitionSummary(competition: {
   id: string
   name: string
@@ -1423,6 +1449,7 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
       })
     }
 
+    const timerPolicy = parseTimerPolicy(fixture.competition.configJson)
     const sessionCode = await generateUniqueSessionCode(app)
     const createdSession = await app.prisma.matchSession.create({
       data: {
@@ -1432,6 +1459,15 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
         awayTeamId: fixture.awayEntry.submission.sourceTeamId,
         sessionCode,
         status: MatchSessionStatus.PENDING,
+        timerEnabled: timerPolicy.enabled,
+        timerTurnSeconds: timerPolicy.perTurnSeconds,
+        timerBankSeconds: timerPolicy.bankSeconds,
+        timerBankResetsAtHalf: timerPolicy.bankResetsAtHalf,
+        timerCurrentHalf: 1,
+        timerCurrentTurnNumber: 1,
+        timerActiveSide: 'HOME',
+        timerHomeBankRemainingSeconds: timerPolicy.bankSeconds,
+        timerAwayBankRemainingSeconds: timerPolicy.bankSeconds,
         createdByUserId: bodyResult.data.requestedByUserId,
       },
     })
