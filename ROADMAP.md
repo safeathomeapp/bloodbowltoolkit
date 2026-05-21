@@ -230,11 +230,10 @@ See:
 
 ## Immediate Next Step
 
-- build the first shared match-administration layer on top of the live timer:
-  - small event log
-  - SPP-relevant event entry
-  - turn-end confirmation
-  - keep the shape compatible with later final signoff
+- build final match signoff on top of the live timer and event log:
+  - room-level home and away signoff
+  - event-summary-aware closeout
+  - keep the shape compatible with later progression application
 - continue using `docs/architecture/2026-05-19_competition_backend_spec.md` as the backend contract
 
 ## Deferred Until Proven Necessary

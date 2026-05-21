@@ -72,12 +72,47 @@ export interface MatchSessionTimerState {
   isRunning: boolean
 }
 
+export interface MatchSessionEventSummary {
+  id: string
+  half: number
+  turnNumber: number
+  actingSide: 'HOME' | 'AWAY'
+  teamSide: 'HOME' | 'AWAY'
+  eventType: 'TOUCHDOWN' | 'CASUALTY' | 'COMPLETION' | 'INTERCEPTION' | 'MVP_ASSIGNMENT'
+  playerNumber: number | null
+  notes: string | null
+  createdAt: string
+}
+
+export interface MatchSessionTurnConfirmation {
+  id: string | null
+  half: number | null
+  turnNumber: number | null
+  side: 'HOME' | 'AWAY' | null
+  homeConfirmedAt: string | null
+  awayConfirmedAt: string | null
+  homeConfirmed: boolean
+  awayConfirmed: boolean
+  createdAt: string | null
+  updatedAt: string | null
+}
+
 export interface BlockDiceSessionContextResponse {
   matchSession: MatchSessionSummary
   teams: {
     home: TeamCreatorSavedTeamRecord
     away: TeamCreatorSavedTeamRecord
   }
+}
+
+export interface MatchSessionEventsResponse {
+  currentTurn: {
+    half: number
+    turnNumber: number
+    side: 'HOME' | 'AWAY'
+  }
+  events: MatchSessionEventSummary[]
+  confirmation: MatchSessionTurnConfirmation
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -231,4 +266,71 @@ export async function resetMatchSessionHalf(sessionId: string) {
   )
 
   return payload.timer
+}
+
+export async function fetchMatchSessionEvents(sessionId: string) {
+  const baseUrl = buildApiBaseUrl()
+  return parseResponse<MatchSessionEventsResponse>(
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/events`),
+  )
+}
+
+export async function createMatchSessionEvent(
+  sessionId: string,
+  input: {
+    eventType: MatchSessionEventSummary['eventType']
+    teamSide: MatchSessionEventSummary['teamSide']
+    playerNumber?: number | null
+    notes?: string | null
+  },
+) {
+  const baseUrl = buildApiBaseUrl()
+  const payload = await parseResponse<{ event: MatchSessionEventSummary }>(
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/events`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+    }),
+  )
+
+  return payload.event
+}
+
+export async function deleteMatchSessionEvent(sessionId: string, eventId: string) {
+  const baseUrl = buildApiBaseUrl()
+  const response = await fetch(
+    `${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/events/${encodeURIComponent(eventId)}`,
+    {
+      method: 'DELETE',
+    },
+  )
+
+  if (!response.ok && response.status !== 204) {
+    await parseResponse(response)
+  }
+}
+
+export async function confirmMatchSessionTurn(
+  sessionId: string,
+  confirmedSide: 'HOME' | 'AWAY',
+) {
+  const baseUrl = buildApiBaseUrl()
+  const payload = await parseResponse<{ confirmation: MatchSessionTurnConfirmation }>(
+    await fetch(
+      `${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/turn-confirmation/confirm`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          confirmedSide,
+        }),
+      },
+    ),
+  )
+
+  return payload.confirmation
 }

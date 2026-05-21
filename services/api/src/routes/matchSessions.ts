@@ -23,6 +23,16 @@ const createMatchSessionBodySchema = z.object({
   createdByUserId: z.string().min(1),
 })
 
+const matchSessionEventTypes = [
+  'TOUCHDOWN',
+  'CASUALTY',
+  'COMPLETION',
+  'INTERCEPTION',
+  'MVP_ASSIGNMENT',
+] as const
+
+type MatchSessionEventTypeValue = (typeof matchSessionEventTypes)[number]
+
 const matchSessionParamsSchema = z.object({
   sessionId: z.string().min(1),
 })
@@ -42,6 +52,22 @@ const timerActionParamsSchema = z.object({
 
 const startTimerBodySchema = z.object({
   side: z.nativeEnum(MatchSessionSide).optional(),
+})
+
+const matchSessionEventParamsSchema = z.object({
+  sessionId: z.string().min(1),
+  eventId: z.string().min(1),
+})
+
+const createMatchSessionEventBodySchema = z.object({
+  eventType: z.enum(matchSessionEventTypes),
+  teamSide: z.nativeEnum(MatchSessionSide),
+  playerNumber: z.number().int().positive().nullable().optional(),
+  notes: z.string().trim().max(280).nullable().optional(),
+})
+
+const confirmTurnBodySchema = z.object({
+  confirmedSide: z.nativeEnum(MatchSessionSide),
 })
 
 function toIsoString(value: Date) {
@@ -242,6 +268,83 @@ function getDefaultTimerConfig() {
     perTurnSeconds: 180,
     bankSeconds: 300,
     bankResetsAtHalf: true,
+  }
+}
+
+const timerStateSelect = {
+  id: true,
+  timerEnabled: true,
+  timerTurnSeconds: true,
+  timerBankSeconds: true,
+  timerBankResetsAtHalf: true,
+  timerCurrentHalf: true,
+  timerCurrentTurnNumber: true,
+  timerActiveSide: true,
+  timerTurnStartedAt: true,
+  timerHomeBankRemainingSeconds: true,
+  timerAwayBankRemainingSeconds: true,
+} satisfies Prisma.MatchSessionSelect
+
+function toMatchSessionEventSummary(event: {
+  id: string
+  half: number
+  turnNumber: number
+  actingSide: MatchSessionSide
+  teamSide: MatchSessionSide
+  eventType: MatchSessionEventTypeValue
+  playerNumber: number | null
+  notes: string | null
+  createdAt: Date
+}) {
+  return {
+    id: event.id,
+    half: event.half,
+    turnNumber: event.turnNumber,
+    actingSide: event.actingSide,
+    teamSide: event.teamSide,
+    eventType: event.eventType,
+    playerNumber: event.playerNumber,
+    notes: event.notes,
+    createdAt: toIsoString(event.createdAt),
+  }
+}
+
+function toTurnConfirmationSummary(confirmation: {
+  id: string
+  half: number
+  turnNumber: number
+  side: MatchSessionSide
+  homeConfirmedAt: Date | null
+  awayConfirmedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+} | null) {
+  if (!confirmation) {
+    return {
+      id: null,
+      half: null,
+      turnNumber: null,
+      side: null,
+      homeConfirmedAt: null,
+      awayConfirmedAt: null,
+      homeConfirmed: false,
+      awayConfirmed: false,
+      createdAt: null,
+      updatedAt: null,
+    }
+  }
+
+  return {
+    id: confirmation.id,
+    half: confirmation.half,
+    turnNumber: confirmation.turnNumber,
+    side: confirmation.side,
+    homeConfirmedAt: confirmation.homeConfirmedAt ? toIsoString(confirmation.homeConfirmedAt) : null,
+    awayConfirmedAt: confirmation.awayConfirmedAt ? toIsoString(confirmation.awayConfirmedAt) : null,
+    homeConfirmed: Boolean(confirmation.homeConfirmedAt),
+    awayConfirmed: Boolean(confirmation.awayConfirmedAt),
+    createdAt: toIsoString(confirmation.createdAt),
+    updatedAt: toIsoString(confirmation.updatedAt),
   }
 }
 
@@ -800,6 +903,263 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
           ? toSavedTeamRecordFromSubmission(awaySubmission)
           : toSavedTeamRecord(session.awayTeam),
       },
+    })
+  })
+
+  app.get('/match-sessions/:sessionId/events', async (request, reply) => {
+    const paramsResult = timerActionParamsSchema.safeParse(request.params)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid match session id.',
+      })
+    }
+
+    const session = await app.prisma.matchSession.findUnique({
+      where: {
+        id: paramsResult.data.sessionId,
+      },
+      select: timerStateSelect,
+    })
+
+    if (!session) {
+      return reply.code(404).send({
+        message: 'Match session not found.',
+      })
+    }
+
+    const [events, currentTurnConfirmation] = await Promise.all([
+      app.prisma.matchSessionEvent.findMany({
+        where: {
+          matchSessionId: session.id,
+        },
+        orderBy: [
+          {
+            half: 'desc',
+          },
+          {
+            turnNumber: 'desc',
+          },
+          {
+            createdAt: 'asc',
+          },
+        ],
+      }),
+      app.prisma.matchSessionTurnConfirmation.findUnique({
+        where: {
+          matchSessionId_half_turnNumber_side: {
+            matchSessionId: session.id,
+            half: session.timerCurrentHalf,
+            turnNumber: session.timerCurrentTurnNumber,
+            side: session.timerActiveSide,
+          },
+        },
+      }),
+    ])
+
+    return reply.send({
+      currentTurn: {
+        half: session.timerCurrentHalf,
+        turnNumber: session.timerCurrentTurnNumber,
+        side: session.timerActiveSide,
+      },
+      events: events.map(toMatchSessionEventSummary),
+      confirmation: toTurnConfirmationSummary(currentTurnConfirmation),
+    })
+  })
+
+  app.post('/match-sessions/:sessionId/events', async (request, reply) => {
+    const paramsResult = timerActionParamsSchema.safeParse(request.params)
+    const bodyResult = createMatchSessionEventBodySchema.safeParse(request.body)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid match session id.',
+      })
+    }
+
+    if (!bodyResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid match event payload.',
+        issues: bodyResult.error.issues,
+      })
+    }
+
+    const session = await app.prisma.matchSession.findUnique({
+      where: {
+        id: paramsResult.data.sessionId,
+      },
+      select: timerStateSelect,
+    })
+
+    if (!session) {
+      return reply.code(404).send({
+        message: 'Match session not found.',
+      })
+    }
+
+    const event = await app.prisma.$transaction(async (transaction) => {
+      const createdEvent = await transaction.matchSessionEvent.create({
+        data: {
+          matchSessionId: session.id,
+          half: session.timerCurrentHalf,
+          turnNumber: session.timerCurrentTurnNumber,
+          actingSide: session.timerActiveSide,
+          teamSide: bodyResult.data.teamSide,
+          eventType: bodyResult.data.eventType,
+          playerNumber: bodyResult.data.playerNumber ?? null,
+          notes: bodyResult.data.notes || null,
+        },
+      })
+
+      await transaction.matchSessionTurnConfirmation.upsert({
+        where: {
+          matchSessionId_half_turnNumber_side: {
+            matchSessionId: session.id,
+            half: session.timerCurrentHalf,
+            turnNumber: session.timerCurrentTurnNumber,
+            side: session.timerActiveSide,
+          },
+        },
+        create: {
+          matchSessionId: session.id,
+          half: session.timerCurrentHalf,
+          turnNumber: session.timerCurrentTurnNumber,
+          side: session.timerActiveSide,
+          homeConfirmedAt: null,
+          awayConfirmedAt: null,
+        },
+        update: {
+          homeConfirmedAt: null,
+          awayConfirmedAt: null,
+        },
+      })
+
+      return createdEvent
+    })
+
+    return reply.code(201).send({
+      event: toMatchSessionEventSummary(event),
+    })
+  })
+
+  app.delete('/match-sessions/:sessionId/events/:eventId', async (request, reply) => {
+    const paramsResult = matchSessionEventParamsSchema.safeParse(request.params)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid match event id.',
+      })
+    }
+
+    const event = await app.prisma.matchSessionEvent.findFirst({
+      where: {
+        id: paramsResult.data.eventId,
+        matchSessionId: paramsResult.data.sessionId,
+      },
+    })
+
+    if (!event) {
+      return reply.code(404).send({
+        message: 'Match session event not found.',
+      })
+    }
+
+    await app.prisma.$transaction(async (transaction) => {
+      await transaction.matchSessionEvent.delete({
+        where: {
+          id: event.id,
+        },
+      })
+
+      await transaction.matchSessionTurnConfirmation.upsert({
+        where: {
+          matchSessionId_half_turnNumber_side: {
+            matchSessionId: event.matchSessionId,
+            half: event.half,
+            turnNumber: event.turnNumber,
+            side: event.actingSide,
+          },
+        },
+        create: {
+          matchSessionId: event.matchSessionId,
+          half: event.half,
+          turnNumber: event.turnNumber,
+          side: event.actingSide,
+          homeConfirmedAt: null,
+          awayConfirmedAt: null,
+        },
+        update: {
+          homeConfirmedAt: null,
+          awayConfirmedAt: null,
+        },
+      })
+    })
+
+    return reply.code(204).send()
+  })
+
+  app.post('/match-sessions/:sessionId/turn-confirmation/confirm', async (request, reply) => {
+    const paramsResult = timerActionParamsSchema.safeParse(request.params)
+    const bodyResult = confirmTurnBodySchema.safeParse(request.body)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid match session id.',
+      })
+    }
+
+    if (!bodyResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid turn confirmation payload.',
+        issues: bodyResult.error.issues,
+      })
+    }
+
+    const session = await app.prisma.matchSession.findUnique({
+      where: {
+        id: paramsResult.data.sessionId,
+      },
+      select: timerStateSelect,
+    })
+
+    if (!session) {
+      return reply.code(404).send({
+        message: 'Match session not found.',
+      })
+    }
+
+    const confirmation = await app.prisma.matchSessionTurnConfirmation.upsert({
+      where: {
+        matchSessionId_half_turnNumber_side: {
+          matchSessionId: session.id,
+          half: session.timerCurrentHalf,
+          turnNumber: session.timerCurrentTurnNumber,
+          side: session.timerActiveSide,
+        },
+      },
+      create: {
+        matchSessionId: session.id,
+        half: session.timerCurrentHalf,
+        turnNumber: session.timerCurrentTurnNumber,
+        side: session.timerActiveSide,
+        homeConfirmedAt:
+          bodyResult.data.confirmedSide === MatchSessionSide.HOME ? new Date() : null,
+        awayConfirmedAt:
+          bodyResult.data.confirmedSide === MatchSessionSide.AWAY ? new Date() : null,
+      },
+      update:
+        bodyResult.data.confirmedSide === MatchSessionSide.HOME
+          ? {
+              homeConfirmedAt: new Date(),
+            }
+          : {
+              awayConfirmedAt: new Date(),
+            },
+    })
+
+    return reply.send({
+      confirmation: toTurnConfirmationSummary(confirmation),
     })
   })
 

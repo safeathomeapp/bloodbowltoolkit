@@ -83,6 +83,14 @@ enum FixtureSourceType {
   COMMISSIONER_OVERRIDE
 }
 
+enum MatchSessionEventType {
+  TOUCHDOWN
+  CASUALTY
+  COMPLETION
+  INTERCEPTION
+  MVP_ASSIGNMENT
+}
+
 model User {
   id                    String                    @id @default(cuid())
   displayName           String
@@ -189,6 +197,8 @@ model MatchSession {
   awayTeam       Team                     @relation("AwayTeam", fields: [awayTeamId], references: [id])
   createdBy      User                     @relation("MatchSessionCreator", fields: [createdByUserId], references: [id])
   participants   MatchSessionParticipant[]
+  events         MatchSessionEvent[]
+  turnConfirmations MatchSessionTurnConfirmation[]
 }
 
 model MatchSessionParticipant {
@@ -203,6 +213,37 @@ model MatchSessionParticipant {
 
   @@unique([matchSessionId, userId])
   @@unique([matchSessionId, side])
+}
+
+model MatchSessionEvent {
+  id             String                @id @default(cuid())
+  matchSessionId String
+  half           Int
+  turnNumber     Int
+  actingSide     MatchSessionSide
+  teamSide       MatchSessionSide
+  eventType      MatchSessionEventType
+  playerNumber   Int?
+  notes          String?
+  createdAt      DateTime              @default(now())
+  matchSession   MatchSession          @relation(fields: [matchSessionId], references: [id])
+
+  @@index([matchSessionId, half, turnNumber, actingSide, createdAt])
+}
+
+model MatchSessionTurnConfirmation {
+  id              String           @id @default(cuid())
+  matchSessionId  String
+  half            Int
+  turnNumber      Int
+  side            MatchSessionSide
+  homeConfirmedAt DateTime?
+  awayConfirmedAt DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  matchSession    MatchSession     @relation(fields: [matchSessionId], references: [id])
+
+  @@unique([matchSessionId, half, turnNumber, side])
 }
 
 model Competition {

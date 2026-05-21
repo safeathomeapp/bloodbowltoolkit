@@ -41,14 +41,14 @@
 ## Best Next Move
 
 - use `docs/architecture/2026-05-19_competition_backend_spec.md` as the implementation contract
-- the next concrete pass is now small match event logging plus turn-end confirmation
+- the shared match-event log and turn confirmation layer is now implemented and browser-tested
 
 ## Concrete Next Implementation Pass
 
-1. add a small shared match-event log
-2. capture the first SPP-relevant event types cleanly
-3. add turn-end confirmation on top of the live timer flow
-4. keep final signoff as the pass after that
+1. add final match signoff on top of the shared turn record
+2. keep match closeout explicit and shared between both sides
+3. avoid applying progression or standings logic directly from unsigned match data
+4. keep progression application as the pass after signoff semantics are stable
 
 ## After That
 

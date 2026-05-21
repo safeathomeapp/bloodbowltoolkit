@@ -260,6 +260,77 @@
   gap: 0.7rem;
 }
 
+.eventPanel {
+  margin-top: 0.9rem;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(96, 169, 255, 0.18);
+  background: rgba(216, 233, 255, 0.04);
+  display: grid;
+  gap: 0.85rem;
+}
+
+.eventFormGrid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.confirmationStatusRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.confirmedPill,
+.pendingPill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.confirmedPill {
+  background: rgba(88, 181, 113, 0.16);
+  border: 1px solid rgba(88, 181, 113, 0.3);
+  color: #d7ffe0;
+}
+
+.pendingPill {
+  background: rgba(246, 239, 228, 0.07);
+  border: 1px solid rgba(246, 239, 228, 0.15);
+  color: rgba(246, 239, 228, 0.86);
+}
+
+.eventList {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.eventCard {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.8rem;
+  border-radius: 0.9rem;
+  background: rgba(12, 15, 19, 0.38);
+  border: 1px solid rgba(246, 239, 228, 0.1);
+}
+
+.eventMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  color: rgba(246, 239, 228, 0.82);
+}
+
+.eventNote {
+  margin: 0;
+  color: rgba(246, 239, 228, 0.92);
+}
+
 .resultHeaderRow {
   display: flex;
   align-items: flex-start;
