@@ -31,6 +31,7 @@
 - match rooms now support shared event logging, turn confirmation, and final signoff
 - live-team match rooms can now apply signed SPP progression back to persistent teams
 - live-team progression now also supports signed casualty outcomes and post-game injury application
+- team creator now exposes editable player progression fields for SPP, NI, and MNG
 
 ## What Not To Do Next
 
@@ -52,14 +53,14 @@
 
 ## Concrete Next Implementation Pass
 
-1. expose player progression state in team creator
-2. make saved roster progression fields editable through the canonical team-management flow
+1. tighten post-game progression review flow
+2. widen injury and progression modelling beyond SPP, NI, and MNG
 3. keep local and API repository behavior aligned
 4. keep tournament history and live team mutation separate
 
 ## After That
 
-1. broaden team-side progression management
+1. broaden progression management carefully
 2. then return to richer league administration
 3. keep league and tournament overlays cleanly separated
 4. do not couple standings or redraft too early

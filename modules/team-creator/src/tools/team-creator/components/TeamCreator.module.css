@@ -698,6 +698,26 @@
   padding: 8px 10px;
 }
 
+.progressionInput {
+  width: 72px;
+  border: 1px solid rgba(115, 29, 19, 0.24);
+  border-radius: 10px;
+  background: #fffdf9;
+  color: #231915;
+  padding: 8px 10px;
+}
+
+.progressionToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #231915;
+}
+
+.progressionToggle input {
+  accent-color: #aa140f;
+}
+
 .deleteButton {
   border-radius: 999px;
   background: rgba(159, 29, 23, 0.08);

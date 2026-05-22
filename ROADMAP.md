@@ -230,12 +230,11 @@ See:
 
 ## Immediate Next Step
 
-- expose progression state in `modules/team-creator/`:
-  - SPP
-  - niggling injuries
-  - miss next game
-- keep that editing path aligned with the canonical saved-team model
-- use the same repository boundary for local and shared API modes
+- tighten progression flow now that roster-side editing exists:
+  - keep post-game review clear
+  - widen injury/result modelling carefully
+  - preserve the split between live team mutation and tournament history
+- keep the canonical saved-team model and shared repository path aligned
 - continue using `docs/architecture/2026-05-19_competition_backend_spec.md` as the backend contract
 
 ## Deferred Until Proven Necessary

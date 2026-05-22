@@ -898,6 +898,35 @@ export function TeamCreator() {
     }))
   }
 
+  function handlePlayerSppChange(playerId: string, value: string) {
+    const spp = Math.max(0, Number(value) || 0)
+
+    updateActiveTeam((team) => ({
+      ...team,
+      players: team.players.map((player) => (player.id === playerId ? { ...player, spp } : player)),
+    }))
+  }
+
+  function handlePlayerNigglingInjuriesChange(playerId: string, value: string) {
+    const nigglingInjuries = Math.max(0, Number(value) || 0)
+
+    updateActiveTeam((team) => ({
+      ...team,
+      players: team.players.map((player) =>
+        player.id === playerId ? { ...player, nigglingInjuries } : player,
+      ),
+    }))
+  }
+
+  function handlePlayerMissNextGameChange(playerId: string, checked: boolean) {
+    updateActiveTeam((team) => ({
+      ...team,
+      players: team.players.map((player) =>
+        player.id === playerId ? { ...player, missNextGame: checked } : player,
+      ),
+    }))
+  }
+
   function handleTeamNameChange(name: string) {
     updateActiveTeam((team) => ({ ...team, name }))
   }
@@ -1722,6 +1751,7 @@ export function TeamCreator() {
                     <th>Skills</th>
                     <th>SPP</th>
                     <th>NI</th>
+                    <th>MNG</th>
                     <th>Value</th>
                   </tr>
                 </thead>
@@ -1793,9 +1823,39 @@ export function TeamCreator() {
                           <td>{position.passing ?? '-'}</td>
                           <td>{position.armour}</td>
                           <td>{renderSkills(skills)}</td>
-                          <td>{player.spp}</td>
-                            <td>{player.nigglingInjuries}</td>
-                            <td>{formatGold(player.currentValue)}</td>
+                          <td>
+                            <input
+                              className={styles.progressionInput}
+                              type="number"
+                              min="0"
+                              value={player.spp}
+                              onChange={(event) => handlePlayerSppChange(player.id, event.target.value)}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              className={styles.progressionInput}
+                              type="number"
+                              min="0"
+                              value={player.nigglingInjuries}
+                              onChange={(event) =>
+                                handlePlayerNigglingInjuriesChange(player.id, event.target.value)
+                              }
+                            />
+                          </td>
+                          <td>
+                            <label className={styles.progressionToggle}>
+                              <input
+                                type="checkbox"
+                                checked={player.missNextGame}
+                                onChange={(event) =>
+                                  handlePlayerMissNextGameChange(player.id, event.target.checked)
+                                }
+                              />
+                              <span>{player.missNextGame ? 'Yes' : 'No'}</span>
+                            </label>
+                          </td>
+                          <td>{formatGold(player.currentValue)}</td>
                           </tr>
                         )
                       })}
@@ -1836,6 +1896,7 @@ export function TeamCreator() {
                     <td>{selectedPosition ? renderSkills(selectedPosition.startingSkills) : '-'}</td>
                     <td>0</td>
                     <td>0</td>
+                    <td>No</td>
                     <td>{selectedPosition ? formatGold(selectedPosition.cost) : '-'}</td>
                   </tr>
                 </tbody>
