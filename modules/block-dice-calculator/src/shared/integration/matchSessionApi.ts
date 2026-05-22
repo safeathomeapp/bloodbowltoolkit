@@ -108,6 +108,41 @@ export interface MatchSessionFinalSignoff {
   totalEvents: number
 }
 
+export interface MatchSessionProgressionPlayerSummary {
+  playerId: string
+  playerName: string
+  shirtNumber: number | null
+  sppBefore: number
+  sppAwarded: number
+  sppAfter: number
+  eventTotals: Record<MatchSessionEventSummary['eventType'], number>
+}
+
+export interface MatchSessionProgressionTeamSummary {
+  teamId: string
+  teamName: string
+  totalAwardedSpp: number
+  players: MatchSessionProgressionPlayerSummary[]
+}
+
+export interface MatchSessionProgressionSummary {
+  applicable: boolean
+  scope: 'LIVE_TEAM' | 'TOURNAMENT_SNAPSHOT'
+  status: 'NOT_APPLICABLE' | 'READY' | 'APPLIED'
+  appliedAt: string | null
+  canApply: boolean
+  reason: string | null
+  homeTeam: MatchSessionProgressionTeamSummary
+  awayTeam: MatchSessionProgressionTeamSummary
+  unresolvedEvents: Array<{
+    eventId: string
+    eventType: MatchSessionEventSummary['eventType']
+    teamSide: 'HOME' | 'AWAY'
+    playerNumber: number | null
+    reason: string
+  }>
+}
+
 export interface BlockDiceSessionContextResponse {
   matchSession: MatchSessionSummary
   teams: {
@@ -368,4 +403,28 @@ export async function signOffMatchSession(
   )
 
   return payload.signoff
+}
+
+export async function fetchMatchSessionProgression(sessionId: string) {
+  const baseUrl = buildApiBaseUrl()
+  const payload = await parseResponse<{ progression: MatchSessionProgressionSummary }>(
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/progression`),
+  )
+
+  return payload.progression
+}
+
+export async function applyMatchSessionProgression(sessionId: string) {
+  const baseUrl = buildApiBaseUrl()
+  const payload = await parseResponse<{ progression: MatchSessionProgressionSummary }>(
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/progression/apply`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    }),
+  )
+
+  return payload.progression
 }

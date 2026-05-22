@@ -230,10 +230,10 @@ See:
 
 ## Immediate Next Step
 
-- define and implement the first progression application pass on top of signed match data:
-  - signed match event mapping
-  - persistent team and player updates
-  - clean separation between league progression and tournament closeout
+- extend the progression contract beyond SPP-only application:
+  - signed casualty and injury outcomes
+  - post-game summary structure
+  - clear split between tournament history and live team mutation
 - continue using `docs/architecture/2026-05-19_competition_backend_spec.md` as the backend contract
 
 ## Deferred Until Proven Necessary

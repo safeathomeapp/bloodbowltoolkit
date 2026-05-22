@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import {
+  CompetitionType,
   MatchSessionSide,
   MatchSessionStatus,
   TeamStatus,
@@ -33,6 +34,7 @@ const matchSessionEventTypes = [
 
 type MatchSessionEventTypeValue = (typeof matchSessionEventTypes)[number]
 type MatchSessionStatusValue = 'PENDING' | 'ACTIVE' | 'CLOSED'
+type MatchSessionProgressionStatus = 'NOT_APPLICABLE' | 'READY' | 'APPLIED'
 
 const matchSessionParamsSchema = z.object({
   sessionId: z.string().min(1),
@@ -292,6 +294,7 @@ const timerStateSelect = {
   homeFinalSignoffAt: true,
   awayFinalSignoffAt: true,
   closedAt: true,
+  progressionAppliedAt: true,
 } satisfies Prisma.MatchSessionSelect
 
 function toMatchSessionEventSummary(event: {
@@ -391,6 +394,223 @@ function toFinalSignoffSummary(input: {
     closedAt: input.closedAt ? toIsoString(input.closedAt) : null,
     eventTotals,
     totalEvents: input.events.length,
+  }
+}
+
+function getEventSppValue(eventType: MatchSessionEventTypeValue) {
+  switch (eventType) {
+    case 'TOUCHDOWN':
+      return 3
+    case 'CASUALTY':
+      return 2
+    case 'COMPLETION':
+      return 1
+    case 'INTERCEPTION':
+      return 2
+    case 'MVP_ASSIGNMENT':
+      return 4
+  }
+}
+
+function createEmptyEventTotals() {
+  return {
+    TOUCHDOWN: 0,
+    CASUALTY: 0,
+    COMPLETION: 0,
+    INTERCEPTION: 0,
+    MVP_ASSIGNMENT: 0,
+  } satisfies Record<MatchSessionEventTypeValue, number>
+}
+
+function createEmptyTeamProgressionSummary(team: {
+  id: string
+  name: string
+}) {
+  return {
+    teamId: team.id,
+    teamName: team.name,
+    totalAwardedSpp: 0,
+    players: [] as Array<{
+      playerId: string
+      playerName: string
+      shirtNumber: number | null
+      sppBefore: number
+      sppAwarded: number
+      sppAfter: number
+      eventTotals: Record<MatchSessionEventTypeValue, number>
+    }>,
+  }
+}
+
+function buildMatchSessionProgressionSummary(session: {
+  id: string
+  status: MatchSessionStatus
+  fixtureId: string | null
+  progressionAppliedAt: Date | null
+  events: Array<{
+    id: string
+    teamSide: MatchSessionSide
+    eventType: MatchSessionEventTypeValue
+    playerNumber: number | null
+  }>
+  fixture: {
+    competition: {
+      type: CompetitionType
+    }
+  } | null
+  homeTeam: {
+    id: string
+    name: string
+    players: Array<{
+      id: string
+      name: string
+      shirtNumber: number | null
+      spp: number
+    }>
+  }
+  awayTeam: {
+    id: string
+    name: string
+    players: Array<{
+      id: string
+      name: string
+      shirtNumber: number | null
+      spp: number
+    }>
+  }
+}) {
+  const isTournamentFixture = session.fixture?.competition.type === CompetitionType.TOURNAMENT
+
+  if (isTournamentFixture) {
+    return {
+      applicable: false,
+      scope: 'TOURNAMENT_SNAPSHOT' as const,
+      status: 'NOT_APPLICABLE' as MatchSessionProgressionStatus,
+      appliedAt: null,
+      canApply: false,
+      reason: 'Tournament snapshot rooms record history but do not mutate saved team progression.',
+      homeTeam: createEmptyTeamProgressionSummary(session.homeTeam),
+      awayTeam: createEmptyTeamProgressionSummary(session.awayTeam),
+      unresolvedEvents: [] as Array<{
+        eventId: string
+        eventType: MatchSessionEventTypeValue
+        teamSide: MatchSessionSide
+        playerNumber: number | null
+        reason: string
+      }>,
+    }
+  }
+
+  const homePlayersByNumber = new Map(
+    session.homeTeam.players
+      .filter((player) => typeof player.shirtNumber === 'number')
+      .map((player) => [player.shirtNumber as number, player]),
+  )
+  const awayPlayersByNumber = new Map(
+    session.awayTeam.players
+      .filter((player) => typeof player.shirtNumber === 'number')
+      .map((player) => [player.shirtNumber as number, player]),
+  )
+
+  const homeSummary = createEmptyTeamProgressionSummary(session.homeTeam)
+  const awaySummary = createEmptyTeamProgressionSummary(session.awayTeam)
+  const homePlayerSummaries = new Map<string, (typeof homeSummary.players)[number]>()
+  const awayPlayerSummaries = new Map<string, (typeof awaySummary.players)[number]>()
+  const unresolvedEvents: Array<{
+    eventId: string
+    eventType: MatchSessionEventTypeValue
+    teamSide: MatchSessionSide
+    playerNumber: number | null
+    reason: string
+  }> = []
+
+  for (const event of session.events) {
+    if (typeof event.playerNumber !== 'number') {
+      unresolvedEvents.push({
+        eventId: event.id,
+        eventType: event.eventType,
+        teamSide: event.teamSide,
+        playerNumber: event.playerNumber,
+        reason: 'Player number is required before progression can be applied.',
+      })
+      continue
+    }
+
+    const teamSummary = event.teamSide === MatchSessionSide.HOME ? homeSummary : awaySummary
+    const playerSummaries = event.teamSide === MatchSessionSide.HOME ? homePlayerSummaries : awayPlayerSummaries
+    const player =
+      event.teamSide === MatchSessionSide.HOME
+        ? homePlayersByNumber.get(event.playerNumber)
+        : awayPlayersByNumber.get(event.playerNumber)
+
+    if (!player) {
+      unresolvedEvents.push({
+        eventId: event.id,
+        eventType: event.eventType,
+        teamSide: event.teamSide,
+        playerNumber: event.playerNumber,
+        reason: 'No live team player matches that shirt number.',
+      })
+      continue
+    }
+
+    const sppAward = getEventSppValue(event.eventType)
+    const existingSummary = playerSummaries.get(player.id)
+
+    if (existingSummary) {
+      existingSummary.sppAwarded += sppAward
+      if (session.progressionAppliedAt) {
+        existingSummary.sppBefore -= sppAward
+      } else {
+        existingSummary.sppAfter += sppAward
+      }
+      existingSummary.eventTotals[event.eventType] += 1
+    } else {
+      playerSummaries.set(player.id, {
+        playerId: player.id,
+        playerName: player.name,
+        shirtNumber: player.shirtNumber,
+        sppBefore: session.progressionAppliedAt ? player.spp - sppAward : player.spp,
+        sppAwarded: sppAward,
+        sppAfter: session.progressionAppliedAt ? player.spp : player.spp + sppAward,
+        eventTotals: {
+          ...createEmptyEventTotals(),
+          [event.eventType]: 1,
+        },
+      })
+    }
+
+    teamSummary.totalAwardedSpp += sppAward
+  }
+
+  homeSummary.players = Array.from(homePlayerSummaries.values()).sort(
+    (left, right) => (left.shirtNumber ?? 999) - (right.shirtNumber ?? 999),
+  )
+  awaySummary.players = Array.from(awayPlayerSummaries.values()).sort(
+    (left, right) => (left.shirtNumber ?? 999) - (right.shirtNumber ?? 999),
+  )
+
+  return {
+    applicable: true,
+    scope: 'LIVE_TEAM' as const,
+    status: session.progressionAppliedAt ? ('APPLIED' as MatchSessionProgressionStatus) : ('READY' as MatchSessionProgressionStatus),
+    appliedAt: session.progressionAppliedAt ? toIsoString(session.progressionAppliedAt) : null,
+    canApply:
+      session.status === MatchSessionStatus.CLOSED &&
+      !session.progressionAppliedAt &&
+      unresolvedEvents.length === 0 &&
+      session.events.length > 0,
+    reason:
+      session.status !== MatchSessionStatus.CLOSED
+        ? 'Final signoff must be completed before progression can be applied.'
+        : session.progressionAppliedAt
+          ? 'Progression has already been applied for this room.'
+          : session.events.length === 0
+            ? 'At least one match event is required before progression can be applied.'
+            : null,
+    homeTeam: homeSummary,
+    awayTeam: awaySummary,
+    unresolvedEvents,
   }
 }
 
@@ -1025,6 +1245,255 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
     })
   })
 
+  app.get('/match-sessions/:sessionId/progression', async (request, reply) => {
+    const paramsResult = timerActionParamsSchema.safeParse(request.params)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid match session id.',
+      })
+    }
+
+    const session = await app.prisma.matchSession.findUnique({
+      where: {
+        id: paramsResult.data.sessionId,
+      },
+      include: {
+        events: {
+          select: {
+            id: true,
+            teamSide: true,
+            eventType: true,
+            playerNumber: true,
+          },
+        },
+        fixture: {
+          include: {
+            competition: {
+              select: {
+                type: true,
+              },
+            },
+          },
+        },
+        homeTeam: {
+          include: {
+            players: {
+              select: {
+                id: true,
+                name: true,
+                shirtNumber: true,
+                spp: true,
+              },
+            },
+          },
+        },
+        awayTeam: {
+          include: {
+            players: {
+              select: {
+                id: true,
+                name: true,
+                shirtNumber: true,
+                spp: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    if (!session) {
+      return reply.code(404).send({
+        message: 'Match session not found.',
+      })
+    }
+
+    return reply.send({
+      progression: buildMatchSessionProgressionSummary(session),
+    })
+  })
+
+  app.post('/match-sessions/:sessionId/progression/apply', async (request, reply) => {
+    const paramsResult = timerActionParamsSchema.safeParse(request.params)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid match session id.',
+      })
+    }
+
+    const session = await app.prisma.matchSession.findUnique({
+      where: {
+        id: paramsResult.data.sessionId,
+      },
+      include: {
+        events: {
+          select: {
+            id: true,
+            teamSide: true,
+            eventType: true,
+            playerNumber: true,
+          },
+        },
+        fixture: {
+          include: {
+            competition: {
+              select: {
+                type: true,
+              },
+            },
+          },
+        },
+        homeTeam: {
+          include: {
+            players: {
+              select: {
+                id: true,
+                name: true,
+                shirtNumber: true,
+                spp: true,
+              },
+            },
+          },
+        },
+        awayTeam: {
+          include: {
+            players: {
+              select: {
+                id: true,
+                name: true,
+                shirtNumber: true,
+                spp: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    if (!session) {
+      return reply.code(404).send({
+        message: 'Match session not found.',
+      })
+    }
+
+    const progression = buildMatchSessionProgressionSummary(session)
+
+    if (!progression.applicable) {
+      return reply.code(409).send({
+        message: progression.reason ?? 'This match room does not support live team progression updates.',
+      })
+    }
+
+    if (session.status !== MatchSessionStatus.CLOSED) {
+      return reply.code(409).send({
+        message: 'Final signoff must be completed before progression can be applied.',
+      })
+    }
+
+    if (session.progressionAppliedAt) {
+      return reply.send({
+        progression,
+      })
+    }
+
+    if (session.events.length === 0) {
+      return reply.code(409).send({
+        message: 'At least one match event is required before progression can be applied.',
+      })
+    }
+
+    if (progression.unresolvedEvents.length > 0) {
+      return reply.code(409).send({
+        message: 'Resolve all progression-linked events before applying progression.',
+        unresolvedEvents: progression.unresolvedEvents,
+      })
+    }
+
+    const allPlayerUpdates = [...progression.homeTeam.players, ...progression.awayTeam.players]
+    await app.prisma.$transaction(async (transaction) => {
+      for (const player of allPlayerUpdates) {
+        await transaction.teamPlayer.update({
+          where: {
+            id: player.playerId,
+          },
+          data: {
+            spp: player.sppAfter,
+          },
+        })
+      }
+
+      await transaction.matchSession.update({
+        where: {
+          id: session.id,
+        },
+        data: {
+          progressionAppliedAt: new Date(),
+        },
+      })
+    })
+
+    const updatedSession = await app.prisma.matchSession.findUnique({
+      where: {
+        id: session.id,
+      },
+      include: {
+        events: {
+          select: {
+            id: true,
+            teamSide: true,
+            eventType: true,
+            playerNumber: true,
+          },
+        },
+        fixture: {
+          include: {
+            competition: {
+              select: {
+                type: true,
+              },
+            },
+          },
+        },
+        homeTeam: {
+          include: {
+            players: {
+              select: {
+                id: true,
+                name: true,
+                shirtNumber: true,
+                spp: true,
+              },
+            },
+          },
+        },
+        awayTeam: {
+          include: {
+            players: {
+              select: {
+                id: true,
+                name: true,
+                shirtNumber: true,
+                spp: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    if (!updatedSession) {
+      return reply.code(500).send({
+        message: 'Progression was applied but the updated room state could not be reloaded.',
+      })
+    }
+
+    return reply.send({
+      progression: buildMatchSessionProgressionSummary(updatedSession),
+    })
+  })
+
   app.post('/match-sessions/:sessionId/events', async (request, reply) => {
     const paramsResult = timerActionParamsSchema.safeParse(request.params)
     const bodyResult = createMatchSessionEventBodySchema.safeParse(request.body)
@@ -1106,6 +1575,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
           homeFinalSignoffAt: null,
           awayFinalSignoffAt: null,
           closedAt: null,
+          progressionAppliedAt: null,
         },
       })
 
@@ -1199,6 +1669,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
           homeFinalSignoffAt: null,
           awayFinalSignoffAt: null,
           closedAt: null,
+          progressionAppliedAt: null,
         },
       })
     })
@@ -1456,6 +1927,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         homeFinalSignoffAt: null,
         awayFinalSignoffAt: null,
         closedAt: null,
+        progressionAppliedAt: null,
       },
       select: {
         id: true,
@@ -1565,6 +2037,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         homeFinalSignoffAt: null,
         awayFinalSignoffAt: null,
         closedAt: null,
+        progressionAppliedAt: null,
       },
       select: {
         id: true,
@@ -1650,6 +2123,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         homeFinalSignoffAt: null,
         awayFinalSignoffAt: null,
         closedAt: null,
+        progressionAppliedAt: null,
       },
       select: {
         id: true,

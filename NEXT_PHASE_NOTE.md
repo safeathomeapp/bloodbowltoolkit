@@ -29,6 +29,7 @@
 - match rooms now expose shared turn timer and bank-time state
 - block dice now shows and controls the shared room timer
 - match rooms now support shared event logging, turn confirmation, and final signoff
+- live-team match rooms can now apply signed SPP progression back to persistent teams
 
 ## What Not To Do Next
 
@@ -42,18 +43,18 @@
 ## Best Next Move
 
 - use `docs/architecture/2026-05-19_competition_backend_spec.md` as the implementation contract
-- the shared live-match closeout flow is now implemented and browser-tested
+- the first signed-match progression application pass is now implemented and browser-tested
 
 ## Concrete Next Implementation Pass
 
-1. define the first progression application pass from signed match data
-2. keep tournament and league consequences separate
-3. avoid mutating persistent teams from unsigned or reopened room state
+1. widen progression beyond SPP-only application
+2. define injury and casualty-outcome handling
+3. keep tournament history and live team mutation separate
 4. keep standings and broader administration behind the progression contract
 
 ## After That
 
-1. add progression application on top of signed match data
+1. extend progression beyond raw SPP application
 2. then return to broader progression and richer league administration
 3. keep league and tournament overlays cleanly separated
 4. do not couple progression application too early

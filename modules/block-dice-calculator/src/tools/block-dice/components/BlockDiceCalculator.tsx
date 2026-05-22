@@ -14,6 +14,7 @@ import {
   storeImportedTeamsExchange,
 } from '../../../shared/integration/teamCreatorStore'
 import {
+  applyMatchSessionProgression,
   confirmMatchSessionTurn,
   createMatchSessionEvent,
   createBlockDiceSessionContext,
@@ -21,6 +22,7 @@ import {
   endMatchSessionTurn,
   fetchBlockDiceSessionContextByCode,
   fetchMatchSessionEvents,
+  fetchMatchSessionProgression,
   fetchMatchSessionTimer,
   fetchSharedTeams,
   resetMatchSessionHalf,
@@ -28,6 +30,7 @@ import {
   startMatchSessionTimer,
   type MatchSessionEventSummary,
   type MatchSessionFinalSignoff,
+  type MatchSessionProgressionSummary,
   type MatchSessionTimerState,
   type MatchSessionTurnConfirmation,
   type SharedTeamSummary,
@@ -321,6 +324,7 @@ export function BlockDiceCalculator() {
   const [sessionEvents, setSessionEvents] = useState<MatchSessionEventSummary[]>([])
   const [sessionTurnConfirmation, setSessionTurnConfirmation] = useState<MatchSessionTurnConfirmation | null>(null)
   const [sessionFinalSignoff, setSessionFinalSignoff] = useState<MatchSessionFinalSignoff | null>(null)
+  const [sessionProgression, setSessionProgression] = useState<MatchSessionProgressionSummary | null>(null)
   const [selectedSessionEventType, setSelectedSessionEventType] =
     useState<MatchSessionEventSummary['eventType']>('TOUCHDOWN')
   const [selectedSessionEventTeamSide, setSelectedSessionEventTeamSide] =
@@ -955,6 +959,7 @@ export function BlockDiceCalculator() {
       setSessionEvents([])
       setSessionTurnConfirmation(null)
       setSessionFinalSignoff(null)
+      setSessionProgression(null)
       return
     }
 
@@ -1032,6 +1037,38 @@ export function BlockDiceCalculator() {
       window.clearInterval(intervalId)
     }
   }, [currentSessionId])
+
+  useEffect(() => {
+    if (!currentSessionId) {
+      return
+    }
+
+    let isDisposed = false
+
+    async function loadProgression() {
+      try {
+        const progression = await fetchMatchSessionProgression(currentSessionId)
+
+        if (!isDisposed) {
+          setSessionProgression(progression)
+        }
+      } catch (error) {
+        if (!isDisposed) {
+          setTeamImportFeedback(
+            error instanceof Error
+              ? `Session progression load failed: ${error.message}`
+              : 'Session progression load failed.',
+          )
+        }
+      }
+    }
+
+    void loadProgression()
+
+    return () => {
+      isDisposed = true
+    }
+  }, [currentSessionId, sessionFinalSignoff?.status, sessionEvents.length])
 
   const handleStartSessionTurn = async (side?: 'HOME' | 'AWAY') => {
     if (!currentSessionId) {
@@ -1168,6 +1205,24 @@ export function BlockDiceCalculator() {
     } catch (error) {
       setTeamImportFeedback(
         error instanceof Error ? `Final signoff failed: ${error.message}` : 'Final signoff failed.',
+      )
+    } finally {
+      setIsSessionEventLoading(false)
+    }
+  }
+
+  const handleApplySessionProgression = async () => {
+    if (!currentSessionId) {
+      return
+    }
+
+    try {
+      setIsSessionEventLoading(true)
+      const progression = await applyMatchSessionProgression(currentSessionId)
+      setSessionProgression(progression)
+    } catch (error) {
+      setTeamImportFeedback(
+        error instanceof Error ? `Progression apply failed: ${error.message}` : 'Progression apply failed.',
       )
     } finally {
       setIsSessionEventLoading(false)
@@ -1409,6 +1464,7 @@ export function BlockDiceCalculator() {
     eventType,
     total: sessionFinalSignoff?.eventTotals[eventType] ?? 0,
   })).filter((entry) => entry.total > 0)
+  const progressionApplied = sessionProgression?.status === 'APPLIED'
 
   return (
     <div className={styles.layout}>
@@ -1773,6 +1829,92 @@ export function BlockDiceCalculator() {
                   Final signoff should happen only after the event log is complete for the match.
                 </p>
               )}
+            </section>
+          ) : null}
+          {currentSessionId && sessionProgression ? (
+            <section className={styles.eventPanel} aria-label="Match progression">
+              <div className={styles.timerHeader}>
+                <div>
+                  <p className={styles.eyebrow}>Progression</p>
+                  <p className={styles.resultHeadline}>
+                    {sessionProgression.scope === 'LIVE_TEAM'
+                      ? 'Live team progression'
+                      : 'Tournament snapshot history'}
+                  </p>
+                </div>
+              </div>
+              {sessionProgression.reason ? <p className={styles.statusNote}>{sessionProgression.reason}</p> : null}
+              <div className={styles.eventList}>
+                <article className={styles.eventCard}>
+                  <div className={styles.eventMeta}>
+                    <strong>Blue team</strong>
+                    <span>{sessionProgression.homeTeam.teamName}</span>
+                    <span>{sessionProgression.homeTeam.totalAwardedSpp} SPP</span>
+                  </div>
+                  {sessionProgression.homeTeam.players.length === 0 ? (
+                    <p className={styles.eventNote}>No applied player awards yet.</p>
+                  ) : (
+                    <div className={styles.eventList}>
+                      {sessionProgression.homeTeam.players.map((player) => (
+                        <div key={player.playerId} className={styles.eventMeta}>
+                          <strong>{player.shirtNumber ?? '-'} - {player.playerName}</strong>
+                          <span>{player.sppBefore} + {player.sppAwarded} = {player.sppAfter} SPP</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </article>
+                <article className={styles.eventCard}>
+                  <div className={styles.eventMeta}>
+                    <strong>Red team</strong>
+                    <span>{sessionProgression.awayTeam.teamName}</span>
+                    <span>{sessionProgression.awayTeam.totalAwardedSpp} SPP</span>
+                  </div>
+                  {sessionProgression.awayTeam.players.length === 0 ? (
+                    <p className={styles.eventNote}>No applied player awards yet.</p>
+                  ) : (
+                    <div className={styles.eventList}>
+                      {sessionProgression.awayTeam.players.map((player) => (
+                        <div key={player.playerId} className={styles.eventMeta}>
+                          <strong>{player.shirtNumber ?? '-'} - {player.playerName}</strong>
+                          <span>{player.sppBefore} + {player.sppAwarded} = {player.sppAfter} SPP</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </article>
+              </div>
+              {sessionProgression.unresolvedEvents.length > 0 ? (
+                <div className={styles.eventList}>
+                  {sessionProgression.unresolvedEvents.map((event) => (
+                    <article key={event.eventId} className={styles.eventCard}>
+                      <div className={styles.eventMeta}>
+                        <strong>{toEventTypeLabel(event.eventType)}</strong>
+                        <span>{toSessionSideLabel(event.teamSide)}</span>
+                        <span>{event.playerNumber ? `#${event.playerNumber}` : 'No player #'}</span>
+                      </div>
+                      <p className={styles.eventNote}>{event.reason}</p>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+              {sessionProgression.applicable ? (
+                <div className={styles.timerActionRow}>
+                  <button
+                    type="button"
+                    className={styles.actionButtonPrimary}
+                    onClick={() => void handleApplySessionProgression()}
+                    disabled={isSessionEventLoading || !sessionProgression.canApply || progressionApplied}
+                  >
+                    {progressionApplied ? 'Progression applied' : 'Apply progression'}
+                  </button>
+                </div>
+              ) : null}
+              {sessionProgression.appliedAt ? (
+                <p className={styles.statusNote}>
+                  Progression applied at {new Date(sessionProgression.appliedAt).toLocaleString()}.
+                </p>
+              ) : null}
             </section>
           ) : null}
         </div>
