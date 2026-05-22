@@ -64,6 +64,22 @@ type SubmissionInspectionState = {
   submission: CompetitionSubmissionDetail
 }
 
+type ConfirmationDialogState =
+  | {
+      kind: 'DELETE_TEAM'
+      teamId: string
+      title: string
+      message: string
+      confirmLabel: string
+    }
+  | {
+      kind: 'REMOVE_DRAFT_PLAYER' | 'FIRE_PLAYER' | 'RETIRE_PLAYER' | 'MARK_PLAYER_DEAD'
+      playerId: string
+      title: string
+      message: string
+      confirmLabel: string
+    }
+
 const repositorySelection = resolveTeamRepositorySelection()
 const repository = repositorySelection.repository
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() ?? ''
@@ -227,6 +243,7 @@ export function TeamCreator() {
     displayName: '',
   })
   const [inspectedSubmission, setInspectedSubmission] = useState<SubmissionInspectionState | null>(null)
+  const [confirmationDialog, setConfirmationDialog] = useState<ConfirmationDialogState | null>(null)
 
   const draftRuleReferences: Record<string, ReferenceModalContent> = {
     rerolls: {
@@ -831,6 +848,39 @@ export function TeamCreator() {
     setFeedback('Team deleted.')
   }
 
+  async function handleConfirmedAction() {
+    if (!confirmationDialog) {
+      return
+    }
+
+    const action = confirmationDialog
+    setConfirmationDialog(null)
+
+    if (action.kind === 'DELETE_TEAM') {
+      await handleDeleteTeam(action.teamId)
+      return
+    }
+
+    if (action.kind === 'REMOVE_DRAFT_PLAYER') {
+      handleRemovePlayer(action.playerId)
+      return
+    }
+
+    if (action.kind === 'FIRE_PLAYER') {
+      handleFirePlayer(action.playerId)
+      return
+    }
+
+    if (action.kind === 'RETIRE_PLAYER') {
+      handleRetirePlayer(action.playerId)
+      return
+    }
+
+    if (action.kind === 'MARK_PLAYER_DEAD') {
+      handleMarkPlayerDead(action.playerId)
+    }
+  }
+
   function updateActiveTeam(updater: (team: SavedTeam) => SavedTeam) {
     setActiveTeam((currentTeam) => {
       if (!currentTeam) {
@@ -1026,6 +1076,56 @@ export function TeamCreator() {
 
   function handleMarkPlayerDead(playerId: string) {
     handlePlayerStatusChange(playerId, 'DEAD')
+  }
+
+  function requestDeleteTeam(teamId: string, teamName: string) {
+    setConfirmationDialog({
+      kind: 'DELETE_TEAM',
+      teamId,
+      title: 'Delete Team?',
+      message: `${teamName} will be removed from this repository. This cannot be undone from the team vault.`,
+      confirmLabel: 'Delete Team',
+    })
+  }
+
+  function requestRemoveDraftPlayer(playerId: string, playerName: string) {
+    setConfirmationDialog({
+      kind: 'REMOVE_DRAFT_PLAYER',
+      playerId,
+      title: 'Remove Draft Player?',
+      message: `${playerName} will be removed from this draft with no penalty.`,
+      confirmLabel: 'Remove Player',
+    })
+  }
+
+  function requestFirePlayer(playerId: string, playerName: string) {
+    setConfirmationDialog({
+      kind: 'FIRE_PLAYER',
+      playerId,
+      title: 'Fire Player?',
+      message: `${playerName} will be archived as fired. Team value will drop, but no gold is refunded to treasury.`,
+      confirmLabel: 'Fire Player',
+    })
+  }
+
+  function requestRetirePlayer(playerId: string, playerName: string) {
+    setConfirmationDialog({
+      kind: 'RETIRE_PLAYER',
+      playerId,
+      title: 'Retire Player?',
+      message: `${playerName} will be archived as retired and removed from the active roster.`,
+      confirmLabel: 'Retire Player',
+    })
+  }
+
+  function requestMarkPlayerDead(playerId: string, playerName: string) {
+    setConfirmationDialog({
+      kind: 'MARK_PLAYER_DEAD',
+      playerId,
+      title: 'Mark Player Dead?',
+      message: `${playerName} will be archived as dead and removed from the active roster.`,
+      confirmLabel: 'Mark Dead',
+    })
   }
 
   function handleTeamNameChange(name: string) {
@@ -1281,7 +1381,11 @@ export function TeamCreator() {
                         <span>{team.playerCount} players</span>
                         <span>Team Value {formatGold(team.totalValue)} gp</span>
                       </button>
-                      <button className={styles.deleteButton} onClick={() => void handleDeleteTeam(team.id)} type="button">
+                      <button
+                        className={styles.deleteButton}
+                        onClick={() => requestDeleteTeam(team.id, team.name)}
+                        type="button"
+                      >
                         Delete
                       </button>
                     </article>
@@ -1748,6 +1852,47 @@ export function TeamCreator() {
             </div>
           </div>
         ) : null}
+        {confirmationDialog ? (
+          <div
+            className={styles.skillModalBackdrop}
+            onClick={() => setConfirmationDialog(null)}
+            role="presentation"
+          >
+            <div
+              className={styles.submissionModal}
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+            >
+              <button
+                className={styles.skillModalClose}
+                onClick={() => setConfirmationDialog(null)}
+                type="button"
+                aria-label="Close confirmation"
+              >
+                ×
+              </button>
+              <h2 className={styles.skillModalTitle}>{confirmationDialog.title}</h2>
+              <p className={styles.skillModalExcerpt}>{confirmationDialog.message}</p>
+              <div className={styles.competitionActionRow}>
+                <button
+                  className={styles.secondaryButton}
+                  onClick={() => setConfirmationDialog(null)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className={styles.deleteButton}
+                  onClick={() => void handleConfirmedAction()}
+                  type="button"
+                >
+                  {confirmationDialog.confirmLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     )
   }
@@ -1915,9 +2060,13 @@ export function TeamCreator() {
                                 </button>
                                 <button
                                   className={styles.iconButton}
-                                  onClick={() => handleRemovePlayer(player.id)}
+                                  onClick={() =>
+                                    isDraftTeam
+                                      ? requestRemoveDraftPlayer(player.id, player.name)
+                                      : requestFirePlayer(player.id, player.name)
+                                  }
                                   type="button"
-                                  aria-label="Delete player"
+                                  aria-label={isDraftTeam ? 'Remove draft player' : 'Fire player'}
                                 >
                                   ×
                                 </button>
@@ -1976,26 +2125,26 @@ export function TeamCreator() {
                           {!isDraftTeam ? (
                             <td>
                               <div className={styles.lifecycleActionStack}>
-                                <button
-                                  className={styles.rowButton}
-                                  onClick={() => handleFirePlayer(player.id)}
-                                  type="button"
-                                >
-                                  Fire
-                                </button>
-                                <button
-                                  className={styles.rowButton}
-                                  onClick={() => handleRetirePlayer(player.id)}
-                                  type="button"
-                                >
-                                  Retire
-                                </button>
-                                <button
-                                  className={styles.rowButton}
-                                  onClick={() => handleMarkPlayerDead(player.id)}
-                                  type="button"
-                                >
-                                  Mark Dead
+                              <button
+                                className={styles.rowButton}
+                                onClick={() => requestFirePlayer(player.id, player.name)}
+                                type="button"
+                              >
+                                Fire
+                              </button>
+                              <button
+                                className={styles.rowButton}
+                                onClick={() => requestRetirePlayer(player.id, player.name)}
+                                type="button"
+                              >
+                                Retire
+                              </button>
+                              <button
+                                className={styles.rowButton}
+                                onClick={() => requestMarkPlayerDead(player.id, player.name)}
+                                type="button"
+                              >
+                                Mark Dead
                                 </button>
                               </div>
                             </td>
@@ -2385,6 +2534,47 @@ export function TeamCreator() {
             <p className={styles.skillModalMeta}>Type: {activeReference.type}</p>
             <p className={styles.skillModalExcerpt}>{activeReference.excerpt}</p>
             <p className={styles.skillModalPage}>Reference: page {activeReference.page}</p>
+          </div>
+        </div>
+      ) : null}
+      {confirmationDialog ? (
+        <div
+          className={styles.skillModalBackdrop}
+          onClick={() => setConfirmationDialog(null)}
+          role="presentation"
+        >
+          <div
+            className={styles.submissionModal}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <button
+              className={styles.skillModalClose}
+              onClick={() => setConfirmationDialog(null)}
+              type="button"
+              aria-label="Close confirmation"
+            >
+              ×
+            </button>
+            <h2 className={styles.skillModalTitle}>{confirmationDialog.title}</h2>
+            <p className={styles.skillModalExcerpt}>{confirmationDialog.message}</p>
+            <div className={styles.competitionActionRow}>
+              <button
+                className={styles.secondaryButton}
+                onClick={() => setConfirmationDialog(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className={styles.deleteButton}
+                onClick={() => void handleConfirmedAction()}
+                type="button"
+              >
+                {confirmationDialog.confirmLabel}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
