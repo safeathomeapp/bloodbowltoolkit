@@ -19,6 +19,7 @@ const savedTeamPlayerSchema = z.object({
   currentValue: z.number().int().nonnegative(),
   spp: z.number().int().nonnegative(),
   nigglingInjuries: z.number().int().nonnegative(),
+  missNextGame: z.boolean().optional(),
   extraSkills: z.array(z.string().trim().min(1)),
   statAdjustments: statAdjustmentsSchema,
 })
@@ -78,6 +79,7 @@ function toSavedTeam(playerTeam: {
     currentValue: number
     spp: number
     nigglingInjuries: number
+    missNextGame?: boolean
     extraSkills: string[]
     statAdjustments: unknown
   }>
@@ -106,6 +108,7 @@ function toSavedTeam(playerTeam: {
       currentValue: player.currentValue,
       spp: player.spp,
       nigglingInjuries: player.nigglingInjuries,
+      missNextGame: player.missNextGame ?? false,
       extraSkills: player.extraSkills,
       statAdjustments: statAdjustmentsSchema.parse(player.statAdjustments),
     })),
@@ -309,6 +312,7 @@ export async function registerTeamRoutes(app: FastifyInstance) {
             currentValue: player.currentValue,
             spp: player.spp,
             nigglingInjuries: player.nigglingInjuries,
+            missNextGame: player.missNextGame ?? false,
             extraSkills: player.extraSkills,
             statAdjustments: player.statAdjustments,
             displayOrder: index,
@@ -404,6 +408,7 @@ export async function registerTeamRoutes(app: FastifyInstance) {
               currentValue: player.currentValue,
               spp: player.spp,
               nigglingInjuries: player.nigglingInjuries,
+              missNextGame: player.missNextGame ?? false,
               extraSkills: player.extraSkills,
               statAdjustments: player.statAdjustments,
               displayOrder: index,

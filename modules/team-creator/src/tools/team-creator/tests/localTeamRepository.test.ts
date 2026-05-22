@@ -28,6 +28,7 @@ function createTeam(): SavedTeam {
         currentValue: 50000,
         spp: 0,
         nigglingInjuries: 0,
+        missNextGame: false,
         extraSkills: [],
         statAdjustments: {},
       },

@@ -54,6 +54,7 @@ export interface SavedTeamPlayer {
   currentValue: number
   spp: number
   nigglingInjuries: number
+  missNextGame: boolean
   extraSkills: string[]
   statAdjustments: {
     movement?: number

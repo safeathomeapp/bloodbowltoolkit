@@ -24,6 +24,7 @@ function normalizeTeam(team: SavedTeam): SavedTeam {
       shirtNumber: player.shirtNumber ?? null,
       spp: player.spp ?? 0,
       nigglingInjuries: player.nigglingInjuries ?? 0,
+      missNextGame: player.missNextGame ?? false,
       extraSkills: player.extraSkills ?? [],
       statAdjustments: player.statAdjustments ?? {},
     })),

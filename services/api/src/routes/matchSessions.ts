@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import {
   CompetitionType,
+  MatchSessionCasualtyResolutionType,
   MatchSessionSide,
   MatchSessionStatus,
   TeamStatus,
@@ -66,6 +67,8 @@ const createMatchSessionEventBodySchema = z.object({
   eventType: z.enum(matchSessionEventTypes),
   teamSide: z.nativeEnum(MatchSessionSide),
   playerNumber: z.number().int().positive().nullable().optional(),
+  injuredTeamSide: z.nativeEnum(MatchSessionSide).nullable().optional(),
+  injuredPlayerNumber: z.number().int().positive().nullable().optional(),
   notes: z.string().trim().max(280).nullable().optional(),
 })
 
@@ -75,6 +78,10 @@ const confirmTurnBodySchema = z.object({
 
 const finalSignoffBodySchema = z.object({
   signedOffSide: z.nativeEnum(MatchSessionSide),
+})
+
+const casualtyResolutionBodySchema = z.object({
+  resolutionType: z.nativeEnum(MatchSessionCasualtyResolutionType),
 })
 
 function toIsoString(value: Date) {
@@ -99,6 +106,7 @@ function toSavedTeamRecord(team: {
     currentValue: number
     spp: number
     nigglingInjuries: number
+    missNextGame?: boolean
     extraSkills: string[]
     statAdjustments: unknown
   }>
@@ -117,6 +125,7 @@ function toSavedTeamRecord(team: {
       currentValue: player.currentValue,
       spp: player.spp,
       nigglingInjuries: player.nigglingInjuries,
+      missNextGame: player.missNextGame ?? false,
       extraSkills: player.extraSkills,
       statAdjustments: statAdjustmentsSchema.parse(player.statAdjustments),
     })),
@@ -151,6 +160,7 @@ function toSavedTeamRecordFromSubmission(submission: {
       currentValue: player.currentValue,
       spp: 0,
       nigglingInjuries: 0,
+      missNextGame: false,
       extraSkills: player.extraSkills,
       statAdjustments: statAdjustmentsSchema.parse(player.statAdjustments),
     })),
@@ -305,6 +315,8 @@ function toMatchSessionEventSummary(event: {
   teamSide: MatchSessionSide
   eventType: MatchSessionEventTypeValue
   playerNumber: number | null
+  injuredTeamSide: MatchSessionSide | null
+  injuredPlayerNumber: number | null
   notes: string | null
   createdAt: Date
 }) {
@@ -316,6 +328,8 @@ function toMatchSessionEventSummary(event: {
     teamSide: event.teamSide,
     eventType: event.eventType,
     playerNumber: event.playerNumber,
+    injuredTeamSide: event.injuredTeamSide,
+    injuredPlayerNumber: event.injuredPlayerNumber,
     notes: event.notes,
     createdAt: toIsoString(event.createdAt),
   }
@@ -437,8 +451,22 @@ function createEmptyTeamProgressionSummary(team: {
       sppBefore: number
       sppAwarded: number
       sppAfter: number
+      missNextGameBefore: boolean
+      missNextGameAfter: boolean
+      nigglingInjuriesBefore: number
+      nigglingInjuriesAfter: number
       eventTotals: Record<MatchSessionEventTypeValue, number>
     }>,
+  }
+}
+
+function toCasualtyResolutionSummary(resolution: {
+  matchSessionEventId: string
+  resolutionType: MatchSessionCasualtyResolutionType
+}) {
+  return {
+    matchSessionEventId: resolution.matchSessionEventId,
+    resolutionType: resolution.resolutionType,
   }
 }
 
@@ -452,6 +480,12 @@ function buildMatchSessionProgressionSummary(session: {
     teamSide: MatchSessionSide
     eventType: MatchSessionEventTypeValue
     playerNumber: number | null
+    injuredTeamSide: MatchSessionSide | null
+    injuredPlayerNumber: number | null
+  }>
+  casualtyResolutions: Array<{
+    matchSessionEventId: string
+    resolutionType: MatchSessionCasualtyResolutionType
   }>
   fixture: {
     competition: {
@@ -466,6 +500,8 @@ function buildMatchSessionProgressionSummary(session: {
       name: string
       shirtNumber: number | null
       spp: number
+      nigglingInjuries: number
+      missNextGame: boolean
     }>
   }
   awayTeam: {
@@ -476,10 +512,15 @@ function buildMatchSessionProgressionSummary(session: {
       name: string
       shirtNumber: number | null
       spp: number
+      nigglingInjuries: number
+      missNextGame: boolean
     }>
   }
 }) {
   const isTournamentFixture = session.fixture?.competition.type === CompetitionType.TOURNAMENT
+  const casualtyResolutionMap = new Map(
+    session.casualtyResolutions.map((resolution) => [resolution.matchSessionEventId, resolution.resolutionType]),
+  )
 
   if (isTournamentFixture) {
     return {
@@ -491,11 +532,14 @@ function buildMatchSessionProgressionSummary(session: {
       reason: 'Tournament snapshot rooms record history but do not mutate saved team progression.',
       homeTeam: createEmptyTeamProgressionSummary(session.homeTeam),
       awayTeam: createEmptyTeamProgressionSummary(session.awayTeam),
+      casualtyResolutions: session.casualtyResolutions.map(toCasualtyResolutionSummary),
       unresolvedEvents: [] as Array<{
         eventId: string
         eventType: MatchSessionEventTypeValue
         teamSide: MatchSessionSide
         playerNumber: number | null
+        injuredTeamSide: MatchSessionSide | null
+        injuredPlayerNumber: number | null
         reason: string
       }>,
     }
@@ -521,6 +565,8 @@ function buildMatchSessionProgressionSummary(session: {
     eventType: MatchSessionEventTypeValue
     teamSide: MatchSessionSide
     playerNumber: number | null
+    injuredTeamSide: MatchSessionSide | null
+    injuredPlayerNumber: number | null
     reason: string
   }> = []
 
@@ -531,6 +577,8 @@ function buildMatchSessionProgressionSummary(session: {
         eventType: event.eventType,
         teamSide: event.teamSide,
         playerNumber: event.playerNumber,
+        injuredTeamSide: event.injuredTeamSide,
+        injuredPlayerNumber: event.injuredPlayerNumber,
         reason: 'Player number is required before progression can be applied.',
       })
       continue
@@ -549,6 +597,8 @@ function buildMatchSessionProgressionSummary(session: {
         eventType: event.eventType,
         teamSide: event.teamSide,
         playerNumber: event.playerNumber,
+        injuredTeamSide: event.injuredTeamSide,
+        injuredPlayerNumber: event.injuredPlayerNumber,
         reason: 'No live team player matches that shirt number.',
       })
       continue
@@ -556,6 +606,7 @@ function buildMatchSessionProgressionSummary(session: {
 
     const sppAward = getEventSppValue(event.eventType)
     const existingSummary = playerSummaries.get(player.id)
+    const casualtyResolution = event.eventType === 'CASUALTY' ? casualtyResolutionMap.get(event.id) ?? null : null
 
     if (existingSummary) {
       existingSummary.sppAwarded += sppAward
@@ -573,6 +624,10 @@ function buildMatchSessionProgressionSummary(session: {
         sppBefore: session.progressionAppliedAt ? player.spp - sppAward : player.spp,
         sppAwarded: sppAward,
         sppAfter: session.progressionAppliedAt ? player.spp : player.spp + sppAward,
+        missNextGameBefore: player.missNextGame,
+        missNextGameAfter: player.missNextGame,
+        nigglingInjuriesBefore: player.nigglingInjuries,
+        nigglingInjuriesAfter: player.nigglingInjuries,
         eventTotals: {
           ...createEmptyEventTotals(),
           [event.eventType]: 1,
@@ -581,6 +636,109 @@ function buildMatchSessionProgressionSummary(session: {
     }
 
     teamSummary.totalAwardedSpp += sppAward
+
+    if (event.eventType !== 'CASUALTY') {
+      continue
+    }
+
+    if (!event.injuredTeamSide || typeof event.injuredPlayerNumber !== 'number') {
+      unresolvedEvents.push({
+        eventId: event.id,
+        eventType: event.eventType,
+        teamSide: event.teamSide,
+        playerNumber: event.playerNumber,
+        injuredTeamSide: event.injuredTeamSide,
+        injuredPlayerNumber: event.injuredPlayerNumber,
+        reason: 'Choose the injured team and player before progression can be applied.',
+      })
+      continue
+    }
+
+    const injuredPlayerSummaries =
+      event.injuredTeamSide === MatchSessionSide.HOME ? homePlayerSummaries : awayPlayerSummaries
+    const injuredPlayer =
+      event.injuredTeamSide === MatchSessionSide.HOME
+        ? homePlayersByNumber.get(event.injuredPlayerNumber)
+        : awayPlayersByNumber.get(event.injuredPlayerNumber)
+
+    if (!injuredPlayer) {
+      unresolvedEvents.push({
+        eventId: event.id,
+        eventType: event.eventType,
+        teamSide: event.teamSide,
+        playerNumber: event.playerNumber,
+        injuredTeamSide: event.injuredTeamSide,
+        injuredPlayerNumber: event.injuredPlayerNumber,
+        reason: 'No injured live team player matches that shirt number.',
+      })
+      continue
+    }
+
+    if (!casualtyResolution) {
+      unresolvedEvents.push({
+        eventId: event.id,
+        eventType: event.eventType,
+        teamSide: event.teamSide,
+        playerNumber: event.playerNumber,
+        injuredTeamSide: event.injuredTeamSide,
+        injuredPlayerNumber: event.injuredPlayerNumber,
+        reason: 'Choose a casualty outcome before progression can be applied.',
+      })
+      continue
+    }
+
+    const existingInjuredSummary = injuredPlayerSummaries.get(injuredPlayer.id)
+
+    if (existingInjuredSummary) {
+      if (casualtyResolution === 'MISS_NEXT_GAME') {
+        existingInjuredSummary.missNextGameBefore =
+          session.progressionAppliedAt && injuredPlayer.missNextGame
+            ? false
+            : existingInjuredSummary.missNextGameBefore
+        existingInjuredSummary.missNextGameAfter = session.progressionAppliedAt
+          ? injuredPlayer.missNextGame
+          : true
+      }
+
+      if (casualtyResolution === 'NIGGLING_INJURY') {
+        existingInjuredSummary.nigglingInjuriesBefore = session.progressionAppliedAt
+          ? injuredPlayer.nigglingInjuries - 1
+          : existingInjuredSummary.nigglingInjuriesBefore
+        existingInjuredSummary.nigglingInjuriesAfter = session.progressionAppliedAt
+          ? injuredPlayer.nigglingInjuries
+          : injuredPlayer.nigglingInjuries + 1
+      }
+    } else {
+      injuredPlayerSummaries.set(injuredPlayer.id, {
+        playerId: injuredPlayer.id,
+        playerName: injuredPlayer.name,
+        shirtNumber: injuredPlayer.shirtNumber,
+        sppBefore: injuredPlayer.spp,
+        sppAwarded: 0,
+        sppAfter: injuredPlayer.spp,
+        missNextGameBefore:
+          session.progressionAppliedAt && casualtyResolution === 'MISS_NEXT_GAME'
+            ? false
+            : injuredPlayer.missNextGame,
+        missNextGameAfter:
+          session.progressionAppliedAt
+            ? injuredPlayer.missNextGame
+            : casualtyResolution === 'MISS_NEXT_GAME'
+              ? true
+              : injuredPlayer.missNextGame,
+        nigglingInjuriesBefore:
+          session.progressionAppliedAt && casualtyResolution === 'NIGGLING_INJURY'
+            ? injuredPlayer.nigglingInjuries - 1
+            : injuredPlayer.nigglingInjuries,
+        nigglingInjuriesAfter:
+          session.progressionAppliedAt
+            ? injuredPlayer.nigglingInjuries
+            : casualtyResolution === 'NIGGLING_INJURY'
+              ? injuredPlayer.nigglingInjuries + 1
+              : injuredPlayer.nigglingInjuries,
+        eventTotals: createEmptyEventTotals(),
+      })
+    }
   }
 
   homeSummary.players = Array.from(homePlayerSummaries.values()).sort(
@@ -605,11 +763,14 @@ function buildMatchSessionProgressionSummary(session: {
         ? 'Final signoff must be completed before progression can be applied.'
         : session.progressionAppliedAt
           ? 'Progression has already been applied for this room.'
-          : session.events.length === 0
-            ? 'At least one match event is required before progression can be applied.'
-            : null,
+          : unresolvedEvents.some((event) => event.eventType === 'CASUALTY')
+            ? 'Resolve all casualty outcomes before progression can be applied.'
+            : session.events.length === 0
+              ? 'At least one match event is required before progression can be applied.'
+              : null,
     homeTeam: homeSummary,
     awayTeam: awaySummary,
+    casualtyResolutions: session.casualtyResolutions.map(toCasualtyResolutionSummary),
     unresolvedEvents,
   }
 }
@@ -1265,6 +1426,14 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
             teamSide: true,
             eventType: true,
             playerNumber: true,
+            injuredTeamSide: true,
+            injuredPlayerNumber: true,
+          },
+        },
+        casualtyResolutions: {
+          select: {
+            matchSessionEventId: true,
+            resolutionType: true,
           },
         },
         fixture: {
@@ -1284,6 +1453,8 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
                 name: true,
                 shirtNumber: true,
                 spp: true,
+                nigglingInjuries: true,
+                missNextGame: true,
               },
             },
           },
@@ -1296,6 +1467,8 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
                 name: true,
                 shirtNumber: true,
                 spp: true,
+                nigglingInjuries: true,
+                missNextGame: true,
               },
             },
           },
@@ -1311,6 +1484,164 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
 
     return reply.send({
       progression: buildMatchSessionProgressionSummary(session),
+    })
+  })
+
+  app.put('/match-sessions/:sessionId/casualty-resolution/:eventId', async (request, reply) => {
+    const paramsResult = matchSessionEventParamsSchema.safeParse(request.params)
+    const bodyResult = casualtyResolutionBodySchema.safeParse(request.body)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid casualty event id.',
+      })
+    }
+
+    if (!bodyResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid casualty resolution payload.',
+        issues: bodyResult.error.issues,
+      })
+    }
+
+    const event = await app.prisma.matchSessionEvent.findFirst({
+      where: {
+        id: paramsResult.data.eventId,
+        matchSessionId: paramsResult.data.sessionId,
+      },
+      select: {
+        id: true,
+        matchSessionId: true,
+        eventType: true,
+      },
+    })
+
+    if (!event) {
+      return reply.code(404).send({
+        message: 'Match session event not found.',
+      })
+    }
+
+    if (event.eventType !== 'CASUALTY') {
+      return reply.code(409).send({
+        message: 'Only casualty events can receive a casualty resolution.',
+      })
+    }
+
+    const session = await app.prisma.matchSession.findUnique({
+      where: {
+        id: paramsResult.data.sessionId,
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    })
+
+    if (!session) {
+      return reply.code(404).send({
+        message: 'Match session not found.',
+      })
+    }
+
+    await app.prisma.$transaction(async (transaction) => {
+      await transaction.matchSessionCasualtyResolution.upsert({
+        where: {
+          matchSessionEventId: event.id,
+        },
+        create: {
+          matchSessionId: event.matchSessionId,
+          matchSessionEventId: event.id,
+          resolutionType: bodyResult.data.resolutionType,
+        },
+        update: {
+          resolutionType: bodyResult.data.resolutionType,
+        },
+      })
+
+      await transaction.matchSession.update({
+        where: {
+          id: session.id,
+        },
+        data: {
+          status: session.status === MatchSessionStatus.CLOSED ? MatchSessionStatus.PENDING : session.status,
+          homeFinalSignoffAt: null,
+          awayFinalSignoffAt: null,
+          closedAt: null,
+          progressionAppliedAt: null,
+        },
+      })
+    })
+
+    const updatedSession = await app.prisma.matchSession.findUnique({
+      where: {
+        id: paramsResult.data.sessionId,
+      },
+      include: {
+        events: {
+          select: {
+            id: true,
+            teamSide: true,
+            eventType: true,
+            playerNumber: true,
+            injuredTeamSide: true,
+            injuredPlayerNumber: true,
+          },
+        },
+        casualtyResolutions: {
+          select: {
+            matchSessionEventId: true,
+            resolutionType: true,
+          },
+        },
+        fixture: {
+          include: {
+            competition: {
+              select: {
+                type: true,
+              },
+            },
+          },
+        },
+        homeTeam: {
+          include: {
+            players: {
+              select: {
+                id: true,
+                name: true,
+                shirtNumber: true,
+                spp: true,
+                nigglingInjuries: true,
+                missNextGame: true,
+              },
+            },
+          },
+        },
+        awayTeam: {
+          include: {
+            players: {
+              select: {
+                id: true,
+                name: true,
+                shirtNumber: true,
+                spp: true,
+                nigglingInjuries: true,
+                missNextGame: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    if (!updatedSession) {
+      return reply.code(500).send({
+        message: 'Casualty resolution was saved but the updated room state could not be reloaded.',
+      })
+    }
+
+    return reply.send({
+      progression: buildMatchSessionProgressionSummary(updatedSession),
     })
   })
 
@@ -1334,6 +1665,14 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
             teamSide: true,
             eventType: true,
             playerNumber: true,
+            injuredTeamSide: true,
+            injuredPlayerNumber: true,
+          },
+        },
+        casualtyResolutions: {
+          select: {
+            matchSessionEventId: true,
+            resolutionType: true,
           },
         },
         fixture: {
@@ -1353,6 +1692,8 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
                 name: true,
                 shirtNumber: true,
                 spp: true,
+                nigglingInjuries: true,
+                missNextGame: true,
               },
             },
           },
@@ -1365,6 +1706,8 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
                 name: true,
                 shirtNumber: true,
                 spp: true,
+                nigglingInjuries: true,
+                missNextGame: true,
               },
             },
           },
@@ -1420,6 +1763,8 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
           },
           data: {
             spp: player.sppAfter,
+            nigglingInjuries: player.nigglingInjuriesAfter,
+            missNextGame: player.missNextGameAfter,
           },
         })
       }
@@ -1445,6 +1790,14 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
             teamSide: true,
             eventType: true,
             playerNumber: true,
+            injuredTeamSide: true,
+            injuredPlayerNumber: true,
+          },
+        },
+        casualtyResolutions: {
+          select: {
+            matchSessionEventId: true,
+            resolutionType: true,
           },
         },
         fixture: {
@@ -1464,6 +1817,8 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
                 name: true,
                 shirtNumber: true,
                 spp: true,
+                nigglingInjuries: true,
+                missNextGame: true,
               },
             },
           },
@@ -1476,6 +1831,8 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
                 name: true,
                 shirtNumber: true,
                 spp: true,
+                nigglingInjuries: true,
+                missNextGame: true,
               },
             },
           },
@@ -1511,6 +1868,23 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       })
     }
 
+    if (bodyResult.data.eventType === 'CASUALTY') {
+      if (
+        !bodyResult.data.injuredTeamSide ||
+        typeof bodyResult.data.injuredPlayerNumber !== 'number'
+      ) {
+        return reply.code(400).send({
+          message: 'Casualty events require an injured team and injured player number.',
+        })
+      }
+
+      if (bodyResult.data.injuredTeamSide === bodyResult.data.teamSide) {
+        return reply.code(400).send({
+          message: 'Casualty injured team must be the opposing side.',
+        })
+      }
+    }
+
     const session = await app.prisma.matchSession.findUnique({
       where: {
         id: paramsResult.data.sessionId,
@@ -1538,8 +1912,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
           turnNumber: session.timerCurrentTurnNumber,
           actingSide: session.timerActiveSide,
           teamSide: bodyResult.data.teamSide,
+          injuredTeamSide:
+            bodyResult.data.eventType === 'CASUALTY' ? bodyResult.data.injuredTeamSide ?? null : null,
           eventType: bodyResult.data.eventType,
           playerNumber: bodyResult.data.playerNumber ?? null,
+          injuredPlayerNumber:
+            bodyResult.data.eventType === 'CASUALTY' ? bodyResult.data.injuredPlayerNumber ?? null : null,
           notes: bodyResult.data.notes || null,
         },
       })
@@ -1572,6 +1950,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
           id: session.id,
         },
         data: {
+          status: session.status === MatchSessionStatus.CLOSED ? MatchSessionStatus.PENDING : session.status,
           homeFinalSignoffAt: null,
           awayFinalSignoffAt: null,
           closedAt: null,
@@ -1666,6 +2045,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
           id: event.matchSessionId,
         },
         data: {
+          status: session.status === MatchSessionStatus.CLOSED ? MatchSessionStatus.PENDING : session.status,
           homeFinalSignoffAt: null,
           awayFinalSignoffAt: null,
           closedAt: null,
@@ -1916,6 +2296,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       },
       data: {
         timerEnabled: true,
+        status: session.status === MatchSessionStatus.CLOSED ? MatchSessionStatus.PENDING : session.status,
         timerTurnSeconds: session.timerTurnSeconds ?? getDefaultTimerConfig().perTurnSeconds,
         timerBankSeconds: session.timerBankSeconds ?? getDefaultTimerConfig().bankSeconds,
         timerHomeBankRemainingSeconds:
@@ -2029,6 +2410,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         id: session.id,
       },
       data: {
+        status: session.status === MatchSessionStatus.CLOSED ? MatchSessionStatus.PENDING : session.status,
         timerHomeBankRemainingSeconds: nextHomeBankRemainingSeconds,
         timerAwayBankRemainingSeconds: nextAwayBankRemainingSeconds,
         timerActiveSide: nextActiveSide,
@@ -2110,6 +2492,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         id: session.id,
       },
       data: {
+        status: session.status === MatchSessionStatus.CLOSED ? MatchSessionStatus.PENDING : session.status,
         timerCurrentHalf: session.timerCurrentHalf + 1,
         timerCurrentTurnNumber: 1,
         timerActiveSide: MatchSessionSide.HOME,

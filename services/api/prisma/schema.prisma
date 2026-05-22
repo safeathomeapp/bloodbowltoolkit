@@ -91,6 +91,12 @@ enum MatchSessionEventType {
   MVP_ASSIGNMENT
 }
 
+enum MatchSessionCasualtyResolutionType {
+  NONE
+  MISS_NEXT_GAME
+  NIGGLING_INJURY
+}
+
 model User {
   id                    String                    @id @default(cuid())
   displayName           String
@@ -162,6 +168,7 @@ model TeamPlayer {
   currentValue      Int
   spp               Int
   nigglingInjuries  Int
+  missNextGame      Boolean  @default(false)
   extraSkills       String[]
   statAdjustments   Json
   displayOrder      Int
@@ -202,6 +209,7 @@ model MatchSession {
   createdBy      User                     @relation("MatchSessionCreator", fields: [createdByUserId], references: [id])
   participants   MatchSessionParticipant[]
   events         MatchSessionEvent[]
+  casualtyResolutions MatchSessionCasualtyResolution[]
   turnConfirmations MatchSessionTurnConfirmation[]
 }
 
@@ -226,11 +234,14 @@ model MatchSessionEvent {
   turnNumber     Int
   actingSide     MatchSessionSide
   teamSide       MatchSessionSide
+  injuredTeamSide MatchSessionSide?
   eventType      MatchSessionEventType
   playerNumber   Int?
+  injuredPlayerNumber Int?
   notes          String?
   createdAt      DateTime              @default(now())
   matchSession   MatchSession          @relation(fields: [matchSessionId], references: [id])
+  casualtyResolution MatchSessionCasualtyResolution?
 
   @@index([matchSessionId, half, turnNumber, actingSide, createdAt])
 }
@@ -248,6 +259,19 @@ model MatchSessionTurnConfirmation {
   matchSession    MatchSession     @relation(fields: [matchSessionId], references: [id])
 
   @@unique([matchSessionId, half, turnNumber, side])
+}
+
+model MatchSessionCasualtyResolution {
+  id                 String                           @id @default(cuid())
+  matchSessionId     String
+  matchSessionEventId String                         @unique
+  resolutionType     MatchSessionCasualtyResolutionType
+  createdAt          DateTime                         @default(now())
+  updatedAt          DateTime                         @updatedAt
+  matchSession       MatchSession                     @relation(fields: [matchSessionId], references: [id])
+  matchSessionEvent  MatchSessionEvent                @relation(fields: [matchSessionEventId], references: [id])
+
+  @@index([matchSessionId])
 }
 
 model Competition {

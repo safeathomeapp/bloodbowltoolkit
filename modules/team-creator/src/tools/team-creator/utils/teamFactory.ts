@@ -38,6 +38,7 @@ export function createTeamPlayer(team: SavedTeam, position: PositionTemplate): S
     currentValue: position.cost,
     spp: 0,
     nigglingInjuries: 0,
+    missNextGame: false,
     extraSkills: [],
     statAdjustments: {},
   }

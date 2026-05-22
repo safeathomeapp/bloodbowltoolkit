@@ -230,10 +230,12 @@ See:
 
 ## Immediate Next Step
 
-- extend the progression contract beyond SPP-only application:
-  - signed casualty and injury outcomes
-  - post-game summary structure
-  - clear split between tournament history and live team mutation
+- expose progression state in `modules/team-creator/`:
+  - SPP
+  - niggling injuries
+  - miss next game
+- keep that editing path aligned with the canonical saved-team model
+- use the same repository boundary for local and shared API modes
 - continue using `docs/architecture/2026-05-19_competition_backend_spec.md` as the backend contract
 
 ## Deferred Until Proven Necessary

@@ -80,6 +80,8 @@ export interface MatchSessionEventSummary {
   teamSide: 'HOME' | 'AWAY'
   eventType: 'TOUCHDOWN' | 'CASUALTY' | 'COMPLETION' | 'INTERCEPTION' | 'MVP_ASSIGNMENT'
   playerNumber: number | null
+  injuredTeamSide: 'HOME' | 'AWAY' | null
+  injuredPlayerNumber: number | null
   notes: string | null
   createdAt: string
 }
@@ -115,6 +117,10 @@ export interface MatchSessionProgressionPlayerSummary {
   sppBefore: number
   sppAwarded: number
   sppAfter: number
+  missNextGameBefore: boolean
+  missNextGameAfter: boolean
+  nigglingInjuriesBefore: number
+  nigglingInjuriesAfter: number
   eventTotals: Record<MatchSessionEventSummary['eventType'], number>
 }
 
@@ -134,11 +140,17 @@ export interface MatchSessionProgressionSummary {
   reason: string | null
   homeTeam: MatchSessionProgressionTeamSummary
   awayTeam: MatchSessionProgressionTeamSummary
+  casualtyResolutions: Array<{
+    matchSessionEventId: string
+    resolutionType: 'NONE' | 'MISS_NEXT_GAME' | 'NIGGLING_INJURY'
+  }>
   unresolvedEvents: Array<{
     eventId: string
     eventType: MatchSessionEventSummary['eventType']
     teamSide: 'HOME' | 'AWAY'
     playerNumber: number | null
+    injuredTeamSide: 'HOME' | 'AWAY' | null
+    injuredPlayerNumber: number | null
     reason: string
   }>
 }
@@ -328,6 +340,8 @@ export async function createMatchSessionEvent(
     eventType: MatchSessionEventSummary['eventType']
     teamSide: MatchSessionEventSummary['teamSide']
     playerNumber?: number | null
+    injuredTeamSide?: MatchSessionEventSummary['teamSide'] | null
+    injuredPlayerNumber?: number | null
     notes?: string | null
   },
 ) {
@@ -424,6 +438,30 @@ export async function applyMatchSessionProgression(sessionId: string) {
       },
       body: JSON.stringify({}),
     }),
+  )
+
+  return payload.progression
+}
+
+export async function updateMatchSessionCasualtyResolution(
+  sessionId: string,
+  eventId: string,
+  resolutionType: 'NONE' | 'MISS_NEXT_GAME' | 'NIGGLING_INJURY',
+) {
+  const baseUrl = buildApiBaseUrl()
+  const payload = await parseResponse<{ progression: MatchSessionProgressionSummary }>(
+    await fetch(
+      `${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/casualty-resolution/${encodeURIComponent(eventId)}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          resolutionType,
+        }),
+      },
+    ),
   )
 
   return payload.progression

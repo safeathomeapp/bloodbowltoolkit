@@ -1,0 +1,5 @@
+-- RenameIndex
+ALTER INDEX "MatchSessionEvent_matchSessionId_half_turnNumber_actingSide_cre" RENAME TO "MatchSessionEvent_matchSessionId_half_turnNumber_actingSide_idx";
+
+-- RenameIndex
+ALTER INDEX "MatchSessionTurnConfirmation_matchSessionId_half_turnNumber__ke" RENAME TO "MatchSessionTurnConfirmation_matchSessionId_half_turnNumber_key";

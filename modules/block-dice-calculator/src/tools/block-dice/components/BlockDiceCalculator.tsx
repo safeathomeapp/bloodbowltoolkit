@@ -28,6 +28,7 @@ import {
   resetMatchSessionHalf,
   signOffMatchSession,
   startMatchSessionTimer,
+  updateMatchSessionCasualtyResolution,
   type MatchSessionEventSummary,
   type MatchSessionFinalSignoff,
   type MatchSessionProgressionSummary,
@@ -52,6 +53,14 @@ const LIVE_MATCH_EVENT_OPTIONS: Array<MatchSessionEventSummary['eventType']> = [
   'COMPLETION',
   'INTERCEPTION',
   'MVP_ASSIGNMENT',
+]
+const CASUALTY_RESOLUTION_OPTIONS: Array<{
+  value: 'NONE' | 'MISS_NEXT_GAME' | 'NIGGLING_INJURY'
+  label: string
+}> = [
+  { value: 'NONE', label: 'No lasting effect' },
+  { value: 'MISS_NEXT_GAME', label: 'Miss next game' },
+  { value: 'NIGGLING_INJURY', label: 'Niggling injury' },
 ]
 type AppMode = 'EDIT' | 'CALCULATE'
 type PreviewMode = 'STANDARD' | 'BLITZ'
@@ -233,6 +242,10 @@ function toSessionSideLabel(side: 'HOME' | 'AWAY') {
   return side === 'HOME' ? 'BLUE' : 'RED'
 }
 
+function getOpposingSessionSide(side: 'HOME' | 'AWAY') {
+  return side === 'HOME' ? 'AWAY' : 'HOME'
+}
+
 function toEventTypeLabel(eventType: MatchSessionEventSummary['eventType']) {
   switch (eventType) {
     case 'TOUCHDOWN':
@@ -330,6 +343,7 @@ export function BlockDiceCalculator() {
   const [selectedSessionEventTeamSide, setSelectedSessionEventTeamSide] =
     useState<MatchSessionEventSummary['teamSide']>('HOME')
   const [sessionEventPlayerNumberInput, setSessionEventPlayerNumberInput] = useState('')
+  const [sessionEventInjuredPlayerNumberInput, setSessionEventInjuredPlayerNumberInput] = useState('')
   const [sessionEventNotes, setSessionEventNotes] = useState('')
   const [isSessionLoading, setIsSessionLoading] = useState(false)
   const [isSessionTimerLoading, setIsSessionTimerLoading] = useState(false)
@@ -1140,6 +1154,12 @@ export function BlockDiceCalculator() {
         playerNumber: sessionEventPlayerNumberInput.trim()
           ? Number(sessionEventPlayerNumberInput)
           : null,
+        injuredTeamSide:
+          selectedSessionEventType === 'CASUALTY' ? getOpposingSessionSide(selectedSessionEventTeamSide) : null,
+        injuredPlayerNumber:
+          selectedSessionEventType === 'CASUALTY' && sessionEventInjuredPlayerNumberInput.trim()
+            ? Number(sessionEventInjuredPlayerNumberInput)
+            : null,
         notes: sessionEventNotes.trim() || null,
       })
       const payload = await fetchMatchSessionEvents(currentSessionId)
@@ -1147,6 +1167,7 @@ export function BlockDiceCalculator() {
       setSessionTurnConfirmation(payload.confirmation)
       setSessionFinalSignoff(payload.signoff)
       setSessionEventPlayerNumberInput('')
+      setSessionEventInjuredPlayerNumberInput('')
       setSessionEventNotes('')
     } catch (error) {
       setTeamImportFeedback(
@@ -1223,6 +1244,37 @@ export function BlockDiceCalculator() {
     } catch (error) {
       setTeamImportFeedback(
         error instanceof Error ? `Progression apply failed: ${error.message}` : 'Progression apply failed.',
+      )
+    } finally {
+      setIsSessionEventLoading(false)
+    }
+  }
+
+  const handleUpdateCasualtyResolution = async (
+    eventId: string,
+    resolutionType: 'NONE' | 'MISS_NEXT_GAME' | 'NIGGLING_INJURY',
+  ) => {
+    if (!currentSessionId) {
+      return
+    }
+
+    try {
+      setIsSessionEventLoading(true)
+      const progression = await updateMatchSessionCasualtyResolution(
+        currentSessionId,
+        eventId,
+        resolutionType,
+      )
+      setSessionProgression(progression)
+      const payload = await fetchMatchSessionEvents(currentSessionId)
+      setSessionEvents(payload.events)
+      setSessionTurnConfirmation(payload.confirmation)
+      setSessionFinalSignoff(payload.signoff)
+    } catch (error) {
+      setTeamImportFeedback(
+        error instanceof Error
+          ? `Casualty resolution update failed: ${error.message}`
+          : 'Casualty resolution update failed.',
       )
     } finally {
       setIsSessionEventLoading(false)
@@ -1465,6 +1517,14 @@ export function BlockDiceCalculator() {
     total: sessionFinalSignoff?.eventTotals[eventType] ?? 0,
   })).filter((entry) => entry.total > 0)
   const progressionApplied = sessionProgression?.status === 'APPLIED'
+  const currentTurnEventIds = new Set(currentTurnEvents.map((event) => event.id))
+  const earlierLoggedEvents = sessionEvents.filter((event) => !currentTurnEventIds.has(event.id))
+  const casualtyResolutionByEventId = new Map(
+    sessionProgression?.casualtyResolutions.map((resolution) => [
+      resolution.matchSessionEventId,
+      resolution.resolutionType,
+    ]) ?? [],
+  )
 
   return (
     <div className={styles.layout}>
@@ -1661,9 +1721,13 @@ export function BlockDiceCalculator() {
                   <select
                     className={styles.sessionLoaderInput}
                     value={selectedSessionEventType}
-                    onChange={(event) =>
-                      setSelectedSessionEventType(event.target.value as MatchSessionEventSummary['eventType'])
-                    }
+                    onChange={(event) => {
+                      const nextType = event.target.value as MatchSessionEventSummary['eventType']
+                      setSelectedSessionEventType(nextType)
+                      if (nextType !== 'CASUALTY') {
+                        setSessionEventInjuredPlayerNumberInput('')
+                      }
+                    }}
                   >
                     {LIVE_MATCH_EVENT_OPTIONS.map((eventType) => (
                       <option key={eventType} value={eventType}>
@@ -1686,7 +1750,9 @@ export function BlockDiceCalculator() {
                   </select>
                 </label>
                 <label className={styles.sessionLoaderField}>
-                  <span className={styles.playerCardControlLabel}>Player #</span>
+                  <span className={styles.playerCardControlLabel}>
+                    {selectedSessionEventType === 'CASUALTY' ? 'Causing player #' : 'Player #'}
+                  </span>
                   <input
                     className={styles.sessionLoaderInput}
                     inputMode="numeric"
@@ -1697,6 +1763,22 @@ export function BlockDiceCalculator() {
                     placeholder="Optional"
                   />
                 </label>
+                {selectedSessionEventType === 'CASUALTY' ? (
+                  <label className={styles.sessionLoaderField}>
+                    <span className={styles.playerCardControlLabel}>
+                      Injured {toSessionSideLabel(getOpposingSessionSide(selectedSessionEventTeamSide))} player #
+                    </span>
+                    <input
+                      className={styles.sessionLoaderInput}
+                      inputMode="numeric"
+                      value={sessionEventInjuredPlayerNumberInput}
+                      onChange={(event) =>
+                        setSessionEventInjuredPlayerNumberInput(event.target.value.replace(/[^\d]/gu, ''))
+                      }
+                      placeholder="Required"
+                    />
+                  </label>
+                ) : null}
                 <label className={styles.sessionLoaderField}>
                   <span className={styles.playerCardControlLabel}>Note</span>
                   <input
@@ -1749,10 +1831,45 @@ export function BlockDiceCalculator() {
                     <article key={event.id} className={styles.eventCard}>
                       <div className={styles.eventMeta}>
                         <strong>{toEventTypeLabel(event.eventType)}</strong>
-                        <span>{toSessionSideLabel(event.teamSide)}</span>
-                        <span>{event.playerNumber ? `#${event.playerNumber}` : 'No player #'}</span>
+                        {event.eventType === 'CASUALTY' ? (
+                          <span>
+                            {toSessionSideLabel(event.teamSide)} #{event.playerNumber ?? '-'} →{' '}
+                            {toSessionSideLabel(event.injuredTeamSide ?? getOpposingSessionSide(event.teamSide))} #
+                            {event.injuredPlayerNumber ?? '-'}
+                          </span>
+                        ) : (
+                          <>
+                            <span>{toSessionSideLabel(event.teamSide)}</span>
+                            <span>{event.playerNumber ? `#${event.playerNumber}` : 'No player #'}</span>
+                          </>
+                        )}
                       </div>
                       {event.notes ? <p className={styles.eventNote}>{event.notes}</p> : null}
+                      {event.eventType === 'CASUALTY' ? (
+                        <label className={styles.sessionLoaderField}>
+                          <span className={styles.playerCardControlLabel}>Injury result</span>
+                          <select
+                            className={styles.sessionLoaderInput}
+                            value={casualtyResolutionByEventId.get(event.id) ?? ''}
+                            onChange={(changeEvent) =>
+                              void handleUpdateCasualtyResolution(
+                                event.id,
+                                changeEvent.target.value as 'NONE' | 'MISS_NEXT_GAME' | 'NIGGLING_INJURY',
+                              )
+                            }
+                            disabled={isSessionEventLoading || progressionApplied}
+                          >
+                            <option value="" disabled>
+                              Choose result
+                            </option>
+                            {CASUALTY_RESOLUTION_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
                       <button
                         type="button"
                         className={styles.actionButtonSecondary}
@@ -1765,6 +1882,71 @@ export function BlockDiceCalculator() {
                   ))}
                 </div>
               )}
+              {earlierLoggedEvents.length > 0 ? (
+                <div className={styles.eventList}>
+                  <article className={styles.eventCard}>
+                    <div className={styles.eventMeta}>
+                      <strong>Earlier logged events</strong>
+                      <span>{earlierLoggedEvents.length}</span>
+                    </div>
+                  </article>
+                  {earlierLoggedEvents.map((event) => (
+                    <article key={event.id} className={styles.eventCard}>
+                      <div className={styles.eventMeta}>
+                        <strong>
+                          H{event.half} · T{event.turnNumber} · {toEventTypeLabel(event.eventType)}
+                        </strong>
+                        {event.eventType === 'CASUALTY' ? (
+                          <span>
+                            {toSessionSideLabel(event.teamSide)} #{event.playerNumber ?? '-'} →{' '}
+                            {toSessionSideLabel(event.injuredTeamSide ?? getOpposingSessionSide(event.teamSide))} #
+                            {event.injuredPlayerNumber ?? '-'}
+                          </span>
+                        ) : (
+                          <>
+                            <span>{toSessionSideLabel(event.teamSide)}</span>
+                            <span>{event.playerNumber ? `#${event.playerNumber}` : 'No player #'}</span>
+                          </>
+                        )}
+                      </div>
+                      {event.notes ? <p className={styles.eventNote}>{event.notes}</p> : null}
+                      {event.eventType === 'CASUALTY' ? (
+                        <label className={styles.sessionLoaderField}>
+                          <span className={styles.playerCardControlLabel}>Injury result</span>
+                          <select
+                            className={styles.sessionLoaderInput}
+                            value={casualtyResolutionByEventId.get(event.id) ?? ''}
+                            onChange={(changeEvent) =>
+                              void handleUpdateCasualtyResolution(
+                                event.id,
+                                changeEvent.target.value as 'NONE' | 'MISS_NEXT_GAME' | 'NIGGLING_INJURY',
+                              )
+                            }
+                            disabled={isSessionEventLoading || progressionApplied}
+                          >
+                            <option value="" disabled>
+                              Choose result
+                            </option>
+                            {CASUALTY_RESOLUTION_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+                      <button
+                        type="button"
+                        className={styles.actionButtonSecondary}
+                        onClick={() => void handleDeleteSessionEvent(event.id)}
+                        disabled={isSessionEventLoading || isCurrentSessionClosed}
+                      >
+                        Remove
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
             </section>
           ) : null}
           {currentSessionId && sessionTimer && sessionFinalSignoff ? (
@@ -1859,6 +2041,14 @@ export function BlockDiceCalculator() {
                         <div key={player.playerId} className={styles.eventMeta}>
                           <strong>{player.shirtNumber ?? '-'} - {player.playerName}</strong>
                           <span>{player.sppBefore} + {player.sppAwarded} = {player.sppAfter} SPP</span>
+                          {player.missNextGameBefore !== player.missNextGameAfter ? (
+                            <span>{player.missNextGameAfter ? 'Miss next game set' : 'Miss next game cleared'}</span>
+                          ) : null}
+                          {player.nigglingInjuriesBefore !== player.nigglingInjuriesAfter ? (
+                            <span>
+                              NI {player.nigglingInjuriesBefore} → {player.nigglingInjuriesAfter}
+                            </span>
+                          ) : null}
                         </div>
                       ))}
                     </div>
@@ -1878,6 +2068,14 @@ export function BlockDiceCalculator() {
                         <div key={player.playerId} className={styles.eventMeta}>
                           <strong>{player.shirtNumber ?? '-'} - {player.playerName}</strong>
                           <span>{player.sppBefore} + {player.sppAwarded} = {player.sppAfter} SPP</span>
+                          {player.missNextGameBefore !== player.missNextGameAfter ? (
+                            <span>{player.missNextGameAfter ? 'Miss next game set' : 'Miss next game cleared'}</span>
+                          ) : null}
+                          {player.nigglingInjuriesBefore !== player.nigglingInjuriesAfter ? (
+                            <span>
+                              NI {player.nigglingInjuriesBefore} → {player.nigglingInjuriesAfter}
+                            </span>
+                          ) : null}
                         </div>
                       ))}
                     </div>
@@ -1890,8 +2088,18 @@ export function BlockDiceCalculator() {
                     <article key={event.eventId} className={styles.eventCard}>
                       <div className={styles.eventMeta}>
                         <strong>{toEventTypeLabel(event.eventType)}</strong>
-                        <span>{toSessionSideLabel(event.teamSide)}</span>
-                        <span>{event.playerNumber ? `#${event.playerNumber}` : 'No player #'}</span>
+                        <span>
+                          {toSessionSideLabel(event.teamSide)} #{event.playerNumber ?? '-'}
+                        </span>
+                        {event.eventType === 'CASUALTY' ? (
+                          <span>
+                            Injured:{' '}
+                            {toSessionSideLabel(
+                              event.injuredTeamSide ?? getOpposingSessionSide(event.teamSide),
+                            )}{' '}
+                            #{event.injuredPlayerNumber ?? '-'}
+                          </span>
+                        ) : null}
                       </div>
                       <p className={styles.eventNote}>{event.reason}</p>
                     </article>

@@ -30,6 +30,7 @@
 - block dice now shows and controls the shared room timer
 - match rooms now support shared event logging, turn confirmation, and final signoff
 - live-team match rooms can now apply signed SPP progression back to persistent teams
+- live-team progression now also supports signed casualty outcomes and post-game injury application
 
 ## What Not To Do Next
 
@@ -43,21 +44,25 @@
 ## Best Next Move
 
 - use `docs/architecture/2026-05-19_competition_backend_spec.md` as the implementation contract
-- the first signed-match progression application pass is now implemented and browser-tested
+- signed-match progression now covers:
+  - SPP
+  - casualty outcomes
+  - miss next game
+  - niggling injuries
 
 ## Concrete Next Implementation Pass
 
-1. widen progression beyond SPP-only application
-2. define injury and casualty-outcome handling
-3. keep tournament history and live team mutation separate
-4. keep standings and broader administration behind the progression contract
+1. expose player progression state in team creator
+2. make saved roster progression fields editable through the canonical team-management flow
+3. keep local and API repository behavior aligned
+4. keep tournament history and live team mutation separate
 
 ## After That
 
-1. extend progression beyond raw SPP application
-2. then return to broader progression and richer league administration
+1. broaden team-side progression management
+2. then return to richer league administration
 3. keep league and tournament overlays cleanly separated
-4. do not couple progression application too early
+4. do not couple standings or redraft too early
 
 ## Integration Goal
 
