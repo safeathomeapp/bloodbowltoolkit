@@ -37,6 +37,8 @@
 - shirt numbers now remain player-owned history and are unique only among active players
 - archived players are now excluded from team value, slot counts, competition submission, and block-dice import
 - manual block-dice team loading now pulls current shared API team state rather than only stale local imports
+- team creator now separates active roster management from archived player history
+- draft mode now hides post-game lifecycle controls and injury-only fields
 
 ## What Not To Do Next
 
@@ -58,9 +60,9 @@
 
 ## Concrete Next Implementation Pass
 
-1. tighten post-game roster management flow on top of `playerStatus`
-2. separate active roster view from archived player history in team creator
-3. widen injury and progression modelling beyond the current casualty/result layer
+1. add guarded confirmation flow for destructive roster actions
+2. widen post-game progression and roster administration beyond the current casualty/result layer
+3. start modelling finance and post-game bookkeeping more explicitly
 4. keep tournament history and live team mutation separate
 
 ## After That

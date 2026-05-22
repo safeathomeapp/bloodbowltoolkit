@@ -230,6 +230,18 @@
   gap: 14px;
 }
 
+.subsectionHeader {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.subsectionTitle {
+  margin: 0;
+  color: #31231e;
+  font-size: 1.05rem;
+}
+
 .competitionCard {
   display: grid;
   gap: 14px;
@@ -982,4 +994,21 @@
   .cloneTeamName {
     font-size: clamp(2rem, 8vw, 3rem);
   }
+}
+.lifecycleActionStack {
+  display: grid;
+  gap: 6px;
+}
+
+.lifecycleBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #efe5d8;
+  color: #5d4738;
+  font-size: 0.78rem;
+  font-weight: 700;
 }

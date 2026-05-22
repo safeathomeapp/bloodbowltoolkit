@@ -315,6 +315,15 @@ export function TeamCreator() {
     () => activeTeam?.players.filter((player) => player.playerStatus === 'ACTIVE').length ?? 0,
     [activeTeam],
   )
+  const isDraftTeam = activeTeam?.status === 'DRAFT'
+  const activePlayers = useMemo(
+    () => activeTeam?.players.filter((player) => player.playerStatus === 'ACTIVE') ?? [],
+    [activeTeam],
+  )
+  const archivedPlayers = useMemo(
+    () => activeTeam?.players.filter((player) => player.playerStatus !== 'ACTIVE') ?? [],
+    [activeTeam],
+  )
 
   const selectedTemplate = useMemo(
     () => templates.find((template) => template.id === selectedTemplateId) ?? templates[0] ?? null,
@@ -862,8 +871,15 @@ export function TeamCreator() {
         }
       }
 
+      const playerToArchive = team.players.find((player) => player.id === playerId)
+
+      if (!playerToArchive) {
+        return team
+      }
+
       return {
         ...team,
+        draftBudget: Math.max(0, team.draftBudget - playerToArchive.currentValue),
         players: team.players.map((player) =>
           player.id === playerId
             ? {
@@ -998,6 +1014,18 @@ export function TeamCreator() {
         ),
       }).team,
     )
+  }
+
+  function handleFirePlayer(playerId: string) {
+    handleRemovePlayer(playerId)
+  }
+
+  function handleRetirePlayer(playerId: string) {
+    handlePlayerStatusChange(playerId, 'RETIRED')
+  }
+
+  function handleMarkPlayerDead(playerId: string) {
+    handlePlayerStatusChange(playerId, 'DEAD')
   }
 
   function handleTeamNameChange(name: string) {
@@ -1808,6 +1836,16 @@ export function TeamCreator() {
               <div className={styles.inlineSuccess}>Draft checks are currently satisfied.</div>
             )}
 
+            <div className={styles.subsectionHeader}>
+              <div>
+                <p className={styles.sectionKicker}>Active Roster</p>
+                <h3 className={styles.subsectionTitle}>{activePlayers.length} active player{activePlayers.length === 1 ? '' : 's'}</h3>
+              </div>
+              <p className={styles.helperText}>
+                Active players count toward TV, competition submission, and block-dice imports.
+              </p>
+            </div>
+
             <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <thead>
@@ -1823,16 +1861,16 @@ export function TeamCreator() {
                     <th>AV</th>
                     <th>Skills</th>
                     <th>SPP</th>
-                    <th>NI</th>
-                    <th>MNG</th>
-                    <th>Status</th>
+                    {!isDraftTeam ? <th>NI</th> : null}
+                    {!isDraftTeam ? <th>MNG</th> : null}
+                    {!isDraftTeam ? <th>Lifecycle</th> : null}
                     <th>Value</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {activeTeam.players.length === 0
+                  {activePlayers.length === 0
                     ? null
-                    : activeTeam.players.map((player, index) => {
+                    : activePlayers.map((player, index) => {
                         const position = findPosition(activeTemplate, player.positionTemplateId)
 
                       if (!position) {
@@ -1860,7 +1898,7 @@ export function TeamCreator() {
                                   onClick={() => handleMovePlayer(player.id, 'down')}
                                   type="button"
                                   disabled={
-                                    index === activeTeam.players.length - 1 || isRosterOrderLocked(activeTeam)
+                                    index === activePlayers.length - 1 || isRosterOrderLocked(activeTeam)
                                   }
                                   aria-label="Move player down"
                                 >
@@ -1908,46 +1946,60 @@ export function TeamCreator() {
                               onChange={(event) => handlePlayerSppChange(player.id, event.target.value)}
                             />
                           </td>
-                          <td>
-                            <input
-                              className={styles.progressionInput}
-                              type="number"
-                              min="0"
-                              value={player.nigglingInjuries}
-                              onChange={(event) =>
-                                handlePlayerNigglingInjuriesChange(player.id, event.target.value)
-                              }
-                            />
-                          </td>
-                          <td>
-                            <label className={styles.progressionToggle}>
+                          {!isDraftTeam ? (
+                            <td>
                               <input
-                                type="checkbox"
-                                checked={player.missNextGame}
+                                className={styles.progressionInput}
+                                type="number"
+                                min="0"
+                                value={player.nigglingInjuries}
                                 onChange={(event) =>
-                                  handlePlayerMissNextGameChange(player.id, event.target.checked)
+                                  handlePlayerNigglingInjuriesChange(player.id, event.target.value)
                                 }
                               />
-                              <span>{player.missNextGame ? 'Yes' : 'No'}</span>
-                            </label>
-                          </td>
-                          <td>
-                            <select
-                              className={styles.inlineInput}
-                              value={player.playerStatus}
-                              onChange={(event) =>
-                                handlePlayerStatusChange(
-                                  player.id,
-                                  event.target.value as 'ACTIVE' | 'SOLD' | 'DEAD' | 'RETIRED',
-                                )
-                              }
-                            >
-                              <option value="ACTIVE">Active</option>
-                              <option value="SOLD">Sold</option>
-                              <option value="DEAD">Dead</option>
-                              <option value="RETIRED">Retired</option>
-                            </select>
-                          </td>
+                            </td>
+                          ) : null}
+                          {!isDraftTeam ? (
+                            <td>
+                              <label className={styles.progressionToggle}>
+                                <input
+                                  type="checkbox"
+                                  checked={player.missNextGame}
+                                  onChange={(event) =>
+                                    handlePlayerMissNextGameChange(player.id, event.target.checked)
+                                  }
+                                />
+                                <span>{player.missNextGame ? 'Yes' : 'No'}</span>
+                              </label>
+                            </td>
+                          ) : null}
+                          {!isDraftTeam ? (
+                            <td>
+                              <div className={styles.lifecycleActionStack}>
+                                <button
+                                  className={styles.rowButton}
+                                  onClick={() => handleFirePlayer(player.id)}
+                                  type="button"
+                                >
+                                  Fire
+                                </button>
+                                <button
+                                  className={styles.rowButton}
+                                  onClick={() => handleRetirePlayer(player.id)}
+                                  type="button"
+                                >
+                                  Retire
+                                </button>
+                                <button
+                                  className={styles.rowButton}
+                                  onClick={() => handleMarkPlayerDead(player.id)}
+                                  type="button"
+                                >
+                                  Mark Dead
+                                </button>
+                              </div>
+                            </td>
+                          ) : null}
                           <td>{formatGold(player.currentValue)}</td>
                           </tr>
                         )
@@ -1988,15 +2040,71 @@ export function TeamCreator() {
                     <td>{selectedPosition?.armour ?? '-'}</td>
                     <td>{selectedPosition ? renderSkills(selectedPosition.startingSkills) : '-'}</td>
                     <td>0</td>
-                    <td>0</td>
-                    <td>No</td>
-                    <td>No</td>
+                    {!isDraftTeam ? <td>0</td> : null}
+                    {!isDraftTeam ? <td>No</td> : null}
+                    {!isDraftTeam ? <td>No</td> : null}
                     <td>{selectedPosition ? formatGold(selectedPosition.cost) : '-'}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </section>
+
+          {!isDraftTeam && archivedPlayers.length > 0 ? (
+            <section className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <div>
+                  <p className={styles.sectionKicker}>Archive</p>
+                  <h2 className={styles.panelHeadline}>Archived Players</h2>
+                </div>
+              </div>
+              <p className={styles.helperText}>
+                Archived players keep their identity and history, but do not count toward the active roster.
+              </p>
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Name</th>
+                      <th>Position</th>
+                      <th>Status</th>
+                      <th>SPP</th>
+                      <th>NI</th>
+                      <th>Value</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {archivedPlayers.map((player) => {
+                      const position = findPosition(activeTemplate, player.positionTemplateId)
+
+                      if (!position) {
+                        return null
+                      }
+
+                      return (
+                        <tr key={player.id}>
+                          <td>{player.shirtNumber ?? '-'}</td>
+                          <td>{player.name}</td>
+                          <td>{formatPositionLabel(position)}</td>
+                          <td>
+                            <span className={styles.lifecycleBadge}>{player.playerStatus}</span>
+                          </td>
+                          <td>{player.spp}</td>
+                          <td>{player.nigglingInjuries}</td>
+                          <td>{formatGold(player.currentValue)}</td>
+                          <td>
+                            <span className={styles.helperText}>Archived</span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ) : null}
 
           <section className={styles.panel}>
             <div className={styles.panelHeader}>
