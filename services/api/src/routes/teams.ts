@@ -1,4 +1,4 @@
-import { TeamStatus } from '@prisma/client'
+import { TeamPlayerStatus, TeamStatus } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
@@ -16,10 +16,12 @@ const savedTeamPlayerSchema = z.object({
   positionTemplateId: z.string().min(1),
   name: z.string().trim().min(1).max(120),
   shirtNumber: z.number().int().nullable(),
+  playerStatus: z.nativeEnum(TeamPlayerStatus).optional(),
   currentValue: z.number().int().nonnegative(),
   spp: z.number().int().nonnegative(),
   nigglingInjuries: z.number().int().nonnegative(),
   missNextGame: z.boolean().optional(),
+  isDead: z.boolean().optional(),
   extraSkills: z.array(z.string().trim().min(1)),
   statAdjustments: statAdjustmentsSchema,
 })
@@ -55,6 +57,54 @@ function toIsoString(value: Date) {
   return value.toISOString()
 }
 
+function isRosterOrderLocked(status: TeamStatus) {
+  return status !== TeamStatus.DRAFT
+}
+
+function normalizePersistedPlayers(
+  status: TeamStatus,
+  players: z.infer<typeof savedTeamPlayerSchema>[],
+) {
+  const usedNumbers = new Set<number>()
+
+  return players.map((player) => {
+    const playerStatus = player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE)
+
+    if (!isRosterOrderLocked(status) || playerStatus !== TeamPlayerStatus.ACTIVE) {
+      return {
+        ...player,
+        playerStatus,
+      }
+    }
+
+    if (
+      typeof player.shirtNumber === 'number' &&
+      player.shirtNumber > 0 &&
+      !usedNumbers.has(player.shirtNumber)
+    ) {
+      usedNumbers.add(player.shirtNumber)
+      return {
+        ...player,
+        playerStatus,
+      }
+    }
+
+    let nextNumber = 1
+
+    while (usedNumbers.has(nextNumber)) {
+      nextNumber += 1
+    }
+
+    usedNumbers.add(nextNumber)
+
+    return {
+      ...player,
+      playerStatus,
+      shirtNumber: nextNumber,
+    }
+  })
+}
+
 function toSavedTeam(playerTeam: {
   id: string
   ownerUserId: string
@@ -76,14 +126,35 @@ function toSavedTeam(playerTeam: {
     positionTemplateId: string
     name: string
     shirtNumber: number | null
+    playerStatus?: TeamPlayerStatus
     currentValue: number
     spp: number
     nigglingInjuries: number
     missNextGame?: boolean
+    isDead?: boolean
     extraSkills: string[]
     statAdjustments: unknown
   }>
 }) {
+  const normalizedPlayers = normalizePersistedPlayers(
+    playerTeam.status,
+    playerTeam.players.map((player) => ({
+      id: player.id,
+      teamId: player.teamId,
+      positionTemplateId: player.positionTemplateId,
+      name: player.name,
+      shirtNumber: player.shirtNumber,
+      playerStatus: player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE),
+      currentValue: player.currentValue,
+      spp: player.spp,
+      nigglingInjuries: player.nigglingInjuries,
+      missNextGame: player.missNextGame ?? false,
+      isDead: player.isDead ?? false,
+      extraSkills: player.extraSkills,
+      statAdjustments: statAdjustmentsSchema.parse(player.statAdjustments),
+    })),
+  )
+
   return {
     id: playerTeam.id,
     ownerUserId: playerTeam.ownerUserId,
@@ -99,19 +170,7 @@ function toSavedTeam(playerTeam: {
     apothecaryPurchased: playerTeam.apothecaryPurchased,
     createdAt: toIsoString(playerTeam.createdAt),
     updatedAt: toIsoString(playerTeam.updatedAt),
-    players: playerTeam.players.map((player) => ({
-      id: player.id,
-      teamId: player.teamId,
-      positionTemplateId: player.positionTemplateId,
-      name: player.name,
-      shirtNumber: player.shirtNumber,
-      currentValue: player.currentValue,
-      spp: player.spp,
-      nigglingInjuries: player.nigglingInjuries,
-      missNextGame: player.missNextGame ?? false,
-      extraSkills: player.extraSkills,
-      statAdjustments: statAdjustmentsSchema.parse(player.statAdjustments),
-    })),
+    players: normalizedPlayers,
   }
 }
 
@@ -121,16 +180,17 @@ function toSavedTeamSummary(team: {
   name: string
   status: TeamStatus
   updatedAt: Date
-  players: Array<{ currentValue: number }>
+  players: Array<{ currentValue: number; playerStatus: TeamPlayerStatus }>
 }) {
-  const totalValue = team.players.reduce((sum, player) => sum + player.currentValue, 0)
+  const activePlayers = team.players.filter((player) => player.playerStatus === TeamPlayerStatus.ACTIVE)
+  const totalValue = activePlayers.reduce((sum, player) => sum + player.currentValue, 0)
 
   return {
     id: team.id,
     rosterTemplateId: team.rosterTemplateId,
     name: team.name,
     status: team.status,
-    playerCount: team.players.length,
+    playerCount: activePlayers.length,
     totalValue,
     updatedAt: toIsoString(team.updatedAt),
   }
@@ -213,6 +273,7 @@ export async function registerTeamRoutes(app: FastifyInstance) {
         players: {
           select: {
             currentValue: true,
+            playerStatus: true,
           },
         },
       },
@@ -269,7 +330,12 @@ export async function registerTeamRoutes(app: FastifyInstance) {
       })
     }
 
-    const relationError = await validateTeamRelations(app, bodyResult.data)
+    const normalizedTeam = {
+      ...bodyResult.data,
+      players: normalizePersistedPlayers(bodyResult.data.status, bodyResult.data.players),
+    }
+
+    const relationError = await validateTeamRelations(app, normalizedTeam)
 
     if (relationError) {
       return reply.code(relationError.statusCode).send(relationError.payload)
@@ -290,29 +356,33 @@ export async function registerTeamRoutes(app: FastifyInstance) {
     const team = await app.prisma.team.create({
       data: {
         id: bodyResult.data.id,
-        ownerUserId: bodyResult.data.ownerUserId,
-        leagueId: bodyResult.data.leagueId ?? null,
-        rosterTemplateId: bodyResult.data.rosterTemplateId,
-        name: bodyResult.data.name,
-        status: bodyResult.data.status,
-        draftBudget: bodyResult.data.draftBudget,
-        rerollCount: bodyResult.data.rerollCount,
-        assistantCoachCount: bodyResult.data.assistantCoachCount,
-        cheerleaderCount: bodyResult.data.cheerleaderCount,
-        dedicatedFans: bodyResult.data.dedicatedFans,
-        apothecaryPurchased: bodyResult.data.apothecaryPurchased,
-        createdAt: new Date(bodyResult.data.createdAt),
-        updatedAt: new Date(bodyResult.data.updatedAt),
+        ownerUserId: normalizedTeam.ownerUserId,
+        leagueId: normalizedTeam.leagueId ?? null,
+        rosterTemplateId: normalizedTeam.rosterTemplateId,
+        name: normalizedTeam.name,
+        status: normalizedTeam.status,
+        draftBudget: normalizedTeam.draftBudget,
+        rerollCount: normalizedTeam.rerollCount,
+        assistantCoachCount: normalizedTeam.assistantCoachCount,
+        cheerleaderCount: normalizedTeam.cheerleaderCount,
+        dedicatedFans: normalizedTeam.dedicatedFans,
+        apothecaryPurchased: normalizedTeam.apothecaryPurchased,
+        createdAt: new Date(normalizedTeam.createdAt),
+        updatedAt: new Date(normalizedTeam.updatedAt),
         players: {
-          create: bodyResult.data.players.map((player, index) => ({
+          create: normalizedTeam.players.map((player, index) => ({
             id: player.id,
             positionTemplateId: player.positionTemplateId,
             name: player.name,
             shirtNumber: player.shirtNumber,
+            playerStatus: player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE),
             currentValue: player.currentValue,
             spp: player.spp,
             nigglingInjuries: player.nigglingInjuries,
             missNextGame: player.missNextGame ?? false,
+            isDead:
+              (player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE)) ===
+              TeamPlayerStatus.DEAD,
             extraSkills: player.extraSkills,
             statAdjustments: player.statAdjustments,
             displayOrder: index,
@@ -368,7 +438,12 @@ export async function registerTeamRoutes(app: FastifyInstance) {
       })
     }
 
-    const relationError = await validateTeamRelations(app, bodyResult.data)
+    const normalizedTeam = {
+      ...bodyResult.data,
+      players: normalizePersistedPlayers(bodyResult.data.status, bodyResult.data.players),
+    }
+
+    const relationError = await validateTeamRelations(app, normalizedTeam)
 
     if (relationError) {
       return reply.code(relationError.statusCode).send(relationError.payload)
@@ -386,29 +461,33 @@ export async function registerTeamRoutes(app: FastifyInstance) {
           id: paramsResult.data.teamId,
         },
         data: {
-          ownerUserId: bodyResult.data.ownerUserId,
-          leagueId: bodyResult.data.leagueId ?? null,
-          rosterTemplateId: bodyResult.data.rosterTemplateId,
-          name: bodyResult.data.name,
-          status: bodyResult.data.status,
-          draftBudget: bodyResult.data.draftBudget,
-          rerollCount: bodyResult.data.rerollCount,
-          assistantCoachCount: bodyResult.data.assistantCoachCount,
-          cheerleaderCount: bodyResult.data.cheerleaderCount,
-          dedicatedFans: bodyResult.data.dedicatedFans,
-          apothecaryPurchased: bodyResult.data.apothecaryPurchased,
-          createdAt: new Date(bodyResult.data.createdAt),
-          updatedAt: new Date(bodyResult.data.updatedAt),
+          ownerUserId: normalizedTeam.ownerUserId,
+          leagueId: normalizedTeam.leagueId ?? null,
+          rosterTemplateId: normalizedTeam.rosterTemplateId,
+          name: normalizedTeam.name,
+          status: normalizedTeam.status,
+          draftBudget: normalizedTeam.draftBudget,
+          rerollCount: normalizedTeam.rerollCount,
+          assistantCoachCount: normalizedTeam.assistantCoachCount,
+          cheerleaderCount: normalizedTeam.cheerleaderCount,
+          dedicatedFans: normalizedTeam.dedicatedFans,
+          apothecaryPurchased: normalizedTeam.apothecaryPurchased,
+          createdAt: new Date(normalizedTeam.createdAt),
+          updatedAt: new Date(normalizedTeam.updatedAt),
           players: {
-            create: bodyResult.data.players.map((player, index) => ({
+            create: normalizedTeam.players.map((player, index) => ({
               id: player.id,
               positionTemplateId: player.positionTemplateId,
               name: player.name,
               shirtNumber: player.shirtNumber,
+              playerStatus: player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE),
               currentValue: player.currentValue,
               spp: player.spp,
               nigglingInjuries: player.nigglingInjuries,
               missNextGame: player.missNextGame ?? false,
+              isDead:
+                (player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE)) ===
+                TeamPlayerStatus.DEAD,
               extraSkills: player.extraSkills,
               statAdjustments: player.statAdjustments,
               displayOrder: index,

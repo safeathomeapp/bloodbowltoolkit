@@ -121,6 +121,22 @@ export interface MatchSessionProgressionPlayerSummary {
   missNextGameAfter: boolean
   nigglingInjuriesBefore: number
   nigglingInjuriesAfter: number
+  isDeadBefore: boolean
+  isDeadAfter: boolean
+  statAdjustmentsBefore: {
+    movement?: number
+    strength?: number
+    agility?: number
+    passing?: number
+    armour?: number
+  }
+  statAdjustmentsAfter: {
+    movement?: number
+    strength?: number
+    agility?: number
+    passing?: number
+    armour?: number
+  }
   eventTotals: Record<MatchSessionEventSummary['eventType'], number>
 }
 
@@ -142,7 +158,7 @@ export interface MatchSessionProgressionSummary {
   awayTeam: MatchSessionProgressionTeamSummary
   casualtyResolutions: Array<{
     matchSessionEventId: string
-    resolutionType: 'NONE' | 'MISS_NEXT_GAME' | 'NIGGLING_INJURY'
+    resolutionType: MatchSessionCasualtyResolutionValue
   }>
   unresolvedEvents: Array<{
     eventId: string
@@ -154,6 +170,18 @@ export interface MatchSessionProgressionSummary {
     reason: string
   }>
 }
+
+export type MatchSessionCasualtyResolutionValue =
+  | 'NONE'
+  | 'MISS_NEXT_GAME'
+  | 'NIGGLING_INJURY'
+  | 'SERIOUS_INJURY'
+  | 'LASTING_INJURY_ARMOUR'
+  | 'LASTING_INJURY_MOVEMENT'
+  | 'LASTING_INJURY_PASSING'
+  | 'LASTING_INJURY_AGILITY'
+  | 'LASTING_INJURY_STRENGTH'
+  | 'DEAD'
 
 export interface BlockDiceSessionContextResponse {
   matchSession: MatchSessionSummary
@@ -215,6 +243,18 @@ export async function fetchBlockDiceSessionContextByCode(sessionCode: string) {
     await fetch(
       `${baseUrl}/match-sessions/${encodeURIComponent(sessionLookup.matchSession.id)}/block-dice-context`,
     ),
+  )
+}
+
+export async function fetchBlockDiceSessionContext(sessionId: string) {
+  const baseUrl = buildApiBaseUrl()
+
+  if (!sessionId.trim()) {
+    throw new Error('Enter a match session id first.')
+  }
+
+  return parseResponse<BlockDiceSessionContextResponse>(
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/block-dice-context`),
   )
 }
 
@@ -446,7 +486,7 @@ export async function applyMatchSessionProgression(sessionId: string) {
 export async function updateMatchSessionCasualtyResolution(
   sessionId: string,
   eventId: string,
-  resolutionType: 'NONE' | 'MISS_NEXT_GAME' | 'NIGGLING_INJURY',
+  resolutionType: MatchSessionCasualtyResolutionValue,
 ) {
   const baseUrl = buildApiBaseUrl()
   const payload = await parseResponse<{ progression: MatchSessionProgressionSummary }>(

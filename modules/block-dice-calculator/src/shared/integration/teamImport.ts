@@ -38,9 +38,11 @@ export interface TeamCreatorSavedPlayerRecord {
   positionTemplateId: string
   name: string
   shirtNumber: number | null
+  playerStatus?: 'ACTIVE' | 'SOLD' | 'DEAD' | 'RETIRED'
   currentValue: number
   spp: number
   nigglingInjuries: number
+  isDead: boolean
   extraSkills: string[]
   statAdjustments: {
     movement?: number

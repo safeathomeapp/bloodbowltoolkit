@@ -32,6 +32,11 @@
 - live-team match rooms can now apply signed SPP progression back to persistent teams
 - live-team progression now also supports signed casualty outcomes and post-game injury application
 - team creator now exposes editable player progression fields for SPP, NI, and MNG
+- player lifecycle is now broader than `dead` vs `alive`
+- active rosters now use `playerStatus`
+- shirt numbers now remain player-owned history and are unique only among active players
+- archived players are now excluded from team value, slot counts, competition submission, and block-dice import
+- manual block-dice team loading now pulls current shared API team state rather than only stale local imports
 
 ## What Not To Do Next
 
@@ -53,9 +58,9 @@
 
 ## Concrete Next Implementation Pass
 
-1. tighten post-game progression review flow
-2. widen injury and progression modelling beyond SPP, NI, and MNG
-3. keep local and API repository behavior aligned
+1. tighten post-game roster management flow on top of `playerStatus`
+2. separate active roster view from archived player history in team creator
+3. widen injury and progression modelling beyond the current casualty/result layer
 4. keep tournament history and live team mutation separate
 
 ## After That

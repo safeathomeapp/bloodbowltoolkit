@@ -1,6 +1,7 @@
 import { rosterTemplates } from '../../data/rosterTemplates'
 import type { KeyValueStore } from '../storage/keyValueStore'
 import type { RosterTemplate, SavedTeam, SavedTeamSummary } from '../types/team'
+import { normalizeTeamShirtNumbers } from '../utils/shirtNumbers'
 import type { TeamRepository } from './teamRepository'
 
 const API_USER_ID_KEY = 'blood-bowl-toolkit:team-creator:api-user-id'
@@ -14,7 +15,18 @@ type TeamApiPayload = SavedTeam & {
 }
 
 function normalizeTeam(team: SavedTeam): SavedTeam {
-  return {
+  const normalizePlayerStatus = (
+    player: SavedTeam['players'][number],
+  ): SavedTeam['players'][number]['playerStatus'] =>
+    player.playerStatus === 'SOLD' ||
+    player.playerStatus === 'DEAD' ||
+    player.playerStatus === 'RETIRED'
+      ? player.playerStatus
+      : player.isDead
+        ? 'DEAD'
+        : 'ACTIVE'
+
+  const normalizedTeam = {
     ...team,
     draftBudget: team.draftBudget ?? 1_000_000,
     rerollCount: team.rerollCount ?? 0,
@@ -25,13 +37,17 @@ function normalizeTeam(team: SavedTeam): SavedTeam {
     players: team.players.map((player) => ({
       ...player,
       shirtNumber: player.shirtNumber ?? null,
+      playerStatus: normalizePlayerStatus(player),
       spp: player.spp ?? 0,
       nigglingInjuries: player.nigglingInjuries ?? 0,
       missNextGame: player.missNextGame ?? false,
+      isDead: player.isDead ?? false,
       extraSkills: player.extraSkills ?? [],
       statAdjustments: player.statAdjustments ?? {},
     })),
   }
+
+  return normalizeTeamShirtNumbers(normalizedTeam).team
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {

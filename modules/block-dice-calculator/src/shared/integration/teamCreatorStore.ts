@@ -12,8 +12,17 @@ function normalizeSavedPlayer(player: TeamCreatorSavedPlayerRecord): TeamCreator
   return {
     ...player,
     shirtNumber: player.shirtNumber ?? null,
+    playerStatus:
+      player.playerStatus === 'SOLD' ||
+      player.playerStatus === 'DEAD' ||
+      player.playerStatus === 'RETIRED'
+        ? player.playerStatus
+        : player.isDead
+          ? 'DEAD'
+          : 'ACTIVE',
     spp: player.spp ?? 0,
     nigglingInjuries: player.nigglingInjuries ?? 0,
+    isDead: player.isDead ?? false,
     extraSkills: player.extraSkills ?? [],
     statAdjustments: player.statAdjustments ?? {},
   }

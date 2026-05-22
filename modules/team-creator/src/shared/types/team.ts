@@ -51,10 +51,12 @@ export interface SavedTeamPlayer {
   positionTemplateId: string
   name: string
   shirtNumber: number | null
+  playerStatus: 'ACTIVE' | 'SOLD' | 'DEAD' | 'RETIRED'
   currentValue: number
   spp: number
   nigglingInjuries: number
   missNextGame: boolean
+  isDead: boolean
   extraSkills: string[]
   statAdjustments: {
     movement?: number

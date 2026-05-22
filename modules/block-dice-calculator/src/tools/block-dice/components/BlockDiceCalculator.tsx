@@ -20,10 +20,12 @@ import {
   createBlockDiceSessionContext,
   deleteMatchSessionEvent,
   endMatchSessionTurn,
+  fetchBlockDiceSessionContext,
   fetchBlockDiceSessionContextByCode,
   fetchMatchSessionEvents,
   fetchMatchSessionProgression,
   fetchMatchSessionTimer,
+  fetchSharedTeam,
   fetchSharedTeams,
   resetMatchSessionHalf,
   signOffMatchSession,
@@ -55,12 +57,28 @@ const LIVE_MATCH_EVENT_OPTIONS: Array<MatchSessionEventSummary['eventType']> = [
   'MVP_ASSIGNMENT',
 ]
 const CASUALTY_RESOLUTION_OPTIONS: Array<{
-  value: 'NONE' | 'MISS_NEXT_GAME' | 'NIGGLING_INJURY'
+  value:
+    | 'NONE'
+    | 'MISS_NEXT_GAME'
+    | 'NIGGLING_INJURY'
+    | 'SERIOUS_INJURY'
+    | 'LASTING_INJURY_ARMOUR'
+    | 'LASTING_INJURY_MOVEMENT'
+    | 'LASTING_INJURY_PASSING'
+    | 'LASTING_INJURY_AGILITY'
+    | 'LASTING_INJURY_STRENGTH'
+    | 'DEAD'
   label: string
 }> = [
   { value: 'NONE', label: 'No lasting effect' },
   { value: 'MISS_NEXT_GAME', label: 'Miss next game' },
-  { value: 'NIGGLING_INJURY', label: 'Niggling injury' },
+  { value: 'SERIOUS_INJURY', label: 'Serious injury (MNG + NI)' },
+  { value: 'LASTING_INJURY_ARMOUR', label: 'Lasting injury (-1 AV, MNG)' },
+  { value: 'LASTING_INJURY_MOVEMENT', label: 'Lasting injury (-1 MA, MNG)' },
+  { value: 'LASTING_INJURY_PASSING', label: 'Lasting injury (-1 PA, MNG)' },
+  { value: 'LASTING_INJURY_AGILITY', label: 'Lasting injury (-1 AG, MNG)' },
+  { value: 'LASTING_INJURY_STRENGTH', label: 'Lasting injury (-1 ST, MNG)' },
+  { value: 'DEAD', label: 'Dead' },
 ]
 type AppMode = 'EDIT' | 'CALCULATE'
 type PreviewMode = 'STANDARD' | 'BLITZ'
@@ -116,6 +134,8 @@ interface PersistedCalculatorState {
   selectedImportedPlayerIds?: Record<TeamSide, string | null>
   invalidatedBlitzCandidates: Record<string, string[]>
   selectedBlitzCandidateKey: string | null
+  currentSessionId?: string
+  sessionCodeInput?: string
 }
 
 function loadPersistedState(): PersistedCalculatorState | null {
@@ -246,6 +266,27 @@ function getOpposingSessionSide(side: 'HOME' | 'AWAY') {
   return side === 'HOME' ? 'AWAY' : 'HOME'
 }
 
+function formatStatAdjustmentsSummary(adjustments: {
+  movement?: number
+  strength?: number
+  agility?: number
+  passing?: number
+  armour?: number
+}) {
+  const entries: Array<[string, number | undefined]> = [
+    ['MA', adjustments.movement],
+    ['ST', adjustments.strength],
+    ['AG', adjustments.agility],
+    ['PA', adjustments.passing],
+    ['AV', adjustments.armour],
+  ]
+
+  return entries
+    .filter(([, value]) => typeof value === 'number' && value !== 0)
+    .map(([label, value]) => `${label} ${value! > 0 ? '+' : ''}${value}`)
+    .join(', ')
+}
+
 function toEventTypeLabel(eventType: MatchSessionEventSummary['eventType']) {
   switch (eventType) {
     case 'TOUCHDOWN':
@@ -264,7 +305,9 @@ function toEventTypeLabel(eventType: MatchSessionEventSummary['eventType']) {
 export function BlockDiceCalculator() {
   const persistedState = loadPersistedState()
   const savedTeams = readAvailableTeamsFromWindow()
-  const importedTeamOptions = savedTeams
+  const [sharedImportedTeamOptions, setSharedImportedTeamOptions] = useState<ImportedBlockDiceTeam[]>([])
+  const [isSharedImportedTeamsLoading, setIsSharedImportedTeamsLoading] = useState(false)
+  const localImportedTeamOptions = savedTeams
     .flatMap((team) => {
       try {
         return [resolveImportedTeam(team, importedTeamTemplateMap)]
@@ -272,6 +315,9 @@ export function BlockDiceCalculator() {
         return [] as ImportedBlockDiceTeam[]
       }
     })
+  const importedTeamOptions = [...new Map(
+    [...localImportedTeamOptions, ...sharedImportedTeamOptions].map((team) => [team.id, team]),
+  ).values()]
     .sort((left, right) => left.name.localeCompare(right.name))
   const importedTeamOptionMap = new Map(importedTeamOptions.map((team) => [team.id, team]))
   const [teamDrafts, setTeamDrafts] = useState<Record<TeamSide, TeamDraft>>(() => {
@@ -331,8 +377,8 @@ export function BlockDiceCalculator() {
   const [teamImportFeedback, setTeamImportFeedback] = useState('')
   const [isSessionLoaderOpen, setIsSessionLoaderOpen] = useState(false)
   const [isCreateSessionOpen, setIsCreateSessionOpen] = useState(false)
-  const [sessionCodeInput, setSessionCodeInput] = useState('')
-  const [currentSessionId, setCurrentSessionId] = useState('')
+  const [sessionCodeInput, setSessionCodeInput] = useState(persistedState?.sessionCodeInput ?? '')
+  const [currentSessionId, setCurrentSessionId] = useState(persistedState?.currentSessionId ?? '')
   const [sessionTimer, setSessionTimer] = useState<MatchSessionTimerState | null>(null)
   const [sessionEvents, setSessionEvents] = useState<MatchSessionEventSummary[]>([])
   const [sessionTurnConfirmation, setSessionTurnConfirmation] = useState<MatchSessionTurnConfirmation | null>(null)
@@ -358,6 +404,44 @@ export function BlockDiceCalculator() {
   const teamImportInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
+    let isDisposed = false
+
+    async function loadSharedImportedTeams() {
+      setIsSharedImportedTeamsLoading(true)
+
+      try {
+        const summaries = await fetchSharedTeams()
+        const records = await Promise.all(summaries.map(async (team) => fetchSharedTeam(team.id)))
+        const nextTeams = records.flatMap((team) => {
+          try {
+            return [resolveImportedTeam(team, importedTeamTemplateMap)]
+          } catch {
+            return [] as ImportedBlockDiceTeam[]
+          }
+        })
+
+        if (!isDisposed) {
+          setSharedImportedTeamOptions(nextTeams)
+        }
+      } catch {
+        if (!isDisposed) {
+          setSharedImportedTeamOptions([])
+        }
+      } finally {
+        if (!isDisposed) {
+          setIsSharedImportedTeamsLoading(false)
+        }
+      }
+    }
+
+    void loadSharedImportedTeams()
+
+    return () => {
+      isDisposed = true
+    }
+  }, [])
+
+  useEffect(() => {
     if (typeof window === 'undefined') {
       return
     }
@@ -376,6 +460,8 @@ export function BlockDiceCalculator() {
       selectedImportedPlayerIds,
       invalidatedBlitzCandidates,
       selectedBlitzCandidateKey,
+      currentSessionId,
+      sessionCodeInput,
     }
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
@@ -390,6 +476,8 @@ export function BlockDiceCalculator() {
     nextNumbers,
     playerProfiles,
     previewMode,
+    currentSessionId,
+    sessionCodeInput,
     selectedEditPlayerIds,
     selectedImportedPlayerIds,
     selectedBlitzCandidateKey,
@@ -853,6 +941,7 @@ export function BlockDiceCalculator() {
     homeTeam: Parameters<typeof buildTeamCreatorExchangePackage>[0][number]
     awayTeam: Parameters<typeof buildTeamCreatorExchangePackage>[0][number]
     sessionCode: string
+    silent?: boolean
   }) => {
     if (typeof window !== 'undefined') {
       storeImportedTeamsExchange(
@@ -869,9 +958,11 @@ export function BlockDiceCalculator() {
     setSelectedEditPlayerIds({ A: null, B: null })
     setCurrentSessionId(options.sessionId)
     setSessionCodeInput(options.sessionCode)
-    setTeamImportFeedback(
-      `Loaded session ${options.sessionCode}. Blue: ${options.homeTeam.name}. Red: ${options.awayTeam.name}.`,
-    )
+    if (!options.silent) {
+      setTeamImportFeedback(
+        `Loaded session ${options.sessionCode}. Blue: ${options.homeTeam.name}. Red: ${options.awayTeam.name}.`,
+      )
+    }
   }
 
   const handleLoadSessionByCode = async () => {
@@ -894,6 +985,40 @@ export function BlockDiceCalculator() {
       setIsSessionLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!currentSessionId) {
+      return
+    }
+
+    let isDisposed = false
+
+    async function refreshSessionContext() {
+      try {
+        const sessionContext = await fetchBlockDiceSessionContext(currentSessionId)
+
+        if (isDisposed) {
+          return
+        }
+
+        applySessionContext({
+          sessionId: sessionContext.matchSession.id,
+          homeTeam: sessionContext.teams.home,
+          awayTeam: sessionContext.teams.away,
+          sessionCode: sessionContext.matchSession.sessionCode,
+          silent: true,
+        })
+      } catch {
+        // Keep the last local session snapshot if the backend refresh fails.
+      }
+    }
+
+    void refreshSessionContext()
+
+    return () => {
+      isDisposed = true
+    }
+  }, [currentSessionId])
 
   useEffect(() => {
     if (!isCreateSessionOpen) {
@@ -1252,7 +1377,17 @@ export function BlockDiceCalculator() {
 
   const handleUpdateCasualtyResolution = async (
     eventId: string,
-    resolutionType: 'NONE' | 'MISS_NEXT_GAME' | 'NIGGLING_INJURY',
+    resolutionType:
+      | 'NONE'
+      | 'MISS_NEXT_GAME'
+      | 'NIGGLING_INJURY'
+      | 'SERIOUS_INJURY'
+      | 'LASTING_INJURY_ARMOUR'
+      | 'LASTING_INJURY_MOVEMENT'
+      | 'LASTING_INJURY_PASSING'
+      | 'LASTING_INJURY_AGILITY'
+      | 'LASTING_INJURY_STRENGTH'
+      | 'DEAD',
   ) => {
     if (!currentSessionId) {
       return
@@ -1854,7 +1989,17 @@ export function BlockDiceCalculator() {
                             onChange={(changeEvent) =>
                               void handleUpdateCasualtyResolution(
                                 event.id,
-                                changeEvent.target.value as 'NONE' | 'MISS_NEXT_GAME' | 'NIGGLING_INJURY',
+                                changeEvent.target.value as
+                                  | 'NONE'
+                                  | 'MISS_NEXT_GAME'
+                                  | 'NIGGLING_INJURY'
+                                  | 'SERIOUS_INJURY'
+                                  | 'LASTING_INJURY_ARMOUR'
+                                  | 'LASTING_INJURY_MOVEMENT'
+                                  | 'LASTING_INJURY_PASSING'
+                                  | 'LASTING_INJURY_AGILITY'
+                                  | 'LASTING_INJURY_STRENGTH'
+                                  | 'DEAD',
                               )
                             }
                             disabled={isSessionEventLoading || progressionApplied}
@@ -1919,7 +2064,17 @@ export function BlockDiceCalculator() {
                             onChange={(changeEvent) =>
                               void handleUpdateCasualtyResolution(
                                 event.id,
-                                changeEvent.target.value as 'NONE' | 'MISS_NEXT_GAME' | 'NIGGLING_INJURY',
+                                changeEvent.target.value as
+                                  | 'NONE'
+                                  | 'MISS_NEXT_GAME'
+                                  | 'NIGGLING_INJURY'
+                                  | 'SERIOUS_INJURY'
+                                  | 'LASTING_INJURY_ARMOUR'
+                                  | 'LASTING_INJURY_MOVEMENT'
+                                  | 'LASTING_INJURY_PASSING'
+                                  | 'LASTING_INJURY_AGILITY'
+                                  | 'LASTING_INJURY_STRENGTH'
+                                  | 'DEAD',
                               )
                             }
                             disabled={isSessionEventLoading || progressionApplied}
@@ -2049,6 +2204,16 @@ export function BlockDiceCalculator() {
                               NI {player.nigglingInjuriesBefore} → {player.nigglingInjuriesAfter}
                             </span>
                           ) : null}
+                          {player.isDeadBefore !== player.isDeadAfter ? (
+                            <span>{player.isDeadAfter ? 'Marked dead' : 'No longer marked dead'}</span>
+                          ) : null}
+                          {formatStatAdjustmentsSummary(player.statAdjustmentsBefore) !==
+                          formatStatAdjustmentsSummary(player.statAdjustmentsAfter) ? (
+                            <span>
+                              Stats {formatStatAdjustmentsSummary(player.statAdjustmentsBefore) || 'none'} →{' '}
+                              {formatStatAdjustmentsSummary(player.statAdjustmentsAfter) || 'none'}
+                            </span>
+                          ) : null}
                         </div>
                       ))}
                     </div>
@@ -2074,6 +2239,16 @@ export function BlockDiceCalculator() {
                           {player.nigglingInjuriesBefore !== player.nigglingInjuriesAfter ? (
                             <span>
                               NI {player.nigglingInjuriesBefore} → {player.nigglingInjuriesAfter}
+                            </span>
+                          ) : null}
+                          {player.isDeadBefore !== player.isDeadAfter ? (
+                            <span>{player.isDeadAfter ? 'Marked dead' : 'No longer marked dead'}</span>
+                          ) : null}
+                          {formatStatAdjustmentsSummary(player.statAdjustmentsBefore) !==
+                          formatStatAdjustmentsSummary(player.statAdjustmentsAfter) ? (
+                            <span>
+                              Stats {formatStatAdjustmentsSummary(player.statAdjustmentsBefore) || 'none'} →{' '}
+                              {formatStatAdjustmentsSummary(player.statAdjustmentsAfter) || 'none'}
                             </span>
                           ) : null}
                         </div>
@@ -2656,7 +2831,9 @@ export function BlockDiceCalculator() {
               ))}
               {importedTeamOptions.length === 0 ? (
                 <p className={styles.statusNote}>
-                  No imported team library found yet. Use `Import teams` from the menu first.
+                  {isSharedImportedTeamsLoading
+                    ? 'Loading shared team library...'
+                    : 'No imported team library found yet. Use `Import teams` from the menu first.'}
                 </p>
               ) : null}
             </div>

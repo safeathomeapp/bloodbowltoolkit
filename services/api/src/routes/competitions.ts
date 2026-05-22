@@ -8,6 +8,7 @@ import {
   FixtureStatus,
   MatchSessionStatus,
   Prisma,
+  TeamPlayerStatus,
   TournamentTeamSourceType,
 } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
@@ -86,6 +87,49 @@ const createFixtureMatchSessionBodySchema = z.object({
 
 function toIsoString(value: Date | null) {
   return value ? value.toISOString() : null
+}
+
+function isRosterOrderLocked(status: 'DRAFT' | 'ACTIVE' | 'RETIRED') {
+  return status !== 'DRAFT'
+}
+
+function normalizeShirtNumbers<T extends { shirtNumber: number | null; playerStatus?: TeamPlayerStatus }>(
+  status: 'DRAFT' | 'ACTIVE' | 'RETIRED',
+  players: T[],
+) {
+  if (!isRosterOrderLocked(status)) {
+    return players
+  }
+
+  const usedNumbers = new Set<number>()
+
+  return players.map((player) => {
+    if ((player.playerStatus ?? TeamPlayerStatus.ACTIVE) !== TeamPlayerStatus.ACTIVE) {
+      return player
+    }
+
+    if (
+      typeof player.shirtNumber === 'number' &&
+      player.shirtNumber > 0 &&
+      !usedNumbers.has(player.shirtNumber)
+    ) {
+      usedNumbers.add(player.shirtNumber)
+      return player
+    }
+
+    let nextNumber = 1
+
+    while (usedNumbers.has(nextNumber)) {
+      nextNumber += 1
+    }
+
+    usedNumbers.add(nextNumber)
+
+    return {
+      ...player,
+      shirtNumber: nextNumber,
+    }
+  })
 }
 
 function parseTimerPolicy(configJson: Prisma.JsonValue) {
@@ -235,6 +279,8 @@ function toCompetitionSubmissionDetail(submission: {
     statAdjustments: Prisma.JsonValue
   }>
 }) {
+  const normalizedPlayers = normalizeShirtNumbers('ACTIVE', submission.players)
+
   return {
     id: submission.id,
     competitionEntryId: submission.competitionEntryId,
@@ -254,7 +300,7 @@ function toCompetitionSubmissionDetail(submission: {
     submittedAt: submission.submittedAt.toISOString(),
     createdAt: submission.createdAt.toISOString(),
     updatedAt: submission.updatedAt.toISOString(),
-    players: submission.players.map((player) => ({
+    players: normalizedPlayers.map((player) => ({
       id: player.id,
       sourcePlayerId: player.sourcePlayerId,
       positionTemplateId: player.positionTemplateId,
@@ -844,7 +890,18 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
       })
     }
 
-    const teamValue = team.players.reduce((sum, player) => sum + player.currentValue, 0)
+    const activePlayers = team.players.filter(
+      (player) => (player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE)) === TeamPlayerStatus.ACTIVE,
+    )
+    const submissionPlayers = normalizeShirtNumbers(
+      team.status,
+      activePlayers.map((player) => ({
+        ...player,
+        playerStatus:
+          player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE),
+      })),
+    )
+    const teamValue = activePlayers.reduce((sum, player) => sum + player.currentValue, 0)
     const submittedAt = new Date()
     const createdSubmission = await app.prisma.$transaction(async (transaction) => {
       const submission = await transaction.competitionTeamSubmission.create({
@@ -865,7 +922,7 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
           extraSkillsPackageJson: bodyResult.data.extraSkillsPackageJson as Prisma.InputJsonValue,
           submittedAt,
           players: {
-            create: team.players.map((player) => ({
+            create: submissionPlayers.map((player) => ({
               sourcePlayerId: player.id,
               positionTemplateId: player.positionTemplateId,
               name: player.name,
@@ -986,7 +1043,18 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
       })
     }
 
-    const teamValue = team.players.reduce((sum, player) => sum + player.currentValue, 0)
+    const activePlayers = team.players.filter(
+      (player) => (player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE)) === TeamPlayerStatus.ACTIVE,
+    )
+    const submissionPlayers = normalizeShirtNumbers(
+      team.status,
+      activePlayers.map((player) => ({
+        ...player,
+        playerStatus:
+          player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE),
+      })),
+    )
+    const teamValue = activePlayers.reduce((sum, player) => sum + player.currentValue, 0)
     const submittedAt = new Date()
     const updatedSubmission = await app.prisma.$transaction(async (transaction) => {
       await transaction.competitionTeamSubmissionPlayer.deleteMany({
@@ -1015,7 +1083,7 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
           extraSkillsPackageJson: bodyResult.data.extraSkillsPackageJson as Prisma.InputJsonValue,
           submittedAt,
           players: {
-            create: team.players.map((player) => ({
+            create: submissionPlayers.map((player) => ({
               sourcePlayerId: player.id,
               positionTemplateId: player.positionTemplateId,
               name: player.name,

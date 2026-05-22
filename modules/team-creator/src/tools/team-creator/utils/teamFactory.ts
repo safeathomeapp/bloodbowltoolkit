@@ -1,5 +1,6 @@
 import type { PositionTemplate, RosterTemplate, SavedTeam, SavedTeamPlayer } from '../../../shared/types/team'
 import { createId } from '../../../shared/utils/createId'
+import { createNextShirtNumberForLockedTeam } from '../../../shared/utils/shirtNumbers'
 
 function buildPlayerName(position: PositionTemplate, existingPlayers: SavedTeamPlayer[]) {
   const nextIndex =
@@ -34,11 +35,13 @@ export function createTeamPlayer(team: SavedTeam, position: PositionTemplate): S
     teamId: team.id,
     positionTemplateId: position.id,
     name: buildPlayerName(position, team.players),
-    shirtNumber: null,
+    shirtNumber: createNextShirtNumberForLockedTeam(team),
+    playerStatus: 'ACTIVE',
     currentValue: position.cost,
     spp: 0,
     nigglingInjuries: 0,
     missNextGame: false,
+    isDead: false,
     extraSkills: [],
     statAdjustments: {},
   }

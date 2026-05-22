@@ -32,6 +32,11 @@ import {
 } from '../../../shared/utils/teamMath'
 import type { SkillReference } from '../../../shared/types/skillReference'
 import type { RosterTemplate, SavedTeam, SavedTeamSummary } from '../../../shared/types/team'
+import {
+  createNextShirtNumberForLockedTeam,
+  isRosterOrderLocked,
+  normalizeTeamShirtNumbers,
+} from '../../../shared/utils/shirtNumbers'
 import { createTeam, createTeamPlayer } from '../utils/teamFactory'
 
 type ReferenceModalContent = {
@@ -80,6 +85,26 @@ function formatCategories(categories: string[]) {
 
 function formatPositionLabel(position: Pick<RosterTemplate['positions'][number], 'name' | 'role'>) {
   return `${position.name} (${position.role})`
+}
+
+function applyAdjustedNumber(baseValue: number, adjustment?: number) {
+  return typeof adjustment === 'number' ? baseValue + adjustment : baseValue
+}
+
+function applyAdjustedTargetNumber(baseValue: string | null, adjustment?: number, mode: 'increase' | 'decrease' = 'increase') {
+  if (baseValue === null || typeof adjustment !== 'number' || adjustment === 0) {
+    return baseValue ?? '-'
+  }
+
+  const match = /^(\d+)\+$/u.exec(baseValue)
+
+  if (!match) {
+    return baseValue
+  }
+
+  const currentValue = Number(match[1])
+  const nextValue = mode === 'increase' ? currentValue - adjustment : currentValue + adjustment
+  return `${nextValue}+`
 }
 
 function toReferenceModalContent(reference: SkillReference): ReferenceModalContent {
@@ -285,6 +310,11 @@ export function TeamCreator() {
 
     return getDraftWarnings(activeTeam, activeTemplate)
   }, [activeTeam, activeTemplate])
+
+  const activePlayerCount = useMemo(
+    () => activeTeam?.players.filter((player) => player.playerStatus === 'ACTIVE').length ?? 0,
+    [activeTeam],
+  )
 
   const selectedTemplate = useMemo(
     () => templates.find((template) => template.id === selectedTemplateId) ?? templates[0] ?? null,
@@ -824,14 +854,36 @@ export function TeamCreator() {
   }
 
   function handleRemovePlayer(playerId: string) {
-    updateActiveTeam((team) => ({
-      ...team,
-      players: team.players.filter((player) => player.id !== playerId),
-    }))
+    updateActiveTeam((team) => {
+      if (!isRosterOrderLocked(team)) {
+        return {
+          ...team,
+          players: team.players.filter((player) => player.id !== playerId),
+        }
+      }
+
+      return {
+        ...team,
+        players: team.players.map((player) =>
+          player.id === playerId
+            ? {
+                ...player,
+                playerStatus: 'SOLD',
+                isDead: false,
+                missNextGame: false,
+              }
+            : player,
+        ),
+      }
+    })
   }
 
   function handleMovePlayer(playerId: string, direction: 'up' | 'down') {
     updateActiveTeam((team) => {
+      if (isRosterOrderLocked(team)) {
+        return team
+      }
+
       const currentIndex = team.players.findIndex((player) => player.id === playerId)
 
       if (currentIndex < 0) {
@@ -878,7 +930,7 @@ export function TeamCreator() {
         ...sourcePlayer,
         id: crypto.randomUUID(),
         name: `${sourcePlayer.name} Copy`,
-        shirtNumber: null,
+        shirtNumber: createNextShirtNumberForLockedTeam(team),
       }
 
       const nextPlayers = [...team.players]
@@ -927,12 +979,33 @@ export function TeamCreator() {
     }))
   }
 
+  function handlePlayerStatusChange(
+    playerId: string,
+    playerStatus: 'ACTIVE' | 'SOLD' | 'DEAD' | 'RETIRED',
+  ) {
+    updateActiveTeam((team) =>
+      normalizeTeamShirtNumbers({
+        ...team,
+        players: team.players.map((player) =>
+          player.id === playerId
+            ? {
+                ...player,
+                playerStatus,
+                isDead: playerStatus === 'DEAD',
+                missNextGame: playerStatus === 'ACTIVE' ? player.missNextGame : false,
+              }
+            : player,
+        ),
+      }).team,
+    )
+  }
+
   function handleTeamNameChange(name: string) {
     updateActiveTeam((team) => ({ ...team, name }))
   }
 
   function handleStatusChange(status: SavedTeam['status']) {
-    updateActiveTeam((team) => ({ ...team, status }))
+    updateActiveTeam((team) => normalizeTeamShirtNumbers({ ...team, status }).team)
   }
 
   function handleRerollChange(value: string) {
@@ -1681,7 +1754,7 @@ export function TeamCreator() {
                 aria-label="Team name"
               />
               <p className={styles.cloneHeroMeta}>
-                {activeTemplate.name} Team &nbsp; {activeTeam.players.length}s &nbsp; {activeTemplate.leagues[0] ?? 'League'}
+                {activeTemplate.name} Team &nbsp; {activePlayerCount} active players &nbsp; {activeTemplate.leagues[0] ?? 'League'}
               </p>
             </div>
             <div className={styles.heroAside}>
@@ -1699,7 +1772,7 @@ export function TeamCreator() {
             </article>
             <article className={styles.summaryCard}>
               <span>Players</span>
-              <strong>{activeTeam.players.length}</strong>
+              <strong>{activePlayerCount}</strong>
               <small>{activeTemplatePlayerLimit} possible across this roster</small>
             </article>
             <article className={styles.summaryCard}>
@@ -1752,6 +1825,7 @@ export function TeamCreator() {
                     <th>SPP</th>
                     <th>NI</th>
                     <th>MNG</th>
+                    <th>Status</th>
                     <th>Value</th>
                   </tr>
                 </thead>
@@ -1776,7 +1850,7 @@ export function TeamCreator() {
                                   className={styles.iconButton}
                                   onClick={() => handleMovePlayer(player.id, 'up')}
                                   type="button"
-                                  disabled={index === 0}
+                                  disabled={index === 0 || isRosterOrderLocked(activeTeam)}
                                   aria-label="Move player up"
                                 >
                                   ↑
@@ -1785,7 +1859,9 @@ export function TeamCreator() {
                                   className={styles.iconButton}
                                   onClick={() => handleMovePlayer(player.id, 'down')}
                                   type="button"
-                                  disabled={index === activeTeam.players.length - 1}
+                                  disabled={
+                                    index === activeTeam.players.length - 1 || isRosterOrderLocked(activeTeam)
+                                  }
                                   aria-label="Move player down"
                                 >
                                   ↓
@@ -1817,11 +1893,11 @@ export function TeamCreator() {
                               />
                             </td>
                             <td>{formatPositionLabel(position)}</td>
-                          <td>{position.movement}</td>
-                          <td>{position.strength}</td>
-                          <td>{position.agility}</td>
-                          <td>{position.passing ?? '-'}</td>
-                          <td>{position.armour}</td>
+                          <td>{applyAdjustedNumber(position.movement, player.statAdjustments.movement)}</td>
+                          <td>{applyAdjustedNumber(position.strength, player.statAdjustments.strength)}</td>
+                          <td>{applyAdjustedTargetNumber(position.agility, player.statAdjustments.agility)}</td>
+                          <td>{applyAdjustedTargetNumber(position.passing, player.statAdjustments.passing)}</td>
+                          <td>{applyAdjustedTargetNumber(position.armour, player.statAdjustments.armour, 'decrease')}</td>
                           <td>{renderSkills(skills)}</td>
                           <td>
                             <input
@@ -1854,6 +1930,23 @@ export function TeamCreator() {
                               />
                               <span>{player.missNextGame ? 'Yes' : 'No'}</span>
                             </label>
+                          </td>
+                          <td>
+                            <select
+                              className={styles.inlineInput}
+                              value={player.playerStatus}
+                              onChange={(event) =>
+                                handlePlayerStatusChange(
+                                  player.id,
+                                  event.target.value as 'ACTIVE' | 'SOLD' | 'DEAD' | 'RETIRED',
+                                )
+                              }
+                            >
+                              <option value="ACTIVE">Active</option>
+                              <option value="SOLD">Sold</option>
+                              <option value="DEAD">Dead</option>
+                              <option value="RETIRED">Retired</option>
+                            </select>
                           </td>
                           <td>{formatGold(player.currentValue)}</td>
                           </tr>
@@ -1896,6 +1989,7 @@ export function TeamCreator() {
                     <td>{selectedPosition ? renderSkills(selectedPosition.startingSkills) : '-'}</td>
                     <td>0</td>
                     <td>0</td>
+                    <td>No</td>
                     <td>No</td>
                     <td>{selectedPosition ? formatGold(selectedPosition.cost) : '-'}</td>
                   </tr>

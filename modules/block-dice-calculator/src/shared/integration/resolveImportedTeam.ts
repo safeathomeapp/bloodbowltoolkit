@@ -11,6 +11,22 @@ function applyNumericAdjustment(baseValue: number, adjustment?: number) {
   return typeof adjustment === 'number' ? baseValue + adjustment : baseValue
 }
 
+function applyTargetNumberAdjustment(baseValue: string, adjustment?: number, mode: 'increase' | 'decrease' = 'increase') {
+  if (typeof adjustment !== 'number' || adjustment === 0) {
+    return baseValue
+  }
+
+  const match = /^(\d+)\+$/u.exec(baseValue)
+
+  if (!match) {
+    return baseValue
+  }
+
+  const currentValue = Number(match[1])
+  const nextValue = mode === 'increase' ? currentValue - adjustment : currentValue + adjustment
+  return `${nextValue}+`
+}
+
 function mapBlockDiceSkills(skills: string[]): Skill[] {
   return skills
     .map((skill) => skill.toUpperCase())
@@ -36,6 +52,10 @@ export function resolveImportedTeam(
     name: savedTeam.name,
     rosterName: template.name,
     players: savedTeam.players.flatMap((player, index) => {
+      if ((player.playerStatus ?? (player.isDead ? 'DEAD' : 'ACTIVE')) !== 'ACTIVE') {
+        return []
+      }
+
       const position = template.positions.find((entry) => entry.id === player.positionTemplateId)
 
       if (!position) {
@@ -57,9 +77,12 @@ export function resolveImportedTeam(
           role: position.role,
           movement: applyNumericAdjustment(position.movement, player.statAdjustments.movement),
           strength: applyNumericAdjustment(position.strength, player.statAdjustments.strength),
-          agility: position.agility,
-          passing: position.passing,
-          armour: position.armour,
+          agility: applyTargetNumberAdjustment(position.agility, player.statAdjustments.agility),
+          passing:
+            position.passing === null
+              ? null
+              : applyTargetNumberAdjustment(position.passing, player.statAdjustments.passing),
+          armour: applyTargetNumberAdjustment(position.armour, player.statAdjustments.armour, 'decrease'),
           allSkills,
           blockDiceSkills: mapBlockDiceSkills(allSkills),
           currentValue: player.currentValue,

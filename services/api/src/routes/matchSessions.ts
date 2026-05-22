@@ -4,6 +4,7 @@ import {
   MatchSessionCasualtyResolutionType,
   MatchSessionSide,
   MatchSessionStatus,
+  TeamPlayerStatus,
   TeamStatus,
   type Prisma,
 } from '@prisma/client'
@@ -17,6 +18,8 @@ const statAdjustmentsSchema = z.object({
   passing: z.number().int().optional(),
   armour: z.number().int().optional(),
 })
+
+type StatAdjustmentsRecord = z.infer<typeof statAdjustmentsSchema>
 
 const createMatchSessionBodySchema = z.object({
   leagueId: z.string().min(1).nullable().optional(),
@@ -92,6 +95,49 @@ function clampNonNegative(value: number) {
   return value < 0 ? 0 : value
 }
 
+function isRosterOrderLocked(status: TeamStatus) {
+  return status !== TeamStatus.DRAFT
+}
+
+function normalizeShirtNumbers<T extends { shirtNumber: number | null; playerStatus?: TeamPlayerStatus }>(
+  status: TeamStatus,
+  players: T[],
+) {
+  if (!isRosterOrderLocked(status)) {
+    return players
+  }
+
+  const usedNumbers = new Set<number>()
+
+  return players.map((player) => {
+    if ((player.playerStatus ?? TeamPlayerStatus.ACTIVE) !== TeamPlayerStatus.ACTIVE) {
+      return player
+    }
+
+    if (
+      typeof player.shirtNumber === 'number' &&
+      player.shirtNumber > 0 &&
+      !usedNumbers.has(player.shirtNumber)
+    ) {
+      usedNumbers.add(player.shirtNumber)
+      return player
+    }
+
+    let nextNumber = 1
+
+    while (usedNumbers.has(nextNumber)) {
+      nextNumber += 1
+    }
+
+    usedNumbers.add(nextNumber)
+
+    return {
+      ...player,
+      shirtNumber: nextNumber,
+    }
+  })
+}
+
 function toSavedTeamRecord(team: {
   id: string
   rosterTemplateId: string
@@ -103,29 +149,35 @@ function toSavedTeamRecord(team: {
     positionTemplateId: string
     name: string
     shirtNumber: number | null
+    playerStatus?: TeamPlayerStatus
     currentValue: number
     spp: number
     nigglingInjuries: number
     missNextGame?: boolean
+    isDead?: boolean
     extraSkills: string[]
     statAdjustments: unknown
   }>
 }) {
+  const normalizedPlayers = normalizeShirtNumbers(team.status, team.players)
+
   return {
     id: team.id,
     rosterTemplateId: team.rosterTemplateId,
     name: team.name,
     status: team.status,
-    players: team.players.map((player) => ({
+    players: normalizedPlayers.map((player) => ({
       id: player.id,
       teamId: player.teamId,
       positionTemplateId: player.positionTemplateId,
       name: player.name,
       shirtNumber: player.shirtNumber,
+      playerStatus: player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE),
       currentValue: player.currentValue,
       spp: player.spp,
       nigglingInjuries: player.nigglingInjuries,
       missNextGame: player.missNextGame ?? false,
+      isDead: player.isDead ?? false,
       extraSkills: player.extraSkills,
       statAdjustments: statAdjustmentsSchema.parse(player.statAdjustments),
     })),
@@ -141,26 +193,31 @@ function toSavedTeamRecordFromSubmission(submission: {
     positionTemplateId: string
     name: string
     shirtNumber: number | null
+    playerStatus?: TeamPlayerStatus
     currentValue: number
     extraSkills: string[]
     statAdjustments: Prisma.JsonValue
   }>
 }) {
+  const normalizedPlayers = normalizeShirtNumbers(TeamStatus.ACTIVE, submission.players)
+
   return {
     id: submission.id,
     rosterTemplateId: submission.rosterTemplateId,
     name: submission.teamName,
     status: TeamStatus.ACTIVE,
-    players: submission.players.map((player) => ({
+    players: normalizedPlayers.map((player) => ({
       id: player.id,
       teamId: submission.id,
       positionTemplateId: player.positionTemplateId,
       name: player.name,
       shirtNumber: player.shirtNumber,
+      playerStatus: player.playerStatus ?? TeamPlayerStatus.ACTIVE,
       currentValue: player.currentValue,
       spp: 0,
       nigglingInjuries: 0,
       missNextGame: false,
+      isDead: false,
       extraSkills: player.extraSkills,
       statAdjustments: statAdjustmentsSchema.parse(player.statAdjustments),
     })),
@@ -455,8 +512,38 @@ function createEmptyTeamProgressionSummary(team: {
       missNextGameAfter: boolean
       nigglingInjuriesBefore: number
       nigglingInjuriesAfter: number
+      isDeadBefore: boolean
+      isDeadAfter: boolean
+      statAdjustmentsBefore: StatAdjustmentsRecord
+      statAdjustmentsAfter: StatAdjustmentsRecord
       eventTotals: Record<MatchSessionEventTypeValue, number>
     }>,
+  }
+}
+
+function cloneStatAdjustments(statAdjustments: StatAdjustmentsRecord): StatAdjustmentsRecord {
+  return { ...statAdjustments }
+}
+
+function reduceStatAdjustment(
+  statAdjustments: StatAdjustmentsRecord,
+  key: keyof StatAdjustmentsRecord,
+) {
+  const currentValue = statAdjustments[key] ?? 0
+
+  if (currentValue <= -1) {
+    return {
+      next: cloneStatAdjustments(statAdjustments),
+      fellBackToMissNextGame: true,
+    }
+  }
+
+  return {
+    next: {
+      ...cloneStatAdjustments(statAdjustments),
+      [key]: currentValue - 1,
+    },
+    fellBackToMissNextGame: false,
   }
 }
 
@@ -499,9 +586,12 @@ function buildMatchSessionProgressionSummary(session: {
       id: string
       name: string
       shirtNumber: number | null
+      playerStatus?: TeamPlayerStatus
       spp: number
       nigglingInjuries: number
       missNextGame: boolean
+      isDead: boolean
+      statAdjustments: Prisma.JsonValue
     }>
   }
   awayTeam: {
@@ -511,13 +601,24 @@ function buildMatchSessionProgressionSummary(session: {
       id: string
       name: string
       shirtNumber: number | null
+      playerStatus?: TeamPlayerStatus
       spp: number
       nigglingInjuries: number
       missNextGame: boolean
+      isDead: boolean
+      statAdjustments: Prisma.JsonValue
     }>
   }
 }) {
   const isTournamentFixture = session.fixture?.competition.type === CompetitionType.TOURNAMENT
+  const normalizedHomeTeam = {
+    ...session.homeTeam,
+    players: normalizeShirtNumbers(TeamStatus.ACTIVE, session.homeTeam.players),
+  }
+  const normalizedAwayTeam = {
+    ...session.awayTeam,
+    players: normalizeShirtNumbers(TeamStatus.ACTIVE, session.awayTeam.players),
+  }
   const casualtyResolutionMap = new Map(
     session.casualtyResolutions.map((resolution) => [resolution.matchSessionEventId, resolution.resolutionType]),
   )
@@ -530,8 +631,8 @@ function buildMatchSessionProgressionSummary(session: {
       appliedAt: null,
       canApply: false,
       reason: 'Tournament snapshot rooms record history but do not mutate saved team progression.',
-      homeTeam: createEmptyTeamProgressionSummary(session.homeTeam),
-      awayTeam: createEmptyTeamProgressionSummary(session.awayTeam),
+      homeTeam: createEmptyTeamProgressionSummary(normalizedHomeTeam),
+      awayTeam: createEmptyTeamProgressionSummary(normalizedAwayTeam),
       casualtyResolutions: session.casualtyResolutions.map(toCasualtyResolutionSummary),
       unresolvedEvents: [] as Array<{
         eventId: string
@@ -546,18 +647,18 @@ function buildMatchSessionProgressionSummary(session: {
   }
 
   const homePlayersByNumber = new Map(
-    session.homeTeam.players
+    normalizedHomeTeam.players
       .filter((player) => typeof player.shirtNumber === 'number')
       .map((player) => [player.shirtNumber as number, player]),
   )
   const awayPlayersByNumber = new Map(
-    session.awayTeam.players
+    normalizedAwayTeam.players
       .filter((player) => typeof player.shirtNumber === 'number')
       .map((player) => [player.shirtNumber as number, player]),
   )
 
-  const homeSummary = createEmptyTeamProgressionSummary(session.homeTeam)
-  const awaySummary = createEmptyTeamProgressionSummary(session.awayTeam)
+  const homeSummary = createEmptyTeamProgressionSummary(normalizedHomeTeam)
+  const awaySummary = createEmptyTeamProgressionSummary(normalizedAwayTeam)
   const homePlayerSummaries = new Map<string, (typeof homeSummary.players)[number]>()
   const awayPlayerSummaries = new Map<string, (typeof awaySummary.players)[number]>()
   const unresolvedEvents: Array<{
@@ -607,6 +708,7 @@ function buildMatchSessionProgressionSummary(session: {
     const sppAward = getEventSppValue(event.eventType)
     const existingSummary = playerSummaries.get(player.id)
     const casualtyResolution = event.eventType === 'CASUALTY' ? casualtyResolutionMap.get(event.id) ?? null : null
+    const playerStatAdjustments = statAdjustmentsSchema.parse(player.statAdjustments)
 
     if (existingSummary) {
       existingSummary.sppAwarded += sppAward
@@ -619,20 +721,24 @@ function buildMatchSessionProgressionSummary(session: {
     } else {
       playerSummaries.set(player.id, {
         playerId: player.id,
-        playerName: player.name,
-        shirtNumber: player.shirtNumber,
-        sppBefore: session.progressionAppliedAt ? player.spp - sppAward : player.spp,
-        sppAwarded: sppAward,
-        sppAfter: session.progressionAppliedAt ? player.spp : player.spp + sppAward,
+      playerName: player.name,
+      shirtNumber: player.shirtNumber,
+      sppBefore: session.progressionAppliedAt ? player.spp - sppAward : player.spp,
+      sppAwarded: sppAward,
+      sppAfter: session.progressionAppliedAt ? player.spp : player.spp + sppAward,
         missNextGameBefore: player.missNextGame,
         missNextGameAfter: player.missNextGame,
         nigglingInjuriesBefore: player.nigglingInjuries,
         nigglingInjuriesAfter: player.nigglingInjuries,
-        eventTotals: {
-          ...createEmptyEventTotals(),
-          [event.eventType]: 1,
-        },
-      })
+        isDeadBefore: player.isDead,
+        isDeadAfter: player.isDead,
+        statAdjustmentsBefore: cloneStatAdjustments(playerStatAdjustments),
+        statAdjustmentsAfter: cloneStatAdjustments(playerStatAdjustments),
+      eventTotals: {
+        ...createEmptyEventTotals(),
+        [event.eventType]: 1,
+      },
+    })
     }
 
     teamSummary.totalAwardedSpp += sppAward
@@ -688,6 +794,7 @@ function buildMatchSessionProgressionSummary(session: {
     }
 
     const existingInjuredSummary = injuredPlayerSummaries.get(injuredPlayer.id)
+    const injuredPlayerStatAdjustments = statAdjustmentsSchema.parse(injuredPlayer.statAdjustments)
 
     if (existingInjuredSummary) {
       if (casualtyResolution === 'MISS_NEXT_GAME') {
@@ -707,6 +814,69 @@ function buildMatchSessionProgressionSummary(session: {
         existingInjuredSummary.nigglingInjuriesAfter = session.progressionAppliedAt
           ? injuredPlayer.nigglingInjuries
           : injuredPlayer.nigglingInjuries + 1
+      }
+
+      if (casualtyResolution === 'SERIOUS_INJURY') {
+        existingInjuredSummary.missNextGameBefore =
+          session.progressionAppliedAt && injuredPlayer.missNextGame
+            ? false
+            : existingInjuredSummary.missNextGameBefore
+        existingInjuredSummary.missNextGameAfter = session.progressionAppliedAt
+          ? injuredPlayer.missNextGame
+          : true
+        existingInjuredSummary.nigglingInjuriesBefore = session.progressionAppliedAt
+          ? injuredPlayer.nigglingInjuries - 1
+          : existingInjuredSummary.nigglingInjuriesBefore
+        existingInjuredSummary.nigglingInjuriesAfter = session.progressionAppliedAt
+          ? injuredPlayer.nigglingInjuries
+          : injuredPlayer.nigglingInjuries + 1
+      }
+
+      if (
+        casualtyResolution === 'LASTING_INJURY_ARMOUR' ||
+        casualtyResolution === 'LASTING_INJURY_MOVEMENT' ||
+        casualtyResolution === 'LASTING_INJURY_PASSING' ||
+        casualtyResolution === 'LASTING_INJURY_AGILITY' ||
+        casualtyResolution === 'LASTING_INJURY_STRENGTH'
+      ) {
+        existingInjuredSummary.missNextGameBefore =
+          session.progressionAppliedAt && injuredPlayer.missNextGame
+            ? false
+            : existingInjuredSummary.missNextGameBefore
+        existingInjuredSummary.missNextGameAfter = session.progressionAppliedAt
+          ? injuredPlayer.missNextGame
+          : true
+
+        const reductionKey =
+          casualtyResolution === 'LASTING_INJURY_ARMOUR'
+            ? 'armour'
+            : casualtyResolution === 'LASTING_INJURY_MOVEMENT'
+              ? 'movement'
+              : casualtyResolution === 'LASTING_INJURY_PASSING'
+                ? 'passing'
+                : casualtyResolution === 'LASTING_INJURY_AGILITY'
+                  ? 'agility'
+                  : 'strength'
+        const reduced = reduceStatAdjustment(existingInjuredSummary.statAdjustmentsBefore, reductionKey)
+
+        if (reduced.fellBackToMissNextGame) {
+          existingInjuredSummary.statAdjustmentsAfter = cloneStatAdjustments(
+            existingInjuredSummary.statAdjustmentsBefore,
+          )
+        } else {
+          existingInjuredSummary.statAdjustmentsAfter = session.progressionAppliedAt
+            ? cloneStatAdjustments(injuredPlayerStatAdjustments)
+            : reduced.next
+          existingInjuredSummary.statAdjustmentsBefore = session.progressionAppliedAt
+            ? reduceStatAdjustment(injuredPlayerStatAdjustments, reductionKey).next
+            : existingInjuredSummary.statAdjustmentsBefore
+        }
+      }
+
+      if (casualtyResolution === 'DEAD') {
+        existingInjuredSummary.isDeadBefore =
+          session.progressionAppliedAt && injuredPlayer.isDead ? false : existingInjuredSummary.isDeadBefore
+        existingInjuredSummary.isDeadAfter = session.progressionAppliedAt ? injuredPlayer.isDead : true
       }
     } else {
       injuredPlayerSummaries.set(injuredPlayer.id, {
@@ -736,6 +906,44 @@ function buildMatchSessionProgressionSummary(session: {
             : casualtyResolution === 'NIGGLING_INJURY'
               ? injuredPlayer.nigglingInjuries + 1
               : injuredPlayer.nigglingInjuries,
+        isDeadBefore:
+          session.progressionAppliedAt && casualtyResolution === 'DEAD' ? false : injuredPlayer.isDead,
+        isDeadAfter:
+          session.progressionAppliedAt ? injuredPlayer.isDead : casualtyResolution === 'DEAD' ? true : injuredPlayer.isDead,
+        statAdjustmentsBefore:
+          session.progressionAppliedAt &&
+          (casualtyResolution === 'LASTING_INJURY_ARMOUR' ||
+            casualtyResolution === 'LASTING_INJURY_MOVEMENT' ||
+            casualtyResolution === 'LASTING_INJURY_PASSING' ||
+            casualtyResolution === 'LASTING_INJURY_AGILITY' ||
+            casualtyResolution === 'LASTING_INJURY_STRENGTH')
+            ? reduceStatAdjustment(
+                injuredPlayerStatAdjustments,
+                casualtyResolution === 'LASTING_INJURY_ARMOUR'
+                  ? 'armour'
+                  : casualtyResolution === 'LASTING_INJURY_MOVEMENT'
+                    ? 'movement'
+                    : casualtyResolution === 'LASTING_INJURY_PASSING'
+                      ? 'passing'
+                      : casualtyResolution === 'LASTING_INJURY_AGILITY'
+                        ? 'agility'
+                        : 'strength',
+              ).next
+            : cloneStatAdjustments(injuredPlayerStatAdjustments),
+        statAdjustmentsAfter:
+          session.progressionAppliedAt
+            ? cloneStatAdjustments(injuredPlayerStatAdjustments)
+            : casualtyResolution === 'LASTING_INJURY_ARMOUR'
+              ? reduceStatAdjustment(injuredPlayerStatAdjustments, 'armour').next
+              : casualtyResolution === 'LASTING_INJURY_MOVEMENT'
+                ? reduceStatAdjustment(injuredPlayerStatAdjustments, 'movement').next
+                : casualtyResolution === 'LASTING_INJURY_PASSING'
+                  ? reduceStatAdjustment(injuredPlayerStatAdjustments, 'passing').next
+                  : casualtyResolution === 'LASTING_INJURY_AGILITY'
+                    ? reduceStatAdjustment(injuredPlayerStatAdjustments, 'agility').next
+                    : casualtyResolution === 'LASTING_INJURY_STRENGTH'
+                      ? reduceStatAdjustment(injuredPlayerStatAdjustments, 'strength').next
+                      : cloneStatAdjustments(injuredPlayerStatAdjustments),
         eventTotals: createEmptyEventTotals(),
       })
     }
@@ -1452,9 +1660,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
                 id: true,
                 name: true,
                 shirtNumber: true,
+                playerStatus: true,
                 spp: true,
                 nigglingInjuries: true,
                 missNextGame: true,
+                isDead: true,
+                statAdjustments: true,
               },
             },
           },
@@ -1466,9 +1677,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
                 id: true,
                 name: true,
                 shirtNumber: true,
+                playerStatus: true,
                 spp: true,
                 nigglingInjuries: true,
                 missNextGame: true,
+                isDead: true,
+                statAdjustments: true,
               },
             },
           },
@@ -1610,9 +1824,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
                 id: true,
                 name: true,
                 shirtNumber: true,
+                playerStatus: true,
                 spp: true,
                 nigglingInjuries: true,
                 missNextGame: true,
+                isDead: true,
+                statAdjustments: true,
               },
             },
           },
@@ -1624,9 +1841,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
                 id: true,
                 name: true,
                 shirtNumber: true,
+                playerStatus: true,
                 spp: true,
                 nigglingInjuries: true,
                 missNextGame: true,
+                isDead: true,
+                statAdjustments: true,
               },
             },
           },
@@ -1691,9 +1911,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
                 id: true,
                 name: true,
                 shirtNumber: true,
+                playerStatus: true,
                 spp: true,
                 nigglingInjuries: true,
                 missNextGame: true,
+                isDead: true,
+                statAdjustments: true,
               },
             },
           },
@@ -1705,9 +1928,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
                 id: true,
                 name: true,
                 shirtNumber: true,
+                playerStatus: true,
                 spp: true,
                 nigglingInjuries: true,
                 missNextGame: true,
+                isDead: true,
+                statAdjustments: true,
               },
             },
           },
@@ -1765,6 +1991,9 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
             spp: player.sppAfter,
             nigglingInjuries: player.nigglingInjuriesAfter,
             missNextGame: player.missNextGameAfter,
+            playerStatus: player.isDeadAfter ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE,
+            isDead: player.isDeadAfter,
+            statAdjustments: player.statAdjustmentsAfter,
           },
         })
       }
@@ -1816,9 +2045,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
                 id: true,
                 name: true,
                 shirtNumber: true,
+                playerStatus: true,
                 spp: true,
                 nigglingInjuries: true,
                 missNextGame: true,
+                isDead: true,
+                statAdjustments: true,
               },
             },
           },
@@ -1830,9 +2062,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
                 id: true,
                 name: true,
                 shirtNumber: true,
+                playerStatus: true,
                 spp: true,
                 nigglingInjuries: true,
                 missNextGame: true,
+                isDead: true,
+                statAdjustments: true,
               },
             },
           },

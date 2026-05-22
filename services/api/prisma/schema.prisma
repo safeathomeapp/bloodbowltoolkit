@@ -18,6 +18,13 @@ enum TeamStatus {
   RETIRED
 }
 
+enum TeamPlayerStatus {
+  ACTIVE
+  SOLD
+  DEAD
+  RETIRED
+}
+
 enum MatchSessionStatus {
   PENDING
   ACTIVE
@@ -95,6 +102,13 @@ enum MatchSessionCasualtyResolutionType {
   NONE
   MISS_NEXT_GAME
   NIGGLING_INJURY
+  SERIOUS_INJURY
+  LASTING_INJURY_ARMOUR
+  LASTING_INJURY_MOVEMENT
+  LASTING_INJURY_PASSING
+  LASTING_INJURY_AGILITY
+  LASTING_INJURY_STRENGTH
+  DEAD
 }
 
 model User {
@@ -165,10 +179,12 @@ model TeamPlayer {
   positionTemplateId String
   name              String
   shirtNumber       Int?
+  playerStatus      TeamPlayerStatus @default(ACTIVE)
   currentValue      Int
   spp               Int
   nigglingInjuries  Int
   missNextGame      Boolean  @default(false)
+  isDead            Boolean  @default(false)
   extraSkills       String[]
   statAdjustments   Json
   displayOrder      Int

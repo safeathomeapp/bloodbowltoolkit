@@ -7,8 +7,14 @@ const DEDICATED_FAN_STEP_COST = 5_000
 const MINIMUM_TEAM_SIZE = 11
 const MAXIMUM_TEAM_SIZE = 16
 
+function isActivePlayer(player: Pick<SavedTeam['players'][number], 'playerStatus'>) {
+  return player.playerStatus === 'ACTIVE'
+}
+
 export function calculatePlayerValue(team: SavedTeam) {
-  return team.players.reduce((total, player) => total + player.currentValue, 0)
+  return team.players
+    .filter(isActivePlayer)
+    .reduce((total, player) => total + player.currentValue, 0)
 }
 
 export function calculateRerollValue(team: SavedTeam, template: RosterTemplate) {
@@ -55,11 +61,13 @@ export function calculateMinimumTeamSize(template: RosterTemplate) {
 export function getDraftWarnings(team: SavedTeam, template: RosterTemplate) {
   const warnings: string[] = []
 
-  if (team.players.length < Math.max(MINIMUM_TEAM_SIZE, calculateMinimumTeamSize(template))) {
+  const activePlayers = team.players.filter(isActivePlayer)
+
+  if (activePlayers.length < Math.max(MINIMUM_TEAM_SIZE, calculateMinimumTeamSize(template))) {
     warnings.push('Draft list needs at least 11 players.')
   }
 
-  if (team.players.length > MAXIMUM_TEAM_SIZE) {
+  if (activePlayers.length > MAXIMUM_TEAM_SIZE) {
     warnings.push('Draft list cannot exceed 16 players.')
   }
 
@@ -91,7 +99,7 @@ export function getDraftWarnings(team: SavedTeam, template: RosterTemplate) {
 }
 
 export function countPlayersByPosition(team: SavedTeam) {
-  return team.players.reduce<Record<string, number>>((counts, player) => {
+  return team.players.filter(isActivePlayer).reduce<Record<string, number>>((counts, player) => {
     counts[player.positionTemplateId] = (counts[player.positionTemplateId] ?? 0) + 1
     return counts
   }, {})
@@ -112,5 +120,5 @@ export function countPlayersInSharedGroup(
       .map((candidate) => candidate.id),
   )
 
-  return team.players.filter((player) => groupedPositionIds.has(player.positionTemplateId)).length
+  return team.players.filter((player) => isActivePlayer(player) && groupedPositionIds.has(player.positionTemplateId)).length
 }
