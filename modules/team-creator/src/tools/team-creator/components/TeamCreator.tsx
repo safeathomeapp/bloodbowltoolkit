@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 
 import styles from './TeamCreator.module.css'
 import { getSkillReference } from '../../../data/skillReferences'
+import { AuthClient, type AuthApiUser } from '../../../shared/api/authClient'
 import {
   CompetitionClient,
   type CompetitionDetail,
   type CompetitionFixtureSummary,
   type CompetitionFixtureMatchSession,
   type CompetitionSubmissionDetail,
-  type SharedApiUser,
 } from '../../../shared/api/competitionClient'
 import { resolveTeamRepositorySelection } from '../../../shared/repositories/createTeamRepository'
 import { BrowserLocalStorageStore } from '../../../shared/storage/keyValueStore'
@@ -22,6 +22,9 @@ import {
   calculateAssistantCoachValue,
   calculateCheerleaderValue,
   calculateDedicatedFansValue,
+  countActivePlayers,
+  countEligiblePlayers,
+  countRosteredPlayers,
   calculatePlayerValue,
   calculateRerollValue,
   calculateTeamValue,
@@ -29,6 +32,7 @@ import {
   countPlayersByPosition,
   countPlayersInSharedGroup,
   getDraftWarnings,
+  isEligibleForNextGamePlayer,
 } from '../../../shared/utils/teamMath'
 import type { SkillReference } from '../../../shared/types/skillReference'
 import type { RosterTemplate, SavedTeam, SavedTeamSummary } from '../../../shared/types/team'
@@ -54,8 +58,39 @@ type CompetitionCreateFormState = {
   allowUnofficialRosters: boolean
 }
 
-type IdentityFormState = {
+type AuthPanelMode = 'SIGN_UP' | 'PASSWORD' | 'MAGIC_LINK'
+
+type SignupFormState = {
   displayName: string
+  email: string
+  password: string
+  townOrCity: string
+  country: string
+}
+
+type PasswordLoginFormState = {
+  email: string
+  password: string
+}
+
+type MagicLinkFormState = {
+  email: string
+  token: string
+}
+
+type VerificationFormState = {
+  token: string
+}
+
+type ProfileFormState = {
+  displayName: string
+  townOrCity: string
+  country: string
+}
+
+type EmailChangeFormState = {
+  email: string
+  token: string
 }
 
 type SubmissionInspectionState = {
@@ -80,14 +115,27 @@ type ConfirmationDialogState =
       confirmLabel: string
     }
 
-const repositorySelection = resolveTeamRepositorySelection()
-const repository = repositorySelection.repository
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() ?? ''
+const blockDiceBaseUrl = (import.meta.env.VITE_BLOCK_DICE_URL?.trim() || 'http://127.0.0.1:5174').replace(/\/+$/u, '')
+const browserStore =
+  typeof window !== 'undefined' ? new BrowserLocalStorageStore(window.localStorage) : null
+const authClient =
+  typeof window !== 'undefined' && apiBaseUrl && browserStore
+    ? new AuthClient({
+        baseUrl: apiBaseUrl,
+        store: browserStore,
+      })
+    : null
+const repositorySelection = resolveTeamRepositorySelection({
+  authClient,
+})
+const repository = repositorySelection.repository
 const competitionClient =
-  typeof window !== 'undefined' && repositorySelection.mode === 'api' && apiBaseUrl
+  typeof window !== 'undefined' && repositorySelection.mode === 'api' && apiBaseUrl && browserStore
     ? new CompetitionClient({
         baseUrl: apiBaseUrl,
-        store: new BrowserLocalStorageStore(window.localStorage),
+        store: browserStore,
+        authClient: authClient ?? undefined,
       })
     : null
 
@@ -134,6 +182,15 @@ function toReferenceModalContent(reference: SkillReference): ReferenceModalConte
 
 function findPosition(template: RosterTemplate, positionId: string) {
   return template.positions.find((position) => position.id === positionId) ?? null
+}
+
+function formatPlayerStatusLabel(status: SavedTeam['players'][number]['playerStatus']) {
+  switch (status) {
+    case 'RETIRED':
+      return 'TEMP RETIRED'
+    default:
+      return status
+  }
 }
 
 function getRemainingSlots(team: SavedTeam, template: RosterTemplate, positionId: string) {
@@ -207,9 +264,14 @@ function patchCompetitionEntry(
   )
 }
 
+function toDateTimeLocalValue(isoString: string | null) {
+  return isoString ? isoString.slice(0, 16) : ''
+}
+
 export function TeamCreator() {
   const [templates, setTemplates] = useState<RosterTemplate[]>([])
   const [teams, setTeams] = useState<SavedTeamSummary[]>([])
+  const [competitionTeams, setCompetitionTeams] = useState<SavedTeamSummary[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [libraryView, setLibraryView] = useState<'CREATE' | 'LOAD' | 'COMPETITIONS'>('CREATE')
   const [activeTeam, setActiveTeam] = useState<SavedTeam | null>(null)
@@ -229,7 +291,7 @@ export function TeamCreator() {
   >({})
   const [isCompetitionLoading, setIsCompetitionLoading] = useState(false)
   const [competitionUserId, setCompetitionUserId] = useState('')
-  const [currentApiUser, setCurrentApiUser] = useState<SharedApiUser | null>(null)
+  const [currentApiUser, setCurrentApiUser] = useState<AuthApiUser | null>(null)
   const [competitionForm, setCompetitionForm] = useState<CompetitionCreateFormState>({
     name: '',
     description: '',
@@ -237,13 +299,47 @@ export function TeamCreator() {
     submissionDeadline: '',
     allowUnofficialRosters: false,
   })
+  const [editingCompetitionId, setEditingCompetitionId] = useState<string | null>(null)
   const [selectedCompetitionTeamIds, setSelectedCompetitionTeamIds] = useState<Record<string, string>>({})
   const [selectedCompetitionTierIds, setSelectedCompetitionTierIds] = useState<Record<string, string>>({})
-  const [identityForm, setIdentityForm] = useState<IdentityFormState>({
+  const [authPanelMode, setAuthPanelMode] = useState<AuthPanelMode>('SIGN_UP')
+  const [signupForm, setSignupForm] = useState<SignupFormState>({
     displayName: '',
+    email: '',
+    password: '',
+    townOrCity: '',
+    country: '',
   })
+  const [passwordLoginForm, setPasswordLoginForm] = useState<PasswordLoginFormState>({
+    email: '',
+    password: '',
+  })
+  const [magicLinkForm, setMagicLinkForm] = useState<MagicLinkFormState>({
+    email: '',
+    token: '',
+  })
+  const [verificationForm, setVerificationForm] = useState<VerificationFormState>({
+    token: '',
+  })
+  const [profileForm, setProfileForm] = useState<ProfileFormState>({
+    displayName: '',
+    townOrCity: '',
+    country: '',
+  })
+  const [emailChangeForm, setEmailChangeForm] = useState<EmailChangeFormState>({
+    email: '',
+    token: '',
+  })
+  const [developmentVerificationToken, setDevelopmentVerificationToken] = useState<string | null>(null)
+  const [developmentMagicLinkToken, setDevelopmentMagicLinkToken] = useState<string | null>(null)
+  const [developmentEmailChangeToken, setDevelopmentEmailChangeToken] = useState<string | null>(null)
+  const [accountFeedback, setAccountFeedback] = useState('')
   const [inspectedSubmission, setInspectedSubmission] = useState<SubmissionInspectionState | null>(null)
   const [confirmationDialog, setConfirmationDialog] = useState<ConfirmationDialogState | null>(null)
+  const hasAuthenticatedApiUser = Boolean(currentApiUser)
+  const [isAccountPortalOpen, setIsAccountPortalOpen] = useState(false)
+
+  const accountPortalLabel = currentApiUser?.displayName?.trim().charAt(0).toUpperCase() || 'A'
 
   const draftRuleReferences: Record<string, ReferenceModalContent> = {
     rerolls: {
@@ -329,7 +425,15 @@ export function TeamCreator() {
   }, [activeTeam, activeTemplate])
 
   const activePlayerCount = useMemo(
-    () => activeTeam?.players.filter((player) => player.playerStatus === 'ACTIVE').length ?? 0,
+    () => (activeTeam ? countActivePlayers(activeTeam) : 0),
+    [activeTeam],
+  )
+  const rosteredPlayerCount = useMemo(
+    () => (activeTeam ? countRosteredPlayers(activeTeam) : 0),
+    [activeTeam],
+  )
+  const eligiblePlayerCount = useMemo(
+    () => (activeTeam ? countEligiblePlayers(activeTeam) : 0),
     [activeTeam],
   )
   const isDraftTeam = activeTeam?.status === 'DRAFT'
@@ -337,7 +441,7 @@ export function TeamCreator() {
     () => activeTeam?.players.filter((player) => player.playerStatus === 'ACTIVE') ?? [],
     [activeTeam],
   )
-  const archivedPlayers = useMemo(
+  const inactivePlayers = useMemo(
     () => activeTeam?.players.filter((player) => player.playerStatus !== 'ACTIVE') ?? [],
     [activeTeam],
   )
@@ -367,7 +471,14 @@ export function TeamCreator() {
             : (nextTemplates[0]?.id ?? ''),
         )
 
-        const nextTeams = await repository.listTeams()
+        const nextTeams =
+          repositorySelection.mode === 'api' && authClient && !authClient.hasStoredSession()
+            ? []
+            : await repository.listTeams()
+        const nextCompetitionTeams =
+          repositorySelection.mode === 'api' && authClient?.hasStoredSession()
+            ? await repository.listCompetitionTeams()
+            : []
         const nextCompetitions =
           competitionClient ? await competitionClient.listCompetitions() : []
 
@@ -376,6 +487,7 @@ export function TeamCreator() {
         }
 
         setTeams(nextTeams)
+        setCompetitionTeams(nextCompetitionTeams)
         setCompetitions([])
         setCompetitionSubmissionDetails({})
         setCompetitionFixtures({})
@@ -383,7 +495,7 @@ export function TeamCreator() {
         setSelectedCompetitionTeamIds({})
         setSelectedCompetitionTierIds({})
 
-        if (competitionClient) {
+        if (competitionClient && authClient?.hasStoredSession()) {
           const currentUser = await competitionClient.getCurrentUser()
           const competitionDetails = await Promise.all(
             nextCompetitions.map(async (competition) => competitionClient.getCompetition(competition.id)),
@@ -432,9 +544,27 @@ export function TeamCreator() {
           setSelectedCompetitionTierIds(nextTierSelections)
           setCompetitionUserId(currentUserId)
           setCurrentApiUser(currentUser)
-          setIdentityForm({
+          setPasswordLoginForm((current) => ({
+            ...current,
+            email: currentUser.email ?? current.email,
+          }))
+          setMagicLinkForm((current) => ({
+            ...current,
+            email: currentUser.email ?? current.email,
+          }))
+          setProfileForm({
             displayName: currentUser.displayName,
+            townOrCity: currentUser.townOrCity ?? '',
+            country: currentUser.country ?? '',
           })
+          setEmailChangeForm((current) => ({
+            ...current,
+            email: currentUser.pendingEmail ?? currentUser.email ?? current.email,
+          }))
+        } else {
+          setCompetitionTeams([])
+          setCompetitionUserId('')
+          setCurrentApiUser(null)
         }
 
         setFeedback('')
@@ -463,10 +593,18 @@ export function TeamCreator() {
 
   async function refreshState() {
     const nextTemplates = await repository.listRosterTemplates()
-    const nextTeams = await repository.listTeams()
+    const nextTeams =
+      repositorySelection.mode === 'api' && authClient && !authClient.hasStoredSession()
+        ? []
+        : await repository.listTeams()
+    const nextCompetitionTeams =
+      repositorySelection.mode === 'api' && authClient?.hasStoredSession()
+        ? await repository.listCompetitionTeams()
+        : []
 
     setTemplates(nextTemplates)
     setTeams(nextTeams)
+    setCompetitionTeams(nextCompetitionTeams)
     setSelectedTemplateId((currentSelectedTemplateId) =>
       currentSelectedTemplateId && nextTemplates.some((template) => template.id === currentSelectedTemplateId)
         ? currentSelectedTemplateId
@@ -476,11 +614,12 @@ export function TeamCreator() {
   }
 
   async function refreshCompetitionState() {
-    if (!competitionClient) {
+    if (!competitionClient || !authClient?.hasStoredSession()) {
       setCompetitions([])
       setCompetitionSubmissionDetails({})
       setCompetitionFixtures({})
       setCompetitionFixtureSessions({})
+      setCompetitionTeams([])
       setCompetitionUserId('')
       setCurrentApiUser(null)
       return
@@ -493,6 +632,7 @@ export function TeamCreator() {
         competitionClient.listCompetitions(),
         competitionClient.getCurrentUser(),
       ])
+      const nextCompetitionTeams = await repository.listCompetitionTeams()
       const currentUserId = currentUser.id
       const competitionDetails = await Promise.all(
         competitionSummaries.map(async (competition) => competitionClient.getCompetition(competition.id)),
@@ -527,6 +667,7 @@ export function TeamCreator() {
       setCompetitionSubmissionDetails(nextSubmissionDetails)
       setCompetitionFixtures(nextFixtures)
       setCompetitionFixtureSessions(nextFixtureSessions)
+      setCompetitionTeams(nextCompetitionTeams)
       setSelectedCompetitionTeamIds((currentSelections) => ({
         ...currentSelections,
         ...nextTeamSelections,
@@ -537,9 +678,23 @@ export function TeamCreator() {
       }))
       setCompetitionUserId(currentUserId)
       setCurrentApiUser(currentUser)
-      setIdentityForm({
+      setPasswordLoginForm((current) => ({
+        ...current,
+        email: currentUser.email ?? current.email,
+      }))
+      setMagicLinkForm((current) => ({
+        ...current,
+        email: currentUser.email ?? current.email,
+      }))
+      setProfileForm({
         displayName: currentUser.displayName,
+        townOrCity: currentUser.townOrCity ?? '',
+        country: currentUser.country ?? '',
       })
+      setEmailChangeForm((current) => ({
+        ...current,
+        email: currentUser.pendingEmail ?? currentUser.email ?? current.email,
+      }))
     } finally {
       setIsCompetitionLoading(false)
     }
@@ -564,7 +719,7 @@ export function TeamCreator() {
         return
       }
 
-      await competitionClient.createCompetition({
+      const sharedPayload = {
         name: competitionForm.name.trim(),
         description: competitionForm.description.trim(),
         maxEntrants,
@@ -572,7 +727,13 @@ export function TeamCreator() {
           ? new Date(competitionForm.submissionDeadline).toISOString()
           : null,
         allowUnofficialRosters: competitionForm.allowUnofficialRosters,
-      })
+      }
+
+      if (editingCompetitionId) {
+        await competitionClient.updateCompetition(editingCompetitionId, sharedPayload)
+      } else {
+        await competitionClient.createCompetition(sharedPayload)
+      }
       await refreshCompetitionState()
       setCompetitionForm({
         name: '',
@@ -581,10 +742,40 @@ export function TeamCreator() {
         submissionDeadline: '',
         allowUnofficialRosters: false,
       })
-      setFeedback('Competition created.')
+      setEditingCompetitionId(null)
+      setFeedback(editingCompetitionId ? 'Competition updated.' : 'Competition created.')
     } catch (error) {
-      setFeedback(error instanceof Error ? `Competition create failed: ${error.message}` : 'Competition create failed.')
+      setFeedback(
+        error instanceof Error
+          ? `${editingCompetitionId ? 'Competition update' : 'Competition create'} failed: ${error.message}`
+          : `${editingCompetitionId ? 'Competition update' : 'Competition create'} failed.`,
+      )
     }
+  }
+
+  function handleStartCompetitionEdit(competition: CompetitionDetail) {
+    setEditingCompetitionId(competition.id)
+    setCompetitionForm({
+      name: competition.name,
+      description: competition.description ?? '',
+      maxEntrants: String(competition.maxEntrants),
+      submissionDeadline: toDateTimeLocalValue(competition.submissionDeadline),
+      allowUnofficialRosters: competition.allowUnofficialRosters,
+    })
+    setLibraryView('COMPETITIONS')
+    setFeedback(`Editing ${competition.name}.`)
+  }
+
+  function handleCancelCompetitionEdit() {
+    setEditingCompetitionId(null)
+    setCompetitionForm({
+      name: '',
+      description: '',
+      maxEntrants: '8',
+      submissionDeadline: '',
+      allowUnofficialRosters: false,
+    })
+    setFeedback('Competition edit cancelled.')
   }
 
   async function handleJoinCompetition(competitionId: string) {
@@ -649,6 +840,7 @@ export function TeamCreator() {
             submission: {
               id: updatedSubmission.id,
               sourceTeamId: updatedSubmission.sourceTeamId,
+              competitionTeamId: updatedSubmission.competitionTeamId,
               teamName: updatedSubmission.teamName,
               rosterTemplateId: updatedSubmission.rosterTemplateId,
               submittedAt: updatedSubmission.submittedAt,
@@ -676,6 +868,7 @@ export function TeamCreator() {
             submission: {
               id: createdSubmission.id,
               sourceTeamId: createdSubmission.sourceTeamId,
+              competitionTeamId: createdSubmission.competitionTeamId,
               teamName: createdSubmission.teamName,
               rosterTemplateId: createdSubmission.rosterTemplateId,
               submittedAt: createdSubmission.submittedAt,
@@ -749,6 +942,23 @@ export function TeamCreator() {
     }
   }
 
+  function handleOpenBlockDiceMatchRoom(sessionCode: string) {
+    if (!authClient?.hasStoredSession()) {
+      setFeedback('Sign in before opening the match room.')
+      return
+    }
+
+    const sessionToken = authClient.getSessionToken()
+
+    if (!sessionToken) {
+      setFeedback('Sign in before opening the match room.')
+      return
+    }
+
+    const matchRoomUrl = `${blockDiceBaseUrl}/?sessionCode=${encodeURIComponent(sessionCode)}#authToken=${encodeURIComponent(sessionToken)}`
+    window.open(matchRoomUrl, '_blank', 'noopener,noreferrer')
+  }
+
   async function handleInspectCompetitionSubmission(
     competitionId: string,
     competitionName: string,
@@ -780,37 +990,247 @@ export function TeamCreator() {
     }
   }
 
-  async function handleSwitchApiIdentity() {
+  async function refreshAuthenticatedState(user: AuthApiUser, message: string) {
+    setCurrentApiUser(user)
+    setCompetitionUserId(user.id)
+    setIsAccountPortalOpen(false)
+    setAccountFeedback('')
+    setProfileForm({
+      displayName: user.displayName,
+      townOrCity: user.townOrCity ?? '',
+      country: user.country ?? '',
+    })
+    setEmailChangeForm((current) => ({
+      ...current,
+      email: user.pendingEmail ?? user.email ?? current.email,
+      token: '',
+    }))
+    await refreshState()
+    await refreshCompetitionState()
+    setFeedback(message)
+  }
+
+  async function handleUpdateProfile() {
     try {
-      if (!competitionClient) {
-        setFeedback('Identity tools require the shared API repository mode.')
+      if (!authClient) {
+        setFeedback('Account tools require the shared API repository mode.')
         return
       }
 
-      const nextUser = await competitionClient.switchIdentity(identityForm.displayName)
-      setCurrentApiUser(nextUser)
-      setCompetitionUserId(nextUser.id)
-      setFeedback(`Switched shared API identity to ${nextUser.displayName}. Reloading...`)
-      window.location.reload()
+      const result = await authClient.updateProfile({
+        displayName: profileForm.displayName,
+        townOrCity: profileForm.townOrCity || null,
+        country: profileForm.country || null,
+      })
+
+      setCurrentApiUser(result.user)
+      setAccountFeedback('Account details saved.')
+      setFeedback('Account details saved.')
     } catch (error) {
+      setAccountFeedback(error instanceof Error ? error.message : 'Profile update failed.')
+      setFeedback(error instanceof Error ? `Profile update failed: ${error.message}` : 'Profile update failed.')
+    }
+  }
+
+  async function handleRequestEmailChange() {
+    try {
+      if (!authClient) {
+        setFeedback('Account tools require the shared API repository mode.')
+        return
+      }
+
+      const result = await authClient.requestEmailChange(emailChangeForm.email)
+      setCurrentApiUser(result.user)
+      setDevelopmentEmailChangeToken(result.verification.token)
+      setEmailChangeForm((current) => ({
+        ...current,
+        token: result.verification.token,
+      }))
+      setAccountFeedback('Email change requested. Verify the new email token to activate it.')
+      setFeedback('Email change requested.')
+    } catch (error) {
+      setAccountFeedback(error instanceof Error ? error.message : 'Email change request failed.')
       setFeedback(
-        error instanceof Error ? `Identity switch failed: ${error.message}` : 'Identity switch failed.',
+        error instanceof Error ? `Email change request failed: ${error.message}` : 'Email change request failed.',
       )
     }
   }
 
-  function handleResetApiIdentity() {
-    if (!competitionClient) {
-      setFeedback('Identity tools require the shared API repository mode.')
-      return
-    }
+  async function handleVerifyEmailChange() {
+    try {
+      if (!authClient) {
+        setFeedback('Account tools require the shared API repository mode.')
+        return
+      }
 
-    competitionClient.clearIdentity()
-    setFeedback('Shared API identity cleared. Reloading...')
-    window.location.reload()
+      const result = await authClient.verifyEmailChange(emailChangeForm.token)
+      setCurrentApiUser(result.user)
+      setDevelopmentEmailChangeToken(null)
+      setEmailChangeForm({
+        email: result.user.email ?? '',
+        token: '',
+      })
+      setAccountFeedback('Email address updated and verified.')
+      setFeedback('Email address updated and verified.')
+    } catch (error) {
+      setAccountFeedback(error instanceof Error ? error.message : 'Email change verification failed.')
+      setFeedback(
+        error instanceof Error
+          ? `Email change verification failed: ${error.message}`
+          : 'Email change verification failed.',
+      )
+    }
+  }
+
+  async function handleSignup() {
+    try {
+      if (!authClient) {
+        setFeedback('Account tools require the shared API repository mode.')
+        return
+      }
+
+      const result = await authClient.signup({
+        displayName: signupForm.displayName,
+        email: signupForm.email,
+        password: signupForm.password,
+        townOrCity: signupForm.townOrCity || undefined,
+        country: signupForm.country || undefined,
+      })
+
+      setDevelopmentVerificationToken(result.verification.token)
+      setVerificationForm({
+        token: result.verification.token,
+      })
+      setPasswordLoginForm((current) => ({
+        ...current,
+        email: signupForm.email,
+      }))
+      setMagicLinkForm((current) => ({
+        ...current,
+        email: signupForm.email,
+      }))
+      setAuthPanelMode('SIGN_UP')
+      setAccountFeedback('Account created. Verify the email token to finish sign-in.')
+      setFeedback(`Account created for ${result.user.displayName}. Verify the email token to finish sign-in.`)
+    } catch (error) {
+      setAccountFeedback(error instanceof Error ? error.message : 'Signup failed.')
+      setFeedback(
+        error instanceof Error ? `Signup failed: ${error.message}` : 'Signup failed.',
+      )
+    }
+  }
+
+  async function handleVerifyEmail() {
+    try {
+      if (!authClient) {
+        setFeedback('Account tools require the shared API repository mode.')
+        return
+      }
+
+      const result = await authClient.verifyEmail(verificationForm.token)
+      setDevelopmentVerificationToken(null)
+      await refreshAuthenticatedState(result.user, `Email verified. Signed in as ${result.user.displayName}.`)
+    } catch (error) {
+      setAccountFeedback(error instanceof Error ? error.message : 'Email verification failed.')
+      setFeedback(
+        error instanceof Error ? `Email verification failed: ${error.message}` : 'Email verification failed.',
+      )
+    }
+  }
+
+  async function handlePasswordLogin() {
+    try {
+      if (!authClient) {
+        setFeedback('Account tools require the shared API repository mode.')
+        return
+      }
+
+      const result = await authClient.loginWithPassword({
+        email: passwordLoginForm.email,
+        password: passwordLoginForm.password,
+      })
+      await refreshAuthenticatedState(result.user, `Signed in as ${result.user.displayName}.`)
+    } catch (error) {
+      setAccountFeedback(error instanceof Error ? error.message : 'Password login failed.')
+      setFeedback(
+        error instanceof Error ? `Password login failed: ${error.message}` : 'Password login failed.',
+      )
+    }
+  }
+
+  async function handleRequestMagicLink() {
+    try {
+      if (!authClient) {
+        setFeedback('Account tools require the shared API repository mode.')
+        return
+      }
+
+      const result = await authClient.requestMagicLink(magicLinkForm.email)
+      setDevelopmentMagicLinkToken(result.token)
+      setMagicLinkForm((current) => ({
+        ...current,
+        token: result.token,
+      }))
+      setAuthPanelMode('MAGIC_LINK')
+      setAccountFeedback('Magic-link token issued for development use.')
+      setFeedback('Magic link token issued for development use.')
+    } catch (error) {
+      setAccountFeedback(error instanceof Error ? error.message : 'Magic-link request failed.')
+      setFeedback(
+        error instanceof Error ? `Magic-link request failed: ${error.message}` : 'Magic-link request failed.',
+      )
+    }
+  }
+
+  async function handleConsumeMagicLink() {
+    try {
+      if (!authClient) {
+        setFeedback('Account tools require the shared API repository mode.')
+        return
+      }
+
+      const result = await authClient.consumeMagicLink(magicLinkForm.token)
+      setDevelopmentMagicLinkToken(null)
+      await refreshAuthenticatedState(result.user, `Signed in as ${result.user.displayName}.`)
+    } catch (error) {
+      setAccountFeedback(error instanceof Error ? error.message : 'Magic-link login failed.')
+      setFeedback(
+        error instanceof Error ? `Magic-link login failed: ${error.message}` : 'Magic-link login failed.',
+      )
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      if (!authClient) {
+        setFeedback('Account tools require the shared API repository mode.')
+        return
+      }
+
+      await authClient.logout()
+      setCurrentApiUser(null)
+      setCompetitionUserId('')
+      setCompetitionTeams([])
+      setCompetitions([])
+      setCompetitionSubmissionDetails({})
+      setCompetitionFixtures({})
+      setCompetitionFixtureSessions({})
+      setIsAccountPortalOpen(false)
+      setAccountFeedback('')
+      await refreshState()
+      setFeedback('Signed out of the shared API account.')
+    } catch (error) {
+      setAccountFeedback(error instanceof Error ? error.message : 'Logout failed.')
+      setFeedback(error instanceof Error ? `Logout failed: ${error.message}` : 'Logout failed.')
+    }
   }
 
   async function handleCreateTeam() {
+    if (repositorySelection.mode === 'api' && authClient && !authClient.hasStoredSession()) {
+      setFeedback('Sign in to create and save teams in shared API mode.')
+      return
+    }
+
     const template = templates.find((entry) => entry.id === selectedTemplateId)
 
     if (!template) {
@@ -834,7 +1254,11 @@ export function TeamCreator() {
     }
 
     setActiveTeam(nextTeam)
-    setFeedback(`Loaded ${nextTeam.name}.`)
+    setFeedback(
+      nextTeam.isCompetitionCopy
+        ? `Loaded competition team copy ${nextTeam.name}. Competition copies are managed through competition workflow.`
+        : `Loaded ${nextTeam.name}.`,
+    )
   }
 
   async function handleDeleteTeam(teamId: string) {
@@ -1078,6 +1502,20 @@ export function TeamCreator() {
     handlePlayerStatusChange(playerId, 'DEAD')
   }
 
+  function canFirePlayer(team: SavedTeam, playerId: string) {
+    const player = team.players.find((entry) => entry.id === playerId)
+
+    if (!player || player.playerStatus !== 'ACTIVE') {
+      return false
+    }
+
+    if (!isEligibleForNextGamePlayer(player)) {
+      return true
+    }
+
+    return countEligiblePlayers(team) - 1 >= 11
+  }
+
   function requestDeleteTeam(teamId: string, teamName: string) {
     setConfirmationDialog({
       kind: 'DELETE_TEAM',
@@ -1099,6 +1537,13 @@ export function TeamCreator() {
   }
 
   function requestFirePlayer(playerId: string, playerName: string) {
+    if (activeTeam && !canFirePlayer(activeTeam, playerId)) {
+      setFeedback(
+        `${playerName} cannot be fired because it would leave fewer than 11 players eligible for the next game.`,
+      )
+      return
+    }
+
     setConfirmationDialog({
       kind: 'FIRE_PLAYER',
       playerId,
@@ -1112,9 +1557,9 @@ export function TeamCreator() {
     setConfirmationDialog({
       kind: 'RETIRE_PLAYER',
       playerId,
-      title: 'Retire Player?',
-      message: `${playerName} will be archived as retired and removed from the active roster.`,
-      confirmLabel: 'Retire Player',
+      title: 'Temporarily Retire Player?',
+      message: `${playerName} will be marked as temporarily retired. They stay on the team list and keep their shirt number, but stop counting toward active team value.`,
+      confirmLabel: 'Temporarily Retire',
     })
   }
 
@@ -1167,6 +1612,15 @@ export function TeamCreator() {
 
   async function handleSaveTeam() {
     if (!activeTeam) {
+      return
+    }
+
+    if (activeTeam.isCompetitionCopy) {
+      setFeedback(
+        activeTeam.competitionLocked
+          ? 'This competition team copy is locked and cannot be saved from the standard team editor.'
+          : 'Competition team copies are not yet saved from the standard team editor. Use the competition workflow for submission updates.',
+      )
       return
     }
 
@@ -1241,6 +1695,339 @@ export function TeamCreator() {
     })
   }
 
+  function renderAccountPortal() {
+    return (
+      <div className={styles.accountPortal}>
+        <button
+          className={styles.accountDotButton}
+          onClick={() => setIsAccountPortalOpen((current) => !current)}
+          type="button"
+        >
+          <span className={styles.accountDotLabel}>{accountPortalLabel}</span>
+        </button>
+        {isAccountPortalOpen ? (
+          <div className={styles.accountPortalPanel}>
+            <div className={styles.accountPortalHeader}>
+              <div>
+                <p className={styles.sectionKicker}>Shared API Account</p>
+                <h2 className={styles.accountPortalTitle}>
+                  {hasAuthenticatedApiUser ? 'Account Management' : 'Sign In'}
+                </h2>
+              </div>
+            </div>
+
+            {accountFeedback ? <p className={styles.accountPortalFeedback}>{accountFeedback}</p> : null}
+
+            {hasAuthenticatedApiUser ? (
+              <div className={styles.identityControls}>
+                <div className={styles.identityCard}>
+                  <strong>{currentApiUser?.displayName ?? 'Unknown user'}</strong>
+                  <span>{currentApiUser?.email ?? currentApiUser?.id}</span>
+                  {currentApiUser?.pendingEmail ? <span>Pending email: {currentApiUser.pendingEmail}</span> : null}
+                  <span>
+                    {[currentApiUser?.townOrCity, currentApiUser?.country].filter(Boolean).join(', ') || 'Location not set'}
+                  </span>
+                  <span>{currentApiUser?.emailVerifiedAt ? 'Verified account' : 'Verification pending'}</span>
+                </div>
+                <div className={styles.accountFormGrid}>
+                  <label className={styles.field}>
+                    <span>Coach Name</span>
+                    <input
+                      value={profileForm.displayName}
+                      onChange={(event) =>
+                        setProfileForm((current) => ({ ...current, displayName: event.target.value }))
+                      }
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span>Town / City</span>
+                    <input
+                      value={profileForm.townOrCity}
+                      onChange={(event) =>
+                        setProfileForm((current) => ({ ...current, townOrCity: event.target.value }))
+                      }
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span>Country</span>
+                    <input
+                      value={profileForm.country}
+                      onChange={(event) =>
+                        setProfileForm((current) => ({ ...current, country: event.target.value }))
+                      }
+                    />
+                  </label>
+                </div>
+                <div className={styles.competitionActionRow}>
+                  <button
+                    className={styles.primaryButton}
+                    onClick={() => void handleUpdateProfile()}
+                    type="button"
+                  >
+                    Save Account Details
+                  </button>
+                </div>
+                <div className={styles.accountFormGrid}>
+                  <label className={styles.field}>
+                    <span>New Email Address</span>
+                    <input
+                      type="email"
+                      value={emailChangeForm.email}
+                      onChange={(event) =>
+                        setEmailChangeForm((current) => ({ ...current, email: event.target.value }))
+                      }
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span>Email Change Token</span>
+                    <input
+                      value={emailChangeForm.token}
+                      onChange={(event) =>
+                        setEmailChangeForm((current) => ({ ...current, token: event.target.value }))
+                      }
+                      placeholder="Paste token or use development token"
+                    />
+                  </label>
+                </div>
+                <div className={styles.competitionActionRow}>
+                  <button
+                    className={styles.secondaryButton}
+                    onClick={() => void handleRequestEmailChange()}
+                    type="button"
+                  >
+                    Request Email Change
+                  </button>
+                  <button
+                    className={styles.primaryButton}
+                    onClick={() => void handleVerifyEmailChange()}
+                    type="button"
+                  >
+                    Verify New Email
+                  </button>
+                  <button
+                    className={styles.secondaryButton}
+                    onClick={() => void handleLogout()}
+                    type="button"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+                {developmentEmailChangeToken ? (
+                  <p className={styles.helperText}>
+                    Development email-change token: <code>{developmentEmailChangeToken}</code>
+                  </p>
+                ) : null}
+                <p className={styles.helperText}>
+                  Shared API mode is using the authenticated account. Team saving, competition entry, and manager actions resolve through this user.
+                </p>
+              </div>
+            ) : (
+              <div className={styles.identityControls}>
+                <div className={styles.competitionActionRow}>
+                  <button
+                    className={authPanelMode === 'SIGN_UP' ? styles.primaryButton : styles.secondaryButton}
+                    onClick={() => setAuthPanelMode('SIGN_UP')}
+                    type="button"
+                  >
+                    Create Account
+                  </button>
+                  <button
+                    className={authPanelMode === 'PASSWORD' ? styles.primaryButton : styles.secondaryButton}
+                    onClick={() => setAuthPanelMode('PASSWORD')}
+                    type="button"
+                  >
+                    Password Login
+                  </button>
+                  <button
+                    className={authPanelMode === 'MAGIC_LINK' ? styles.primaryButton : styles.secondaryButton}
+                    onClick={() => setAuthPanelMode('MAGIC_LINK')}
+                    type="button"
+                  >
+                    Magic Link
+                  </button>
+                </div>
+
+                {authPanelMode === 'SIGN_UP' ? (
+                  <>
+                    <div className={styles.accountFormGrid}>
+                      <label className={styles.field}>
+                        <span>Display Name</span>
+                        <input
+                          value={signupForm.displayName}
+                          onChange={(event) =>
+                            setSignupForm((current) => ({ ...current, displayName: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className={styles.field}>
+                        <span>Email</span>
+                        <input
+                          type="email"
+                          value={signupForm.email}
+                          onChange={(event) =>
+                            setSignupForm((current) => ({ ...current, email: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className={styles.field}>
+                        <span>Password</span>
+                        <input
+                          type="password"
+                          value={signupForm.password}
+                          onChange={(event) =>
+                            setSignupForm((current) => ({ ...current, password: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className={styles.field}>
+                        <span>Town / City</span>
+                        <input
+                          value={signupForm.townOrCity}
+                          onChange={(event) =>
+                            setSignupForm((current) => ({ ...current, townOrCity: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className={styles.field}>
+                        <span>Country</span>
+                        <input
+                          value={signupForm.country}
+                          onChange={(event) =>
+                            setSignupForm((current) => ({ ...current, country: event.target.value }))
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div className={styles.competitionActionRow}>
+                      <button className={styles.primaryButton} onClick={() => void handleSignup()} type="button">
+                        Create Account
+                      </button>
+                    </div>
+                    <label className={styles.field}>
+                      <span>Verification Token</span>
+                      <input
+                        value={verificationForm.token}
+                        onChange={(event) => setVerificationForm({ token: event.target.value })}
+                        placeholder="Paste token or use development token"
+                      />
+                    </label>
+                    <div className={styles.competitionActionRow}>
+                      <button
+                        className={styles.secondaryButton}
+                        onClick={() => void handleVerifyEmail()}
+                        type="button"
+                      >
+                        Verify Email
+                      </button>
+                    </div>
+                    {developmentVerificationToken ? (
+                      <p className={styles.helperText}>
+                        Development verification token: <code>{developmentVerificationToken}</code>
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
+
+                {authPanelMode === 'PASSWORD' ? (
+                  <>
+                    <div className={styles.accountFormGrid}>
+                      <label className={styles.field}>
+                        <span>Email</span>
+                        <input
+                          type="email"
+                          value={passwordLoginForm.email}
+                          onChange={(event) =>
+                            setPasswordLoginForm((current) => ({
+                              ...current,
+                              email: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className={styles.field}>
+                        <span>Password</span>
+                        <input
+                          type="password"
+                          value={passwordLoginForm.password}
+                          onChange={(event) =>
+                            setPasswordLoginForm((current) => ({
+                              ...current,
+                              password: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div className={styles.competitionActionRow}>
+                      <button
+                        className={styles.primaryButton}
+                        onClick={() => void handlePasswordLogin()}
+                        type="button"
+                      >
+                        Sign In
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+
+                {authPanelMode === 'MAGIC_LINK' ? (
+                  <>
+                    <div className={styles.accountFormGrid}>
+                      <label className={styles.field}>
+                        <span>Email</span>
+                        <input
+                          type="email"
+                          value={magicLinkForm.email}
+                          onChange={(event) =>
+                            setMagicLinkForm((current) => ({ ...current, email: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className={styles.field}>
+                        <span>Magic-Link Token</span>
+                        <input
+                          value={magicLinkForm.token}
+                          onChange={(event) =>
+                            setMagicLinkForm((current) => ({ ...current, token: event.target.value }))
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div className={styles.competitionActionRow}>
+                      <button
+                        className={styles.secondaryButton}
+                        onClick={() => void handleRequestMagicLink()}
+                        type="button"
+                      >
+                        Request Magic Link
+                      </button>
+                      <button
+                        className={styles.primaryButton}
+                        onClick={() => void handleConsumeMagicLink()}
+                        type="button"
+                      >
+                        Use Magic Link
+                      </button>
+                    </div>
+                    {developmentMagicLinkToken ? (
+                      <p className={styles.helperText}>
+                        Development magic-link token: <code>{developmentMagicLinkToken}</code>
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
+
+                <p className={styles.helperText}>
+                  Email delivery is not wired yet. In shared API mode, development verification and magic-link tokens are shown here until the mail relay layer exists.
+                </p>
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
   if (!activeTeam || !activeTemplate) {
     return (
       <div className={styles.appShell}>
@@ -1249,7 +2036,7 @@ export function TeamCreator() {
             <span className={styles.burger}>|||</span>
             <strong>BB Roster</strong>
           </div>
-          <div className={styles.accountDot} aria-hidden="true" />
+          {renderAccountPortal()}
         </header>
 
         <div className={styles.pageFrame}>
@@ -1391,6 +2178,26 @@ export function TeamCreator() {
                     </article>
                   ))
                 )}
+                {competitionTeams.length > 0 ? (
+                  <>
+                    <div className={styles.panelHeader}>
+                      <div>
+                        <p className={styles.sectionKicker}>Competition Copies</p>
+                        <h2 className={styles.panelHeadline}>Locked Team Vault</h2>
+                      </div>
+                    </div>
+                    {competitionTeams.map((team) => (
+                      <article key={team.id} className={styles.loadRow}>
+                        <button className={styles.loadRowButton} onClick={() => void handleOpenTeam(team.id)} type="button">
+                          <span>{team.name}</span>
+                          <span>{templates.find((template) => template.id === team.rosterTemplateId)?.name ?? 'Unknown roster'}</span>
+                          <span>{team.competitionLocked ? 'Locked' : 'Pending approval'}</span>
+                          <span>Team Value {formatGold(team.totalValue)} gp</span>
+                        </button>
+                      </article>
+                    ))}
+                  </>
+                ) : null}
               </div>
             </section>
           ) : (
@@ -1400,57 +2207,22 @@ export function TeamCreator() {
                   <section className={styles.competitionPanel}>
                     <div className={styles.panelHeader}>
                       <div>
-                        <p className={styles.sectionKicker}>Shared API Identity</p>
-                        <h2 className={styles.panelHeadline}>Current Competition User</h2>
-                      </div>
-                    </div>
-                    <div className={styles.identityPanel}>
-                      <div className={styles.identityCard}>
-                        <strong>{currentApiUser?.displayName ?? 'Unknown user'}</strong>
-                        <span>{currentApiUser?.id ?? 'No user id loaded'}</span>
-                      </div>
-                      <div className={styles.identityControls}>
-                        <label className={styles.field}>
-                          <span>Switch Display Name</span>
-                          <input
-                            value={identityForm.displayName}
-                            onChange={(event) =>
-                              setIdentityForm({
-                                displayName: event.target.value,
-                              })
-                            }
-                            placeholder="Commissioner"
-                          />
-                        </label>
-                        <div className={styles.competitionActionRow}>
-                          <button
-                            className={styles.primaryButton}
-                            onClick={() => void handleSwitchApiIdentity()}
-                            type="button"
-                          >
-                            Create / Switch Identity
-                          </button>
-                          <button
-                            className={styles.secondaryButton}
-                            onClick={handleResetApiIdentity}
-                            type="button"
-                          >
-                            Reset Identity
-                          </button>
-                        </div>
-                        <p className={styles.helperText}>
-                          Use normal and incognito windows with different display names to test commissioner and coach flows.
+                        <p className={styles.sectionKicker}>
+                          {editingCompetitionId ? 'Competition Settings' : 'Knockout Setup'}
                         </p>
+                        <h2 className={styles.panelHeadline}>
+                          {editingCompetitionId ? 'Edit Competition' : 'Create Competition'}
+                        </h2>
                       </div>
-                    </div>
-                  </section>
-
-                  <section className={styles.competitionPanel}>
-                    <div className={styles.panelHeader}>
-                      <div>
-                        <p className={styles.sectionKicker}>Knockout Setup</p>
-                        <h2 className={styles.panelHeadline}>Create Competition</h2>
-                      </div>
+                      {editingCompetitionId ? (
+                        <button
+                          className={styles.secondaryButton}
+                          onClick={handleCancelCompetitionEdit}
+                          type="button"
+                        >
+                          Cancel Edit
+                        </button>
+                      ) : null}
                     </div>
                     <div className={styles.competitionFormGrid}>
                       <label className={styles.field}>
@@ -1510,7 +2282,7 @@ export function TeamCreator() {
                       </label>
                     </div>
                     <button className={styles.primaryButton} onClick={() => void handleCreateCompetition()} type="button">
-                      Create Knockout Competition
+                      {editingCompetitionId ? 'Save Competition Changes' : 'Create Knockout Competition'}
                     </button>
                   </section>
 
@@ -1541,6 +2313,9 @@ export function TeamCreator() {
                           const submittedEntries = competition.entries.filter(
                             (entry) => entry.status === 'TEAM_SUBMITTED' && entry.submission,
                           )
+                          const approvedEntries = competition.entries.filter(
+                            (entry) => entry.status === 'TEAM_APPROVED',
+                          )
                           const selectedTeamId = selectedCompetitionTeamIds[competition.id] ?? ''
                           const selectedTierId = selectedCompetitionTierIds[competition.id] ?? ''
                           const submission = competitionSubmissionDetails[competition.id] ?? null
@@ -1562,6 +2337,15 @@ export function TeamCreator() {
                                 <div className={styles.competitionMetaBlock}>
                                   <span>{isOwner ? 'Owner' : 'Participant View'}</span>
                                   <span>{competition.submissionDeadline ? `Deadline ${competition.submissionDeadline.slice(0, 16).replace('T', ' ')}` : 'No deadline set'}</span>
+                                  {isOwner ? (
+                                    <button
+                                      className={styles.secondaryButton}
+                                      onClick={() => handleStartCompetitionEdit(competition)}
+                                      type="button"
+                                    >
+                                      Edit Competition
+                                    </button>
+                                  ) : null}
                                 </div>
                               </div>
 
@@ -1707,7 +2491,9 @@ export function TeamCreator() {
                                 </div>
                                 {fixtures.length === 0 ? (
                                   <p className={styles.helperText}>
-                                    No fixtures generated yet. Approved entries are required before a bracket can be created.
+                                    No fixtures generated yet. {approvedEntries.length < 2
+                                      ? 'At least two approved entries from different coaches are required before a bracket can be created.'
+                                      : 'Approved entries are required before a bracket can be created.'}
                                   </p>
                                 ) : (
                                   <div className={styles.fixtureList}>
@@ -1718,6 +2504,11 @@ export function TeamCreator() {
                                         fixture.status === 'READY' &&
                                         Boolean(fixture.homeEntry?.submission && fixture.awayEntry?.submission) &&
                                         !fixtureMatchSession
+                                      const canOpenMatchRoom =
+                                        Boolean(fixtureMatchSession) &&
+                                        (isOwner ||
+                                          fixture.homeEntry?.userId === competitionUserId ||
+                                          fixture.awayEntry?.userId === competitionUserId)
 
                                       return (
                                         <div key={fixture.id} className={styles.fixtureCard}>
@@ -1734,6 +2525,17 @@ export function TeamCreator() {
                                           {fixtureMatchSession ? (
                                             <div className={styles.inlineSuccess}>
                                               Match room code: {fixtureMatchSession.sessionCode} ({fixtureMatchSession.status})
+                                            </div>
+                                          ) : null}
+                                          {canOpenMatchRoom ? (
+                                            <div className={styles.competitionActionRow}>
+                                              <button
+                                                className={styles.primaryButton}
+                                                onClick={() => handleOpenBlockDiceMatchRoom(fixtureMatchSession!.sessionCode)}
+                                                type="button"
+                                              >
+                                                Open Match Room
+                                              </button>
                                             </div>
                                           ) : null}
                                           {canCreateMatchRoom ? (
@@ -1904,7 +2706,7 @@ export function TeamCreator() {
           <span className={styles.burger}>|||</span>
           <strong>BB Roster</strong>
         </div>
-        <div className={styles.accountDot} aria-hidden="true" />
+        {renderAccountPortal()}
       </header>
 
         <div className={styles.pageFrame}>
@@ -1927,11 +2729,22 @@ export function TeamCreator() {
                 aria-label="Team name"
               />
               <p className={styles.cloneHeroMeta}>
-                {activeTemplate.name} Team &nbsp; {activePlayerCount} active players &nbsp; {activeTemplate.leagues[0] ?? 'League'}
+                {activeTemplate.name} Team &nbsp; {activePlayerCount} active / {rosteredPlayerCount} rostered &nbsp; {activeTemplate.leagues[0] ?? 'League'}
               </p>
+              {activeTeam.isCompetitionCopy ? (
+                <p className={styles.helperText}>
+                  Competition copy{activeTeam.competitionLocked ? ' • locked' : ' • pending approval'}.
+                  Standard team saving is disabled for competition-bound teams.
+                </p>
+              ) : null}
             </div>
             <div className={styles.heroAside}>
-              <button className={styles.primaryButton} onClick={() => void handleSaveTeam()} type="button">
+              <button
+                className={styles.primaryButton}
+                onClick={() => void handleSaveTeam()}
+                type="button"
+                disabled={activeTeam.isCompetitionCopy}
+              >
                 Save Team
               </button>
             </div>
@@ -1946,7 +2759,7 @@ export function TeamCreator() {
             <article className={styles.summaryCard}>
               <span>Players</span>
               <strong>{activePlayerCount}</strong>
-              <small>{activeTemplatePlayerLimit} possible across this roster</small>
+              <small>{eligiblePlayerCount} eligible next game • {rosteredPlayerCount}/{activeTemplatePlayerLimit} rostered</small>
             </article>
             <article className={styles.summaryCard}>
               <span>Draft Budget</span>
@@ -1986,9 +2799,9 @@ export function TeamCreator() {
                 <p className={styles.sectionKicker}>Active Roster</p>
                 <h3 className={styles.subsectionTitle}>{activePlayers.length} active player{activePlayers.length === 1 ? '' : 's'}</h3>
               </div>
-              <p className={styles.helperText}>
-                Active players count toward TV, competition submission, and block-dice imports.
-              </p>
+                <p className={styles.helperText}>
+                Active players count toward TV, competition submission, and block-dice imports. Miss Next Game players stay active but are not eligible for the next fixture.
+                </p>
             </div>
 
             <div className={styles.tableWrap}>
@@ -2137,7 +2950,7 @@ export function TeamCreator() {
                                 onClick={() => requestRetirePlayer(player.id, player.name)}
                                 type="button"
                               >
-                                Retire
+                                Temp Retire
                               </button>
                               <button
                                 className={styles.rowButton}
@@ -2199,16 +3012,16 @@ export function TeamCreator() {
             </div>
           </section>
 
-          {!isDraftTeam && archivedPlayers.length > 0 ? (
+          {!isDraftTeam && inactivePlayers.length > 0 ? (
             <section className={styles.panel}>
               <div className={styles.panelHeader}>
                 <div>
-                  <p className={styles.sectionKicker}>Archive</p>
-                  <h2 className={styles.panelHeadline}>Archived Players</h2>
+                  <p className={styles.sectionKicker}>Inactive</p>
+                  <h2 className={styles.panelHeadline}>Inactive Players</h2>
                 </div>
               </div>
               <p className={styles.helperText}>
-                Archived players keep their identity and history, but do not count toward the active roster.
+                Sold and dead players remain as history. Temporarily retired players also remain on the team list, keep their shirt numbers, and still count against roster slots.
               </p>
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
@@ -2225,7 +3038,7 @@ export function TeamCreator() {
                     </tr>
                   </thead>
                   <tbody>
-                    {archivedPlayers.map((player) => {
+                    {inactivePlayers.map((player) => {
                       const position = findPosition(activeTemplate, player.positionTemplateId)
 
                       if (!position) {
@@ -2238,13 +3051,15 @@ export function TeamCreator() {
                           <td>{player.name}</td>
                           <td>{formatPositionLabel(position)}</td>
                           <td>
-                            <span className={styles.lifecycleBadge}>{player.playerStatus}</span>
+                            <span className={styles.lifecycleBadge}>{formatPlayerStatusLabel(player.playerStatus)}</span>
                           </td>
                           <td>{player.spp}</td>
                           <td>{player.nigglingInjuries}</td>
                           <td>{formatGold(player.currentValue)}</td>
                           <td>
-                            <span className={styles.helperText}>Archived</span>
+                            <span className={styles.helperText}>
+                              {player.playerStatus === 'RETIRED' ? 'On team list' : 'Historical'}
+                            </span>
                           </td>
                         </tr>
                       )

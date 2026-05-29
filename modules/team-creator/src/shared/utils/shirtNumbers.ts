@@ -1,13 +1,13 @@
 import type { SavedTeam, SavedTeamPlayer } from '../types/team'
 
-function isActivePlayer(player: Pick<SavedTeamPlayer, 'playerStatus'>) {
-  return player.playerStatus === 'ACTIVE'
+function keepsReservedShirtNumber(player: Pick<SavedTeamPlayer, 'playerStatus'>) {
+  return player.playerStatus === 'ACTIVE' || player.playerStatus === 'RETIRED'
 }
 
 function getNextAvailableShirtNumber(players: SavedTeamPlayer[]) {
   const usedNumbers = new Set(
     players
-      .filter(isActivePlayer)
+      .filter(keepsReservedShirtNumber)
       .map((player) => player.shirtNumber)
       .filter((value): value is number => typeof value === 'number' && value > 0),
   )
@@ -30,7 +30,7 @@ export function assignFrozenShirtNumbers(players: SavedTeamPlayer[]) {
   let changed = false
 
   const nextPlayers = players.map((player) => {
-    if (!isActivePlayer(player)) {
+    if (!keepsReservedShirtNumber(player)) {
       return player
     }
 

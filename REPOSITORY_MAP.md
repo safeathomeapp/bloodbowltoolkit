@@ -1,30 +1,105 @@
+Status: active repository reference doc
+
 # Repository Map
+
+## Top-Level Purpose
+
+The repository root is suite coordination space.
+
+The live code is split across:
+
+- `modules/block-dice-calculator/`
+- `modules/team-creator/`
+- `services/api/`
+
+The root also owns the cross-cutting docs and project direction.
 
 ## Folder Purpose
 
-- `docs/session_notes/`: required implementation pass records
-- `docs/rules_references/`: source-of-truth rules notes and uploaded clarifications
-- `docs/architecture/`: architectural decisions and boundaries
-- `docs/roadmap/`: supporting roadmap notes and historical planning passes
-- `modules/`: suite modules
-- `modules/block-dice-calculator/`: current finished working software and source-of-truth runnable module
-- `modules/team-creator/`: local-first saved-team creation module
-- planned `services/api/`: shared backend for leagues, teams, and match-session loading
+- `docs/session_notes/`
+  Historical implementation passes and handoffs.
+- `docs/architecture/`
+  Active design and contract docs.
+- `docs/roadmap/`
+  supporting roadmap/history notes
+- `docs/rules_references/`
+  uploaded rules screenshots, notes, and clarifications
+- `modules/`
+  frontend modules
+- `services/api/`
+  shared backend
 
-## Source Of Truth
+## Source Of Truth By Concern
 
-- stable block-dice application module: `modules/block-dice-calculator/`
-- local-first team creation prototype: `modules/team-creator/`
-- block-dice feature logic: `modules/block-dice-calculator/src/tools/block-dice/rules/`
-- block-dice tests: `modules/block-dice-calculator/src/tools/block-dice/tests/`
-- block-dice module status and integration boundary: `modules/block-dice-calculator/MODULE_STATUS.md`
-- suite roadmap and post-MVP direction: `ROADMAP.md`
-- shared backend MVP direction: `docs/architecture/2026-05-19_shared_backend_mvp_spec.md`
+### Tactical Logic
 
-## Architectural Boundaries
+- `modules/block-dice-calculator/src/tools/block-dice/rules/`
+- tests in `modules/block-dice-calculator/src/tools/block-dice/tests/`
 
-- The repository root is now suite-level coordination and documentation space, not the live app root.
-- The block-dice calculator remains the current known-good working module and should be integrated into future suite work rather than reimplemented from scratch.
-- React components render state and explanation output, but rules logic stays outside React and inside the module rules layer.
-- Future toolkit modules may be added under `modules/`, but they should not destabilize the existing block-dice module without a deliberate migration plan.
-- Shared persistence and league/session orchestration should be introduced in `services/api/`, not embedded directly into the frontend modules.
+### Team Editing And Canonical Team Shape
+
+- `modules/team-creator/src/shared/types/team.ts`
+- `modules/team-creator/src/shared/repositories/`
+- `modules/team-creator/src/tools/team-creator/`
+
+### Shared Persistence And Competition Flow
+
+- `services/api/prisma/schema.prisma`
+- `services/api/src/routes/`
+
+### Project Direction
+
+- `docs/SESSION_BRIEF.md`
+- `docs/ARCHITECTURE_CANON.md`
+- `ROADMAP.md`
+
+## Current Architectural Boundaries
+
+- block-dice owns tactical assistance logic and match-room controls
+- team-creator owns canonical team editing
+- services/api owns shared persistence and competition/session orchestration
+- tournaments use frozen team submissions
+- leagues use live mutable teams
+
+## Runtime And Persistence Notes
+
+### Team Creator Repository Mode
+
+The team creator supports:
+
+- local browser storage
+- shared API repository
+
+The mode is chosen in:
+
+- `modules/team-creator/src/shared/repositories/createTeamRepository.ts`
+- environment values in `modules/team-creator/.env.local`
+
+### Shared API Defaults
+
+The API defaults are defined in:
+
+- `services/api/.env`
+- `services/api/.env.example`
+
+Current expected local dev address:
+
+- `http://127.0.0.1:3001`
+
+### Local Storage Caveat
+
+Browser-local team data is origin-specific.
+
+Therefore:
+
+- `localhost`
+- `127.0.0.1`
+
+must be treated as different local-storage environments.
+
+## Important Current Documentation Files
+
+- [docs/SESSION_BRIEF.md](C:/Users/kevth/Desktop/Projects/blood-bowl-toolkit/docs/SESSION_BRIEF.md)
+- [docs/ARCHITECTURE_CANON.md](C:/Users/kevth/Desktop/Projects/blood-bowl-toolkit/docs/ARCHITECTURE_CANON.md)
+- [docs/CODEX_SESSION_OPERATIONS.md](C:/Users/kevth/Desktop/Projects/blood-bowl-toolkit/docs/CODEX_SESSION_OPERATIONS.md)
+- [ROADMAP.md](C:/Users/kevth/Desktop/Projects/blood-bowl-toolkit/ROADMAP.md)

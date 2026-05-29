@@ -10,6 +10,7 @@ import {
 } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { findAuthenticatedUser, requireAuthenticatedUser } from '../auth/authorization.js'
 
 const statAdjustmentsSchema = z.object({
   movement: z.number().int().optional(),
@@ -39,6 +40,7 @@ const matchSessionEventTypes = [
 type MatchSessionEventTypeValue = (typeof matchSessionEventTypes)[number]
 type MatchSessionStatusValue = 'PENDING' | 'ACTIVE' | 'CLOSED'
 type MatchSessionProgressionStatus = 'NOT_APPLICABLE' | 'READY' | 'APPLIED'
+type MatchSessionTurnPhaseValue = 'READY' | 'RUNNING' | 'PAUSE_REQUESTED' | 'PAUSED' | 'REVIEW'
 
 const matchSessionParamsSchema = z.object({
   sessionId: z.string().min(1),
@@ -49,8 +51,7 @@ const matchSessionCodeParamsSchema = z.object({
 })
 
 const joinMatchSessionBodySchema = z.object({
-  userId: z.string().min(1),
-  side: z.nativeEnum(MatchSessionSide),
+  side: z.nativeEnum(MatchSessionSide).optional(),
 })
 
 const timerActionParamsSchema = z.object({
@@ -59,6 +60,14 @@ const timerActionParamsSchema = z.object({
 
 const startTimerBodySchema = z.object({
   side: z.nativeEnum(MatchSessionSide).optional(),
+})
+
+const pauseTimerBodySchema = z.object({
+  requestedSide: z.nativeEnum(MatchSessionSide),
+})
+
+const confirmPauseBodySchema = z.object({
+  confirmedSide: z.nativeEnum(MatchSessionSide),
 })
 
 const matchSessionEventParamsSchema = z.object({
@@ -72,10 +81,11 @@ const createMatchSessionEventBodySchema = z.object({
   playerNumber: z.number().int().positive().nullable().optional(),
   injuredTeamSide: z.nativeEnum(MatchSessionSide).nullable().optional(),
   injuredPlayerNumber: z.number().int().positive().nullable().optional(),
+  casualtyResolutionType: z.nativeEnum(MatchSessionCasualtyResolutionType).nullable().optional(),
   notes: z.string().trim().max(280).nullable().optional(),
 })
 
-const confirmTurnBodySchema = z.object({
+const confirmEventBodySchema = z.object({
   confirmedSide: z.nativeEnum(MatchSessionSide),
 })
 
@@ -288,6 +298,8 @@ function toTimerStateSummary(session: {
   timerCurrentHalf: number
   timerCurrentTurnNumber: number
   timerActiveSide: MatchSessionSide
+  timerTurnPhase: MatchSessionTurnPhaseValue
+  timerTurnRemainingSeconds: number | null
   timerTurnStartedAt: Date | null
   timerHomeBankRemainingSeconds: number | null
   timerAwayBankRemainingSeconds: number | null
@@ -295,6 +307,7 @@ function toTimerStateSummary(session: {
   const now = new Date()
   const defaults = getDefaultTimerConfig()
   const turnSeconds = session.timerTurnSeconds ?? defaults.perTurnSeconds
+  const storedTurnRemainingSeconds = session.timerTurnRemainingSeconds ?? turnSeconds
   const baseBankSeconds = session.timerBankSeconds ?? defaults.bankSeconds
   const homeBankRemainingSeconds = session.timerHomeBankRemainingSeconds ?? baseBankSeconds
   const awayBankRemainingSeconds = session.timerAwayBankRemainingSeconds ?? baseBankSeconds
@@ -302,11 +315,11 @@ function toTimerStateSummary(session: {
     ? Math.max(0, Math.floor((now.getTime() - session.timerTurnStartedAt.getTime()) / 1000))
     : 0
   const overtimeSeconds = session.timerTurnStartedAt
-    ? Math.max(0, elapsedSeconds - turnSeconds)
+    ? Math.max(0, elapsedSeconds - storedTurnRemainingSeconds)
     : 0
   const perTurnRemainingSeconds = session.timerTurnStartedAt
-    ? clampNonNegative(turnSeconds - elapsedSeconds)
-    : turnSeconds
+    ? clampNonNegative(storedTurnRemainingSeconds - elapsedSeconds)
+    : storedTurnRemainingSeconds
 
   const activeBankRemainingSeconds =
     session.timerActiveSide === MatchSessionSide.HOME
@@ -321,6 +334,7 @@ function toTimerStateSummary(session: {
     currentHalf: session.timerCurrentHalf,
     currentTurnNumber: session.timerCurrentTurnNumber,
     activeSide: session.timerActiveSide,
+    phase: session.timerTurnPhase,
     turnStartedAt: session.timerTurnStartedAt ? toIsoString(session.timerTurnStartedAt) : null,
     serverNow: toIsoString(now),
     perTurnRemainingSeconds,
@@ -345,6 +359,48 @@ function getDefaultTimerConfig() {
   }
 }
 
+function getAssignedUserIdForSessionSide(
+  session: {
+    homeTeam: { ownerUserId: string }
+    awayTeam: { ownerUserId: string }
+    fixture: {
+      homeEntry: { userId: string } | null
+      awayEntry: { userId: string } | null
+    } | null
+  },
+  side: MatchSessionSide,
+) {
+  if (session.fixture) {
+    return side === MatchSessionSide.HOME
+      ? session.fixture.homeEntry?.userId ?? null
+      : session.fixture.awayEntry?.userId ?? null
+  }
+
+  return side === MatchSessionSide.HOME ? session.homeTeam.ownerUserId : session.awayTeam.ownerUserId
+}
+
+function getAssignedSessionSideForUser(
+  session: {
+    homeTeam: { ownerUserId: string }
+    awayTeam: { ownerUserId: string }
+    fixture: {
+      homeEntry: { userId: string } | null
+      awayEntry: { userId: string } | null
+    } | null
+  },
+  userId: string,
+): MatchSessionSide | null {
+  if (getAssignedUserIdForSessionSide(session, MatchSessionSide.HOME) === userId) {
+    return MatchSessionSide.HOME
+  }
+
+  if (getAssignedUserIdForSessionSide(session, MatchSessionSide.AWAY) === userId) {
+    return MatchSessionSide.AWAY
+  }
+
+  return null
+}
+
 const timerStateSelect = {
   id: true,
   status: true,
@@ -355,6 +411,8 @@ const timerStateSelect = {
   timerCurrentHalf: true,
   timerCurrentTurnNumber: true,
   timerActiveSide: true,
+  timerTurnPhase: true,
+  timerTurnRemainingSeconds: true,
   timerTurnStartedAt: true,
   timerHomeBankRemainingSeconds: true,
   timerAwayBankRemainingSeconds: true,
@@ -375,6 +433,8 @@ function toMatchSessionEventSummary(event: {
   injuredTeamSide: MatchSessionSide | null
   injuredPlayerNumber: number | null
   notes: string | null
+  homeConfirmedAt: Date | null
+  awayConfirmedAt: Date | null
   createdAt: Date
 }) {
   return {
@@ -388,46 +448,11 @@ function toMatchSessionEventSummary(event: {
     injuredTeamSide: event.injuredTeamSide,
     injuredPlayerNumber: event.injuredPlayerNumber,
     notes: event.notes,
+    homeConfirmedAt: event.homeConfirmedAt ? toIsoString(event.homeConfirmedAt) : null,
+    awayConfirmedAt: event.awayConfirmedAt ? toIsoString(event.awayConfirmedAt) : null,
+    homeConfirmed: Boolean(event.homeConfirmedAt),
+    awayConfirmed: Boolean(event.awayConfirmedAt),
     createdAt: toIsoString(event.createdAt),
-  }
-}
-
-function toTurnConfirmationSummary(confirmation: {
-  id: string
-  half: number
-  turnNumber: number
-  side: MatchSessionSide
-  homeConfirmedAt: Date | null
-  awayConfirmedAt: Date | null
-  createdAt: Date
-  updatedAt: Date
-} | null) {
-  if (!confirmation) {
-    return {
-      id: null,
-      half: null,
-      turnNumber: null,
-      side: null,
-      homeConfirmedAt: null,
-      awayConfirmedAt: null,
-      homeConfirmed: false,
-      awayConfirmed: false,
-      createdAt: null,
-      updatedAt: null,
-    }
-  }
-
-  return {
-    id: confirmation.id,
-    half: confirmation.half,
-    turnNumber: confirmation.turnNumber,
-    side: confirmation.side,
-    homeConfirmedAt: confirmation.homeConfirmedAt ? toIsoString(confirmation.homeConfirmedAt) : null,
-    awayConfirmedAt: confirmation.awayConfirmedAt ? toIsoString(confirmation.awayConfirmedAt) : null,
-    homeConfirmed: Boolean(confirmation.homeConfirmedAt),
-    awayConfirmed: Boolean(confirmation.awayConfirmedAt),
-    createdAt: toIsoString(confirmation.createdAt),
-    updatedAt: toIsoString(confirmation.updatedAt),
   }
 }
 
@@ -705,7 +730,11 @@ function buildMatchSessionProgressionSummary(session: {
       continue
     }
 
-    const sppAward = getEventSppValue(event.eventType)
+    const isSelfInflictedCasualty =
+      event.eventType === 'CASUALTY' &&
+      event.injuredTeamSide === event.teamSide &&
+      typeof event.injuredPlayerNumber === 'number'
+    const sppAward = isSelfInflictedCasualty ? 0 : getEventSppValue(event.eventType)
     const existingSummary = playerSummaries.get(player.id)
     const casualtyResolution = event.eventType === 'CASUALTY' ? casualtyResolutionMap.get(event.id) ?? null : null
     const playerStatAdjustments = statAdjustmentsSchema.parse(player.statAdjustments)
@@ -987,6 +1016,64 @@ function isClosedMatchSession(session: { status: MatchSessionStatus }) {
   return session.status === MatchSessionStatus.CLOSED
 }
 
+function isTurnClockRunning(session: { timerTurnPhase: MatchSessionTurnPhaseValue; timerTurnStartedAt: Date | null }) {
+  return session.timerTurnPhase === 'RUNNING' && Boolean(session.timerTurnStartedAt)
+}
+
+function getOpposingSessionSide(side: MatchSessionSide) {
+  return side === MatchSessionSide.HOME ? MatchSessionSide.AWAY : MatchSessionSide.HOME
+}
+
+function getNextTurnPosition(side: MatchSessionSide, turnNumber: number) {
+  const nextActiveSide = getOpposingSessionSide(side)
+  return {
+    nextActiveSide,
+    nextTurnNumber: side === MatchSessionSide.AWAY ? turnNumber + 1 : turnNumber,
+  }
+}
+
+function isCompletedFinalTurnOfHalf(session: {
+  timerCurrentTurnNumber: number
+  timerActiveSide: MatchSessionSide
+}) {
+  return session.timerCurrentTurnNumber === 8 && session.timerActiveSide === MatchSessionSide.AWAY
+}
+
+function areAllTurnEventsConfirmed(
+  events: Array<{ homeConfirmedAt: Date | null; awayConfirmedAt: Date | null }>,
+) {
+  return events.every((event) => event.homeConfirmedAt && event.awayConfirmedAt)
+}
+
+function buildValidSessionPlayerMap(team: {
+  players: Array<{
+    shirtNumber: number | null
+    name: string
+    positionTemplateId: string
+    playerStatus?: TeamPlayerStatus
+    isDead?: boolean
+  }>
+}) {
+  const playerMap = new Map<number, { shirtNumber: number; name: string; positionTemplateId: string }>()
+  const normalizedPlayers = normalizeShirtNumbers(TeamStatus.ACTIVE, team.players)
+
+  for (const player of normalizedPlayers) {
+    if (
+      typeof player.shirtNumber === 'number' &&
+      player.shirtNumber > 0 &&
+      (player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE)) !== TeamPlayerStatus.DEAD
+    ) {
+      playerMap.set(player.shirtNumber, {
+        shirtNumber: player.shirtNumber,
+        name: player.name,
+        positionTemplateId: player.positionTemplateId,
+      })
+    }
+  }
+
+  return playerMap
+}
+
 function createSessionCode() {
   return randomBytes(4).toString('hex').toUpperCase()
 }
@@ -1223,6 +1310,8 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         timerCurrentHalf: 1,
         timerCurrentTurnNumber: 1,
         timerActiveSide: MatchSessionSide.HOME,
+        timerTurnPhase: 'READY',
+        timerTurnRemainingSeconds: timerConfig.perTurnSeconds,
         timerHomeBankRemainingSeconds: timerConfig.bankSeconds,
         timerAwayBankRemainingSeconds: timerConfig.bankSeconds,
         createdByUserId: creator.id,
@@ -1295,6 +1384,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
   })
 
   app.post('/match-sessions/:sessionId/join', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = matchSessionParamsSchema.safeParse(request.params)
     const bodyResult = joinMatchSessionBodySchema.safeParse(request.body)
 
@@ -1342,24 +1437,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       })
     }
 
-    const user = await app.prisma.user.findUnique({
-      where: {
-        id: bodyResult.data.userId,
-      },
-    })
-
-    if (!user) {
-      return reply.code(404).send({
-        message: 'User not found.',
-      })
-    }
-
     if (session.leagueId) {
       const membership = await app.prisma.leagueMembership.findUnique({
         where: {
           leagueId_userId: {
             leagueId: session.leagueId,
-            userId: user.id,
+            userId: actorUser.id,
           },
         },
       })
@@ -1371,36 +1454,39 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       }
     }
 
-    const existingParticipant = session.participants.find((participant) => participant.userId === user.id)
+    const existingParticipant = session.participants.find((participant) => participant.userId === actorUser.id)
 
     if (existingParticipant) {
-      return reply.code(409).send({
-        message: 'User has already joined this match session.',
+      return reply.send({
+        participant: {
+          ...toParticipantSummary({
+            ...existingParticipant,
+            user: {
+              id: actorUser.id,
+              displayName: actorUser.displayName,
+            },
+          }),
+        },
+        matchSessionStatus: session.status,
       })
     }
 
-    const requestedTeam = bodyResult.data.side === MatchSessionSide.HOME ? session.homeTeam : session.awayTeam
-    const requiredUserId = session.fixture
-      ? bodyResult.data.side === MatchSessionSide.HOME
-        ? session.fixture.homeEntry?.userId ?? null
-        : session.fixture.awayEntry?.userId ?? null
-      : requestedTeam.ownerUserId
+    const assignedSide = getAssignedSessionSideForUser(session, actorUser.id)
 
-    if (!requiredUserId) {
+    if (!assignedSide) {
       return reply.code(409).send({
-        message: 'That side is not currently assigned for this session.',
+        message: 'Signed-in user is not assigned to either side of this match session.',
       })
     }
 
-    if (requiredUserId !== user.id) {
+    if (bodyResult.data.side && bodyResult.data.side !== assignedSide) {
       return reply.code(409).send({
-        message: session.fixture
-          ? 'User can only join the side assigned to their competition entry.'
-          : 'User can only join the side owned by their team.',
+        message: 'Signed-in user can only claim their assigned side for this session.',
       })
     }
 
-    const occupiedSide = session.participants.find((participant) => participant.side === bodyResult.data.side)
+    const requestedTeam = assignedSide === MatchSessionSide.HOME ? session.homeTeam : session.awayTeam
+    const occupiedSide = session.participants.find((participant) => participant.side === assignedSide)
 
     if (occupiedSide) {
       return reply.code(409).send({
@@ -1411,9 +1497,9 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
     const participant = await app.prisma.matchSessionParticipant.create({
       data: {
         matchSessionId: session.id,
-        userId: user.id,
+        userId: actorUser.id,
         teamId: requestedTeam.id,
-        side: bodyResult.data.side,
+        side: assignedSide,
       },
       include: {
         user: {
@@ -1446,6 +1532,7 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
   })
 
   app.get('/match-sessions/:sessionId/block-dice-context', async (request, reply) => {
+    const actorUser = await findAuthenticatedUser(app, request)
     const paramsResult = matchSessionParamsSchema.safeParse(request.params)
 
     if (!paramsResult.success) {
@@ -1534,6 +1621,13 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
 
     return reply.send({
       matchSession: toMatchSessionSummary(session),
+      viewer: {
+        userId: actorUser?.id ?? null,
+        assignedSide: actorUser ? getAssignedSessionSideForUser(session, actorUser.id) : null,
+        participantSide: actorUser
+          ? session.participants.find((participant) => participant.userId === actorUser.id)?.side ?? null
+          : null,
+      },
       teams: {
         home: homeSubmission
           ? toSavedTeamRecordFromSubmission(homeSubmission)
@@ -1567,43 +1661,31 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       })
     }
 
-    const [events, currentTurnConfirmation] = await Promise.all([
-      app.prisma.matchSessionEvent.findMany({
-        where: {
-          matchSessionId: session.id,
+    const events = await app.prisma.matchSessionEvent.findMany({
+      where: {
+        matchSessionId: session.id,
+      },
+      orderBy: [
+        {
+          half: 'desc',
         },
-        orderBy: [
-          {
-            half: 'desc',
-          },
-          {
-            turnNumber: 'desc',
-          },
-          {
-            createdAt: 'asc',
-          },
-        ],
-      }),
-      app.prisma.matchSessionTurnConfirmation.findUnique({
-        where: {
-          matchSessionId_half_turnNumber_side: {
-            matchSessionId: session.id,
-            half: session.timerCurrentHalf,
-            turnNumber: session.timerCurrentTurnNumber,
-            side: session.timerActiveSide,
-          },
+        {
+          turnNumber: 'desc',
         },
-      }),
-    ])
+        {
+          createdAt: 'asc',
+        },
+      ],
+    })
 
     return reply.send({
       currentTurn: {
         half: session.timerCurrentHalf,
         turnNumber: session.timerCurrentTurnNumber,
         side: session.timerActiveSide,
+        phase: session.timerTurnPhase,
       },
       events: events.map(toMatchSessionEventSummary),
-      confirmation: toTurnConfirmationSummary(currentTurnConfirmation),
       signoff: toFinalSignoffSummary({
         status: session.status,
         homeFinalSignoffAt: session.homeFinalSignoffAt,
@@ -1702,6 +1784,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
   })
 
   app.put('/match-sessions/:sessionId/casualty-resolution/:eventId', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = matchSessionEventParamsSchema.safeParse(request.params)
     const bodyResult = casualtyResolutionBodySchema.safeParse(request.body)
 
@@ -1726,7 +1814,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       select: {
         id: true,
         matchSessionId: true,
+        half: true,
+        turnNumber: true,
+        actingSide: true,
         eventType: true,
+        homeConfirmedAt: true,
+        awayConfirmedAt: true,
       },
     })
 
@@ -1746,15 +1839,30 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       where: {
         id: paramsResult.data.sessionId,
       },
-      select: {
-        id: true,
-        status: true,
+      include: {
+        participants: {
+          select: {
+            userId: true,
+          },
+        },
       },
     })
 
     if (!session) {
       return reply.code(404).send({
         message: 'Match session not found.',
+      })
+    }
+
+    if (!session.participants.some((participant) => participant.userId === actorUser.id)) {
+      return reply.code(403).send({
+        message: 'Only claimed match participants can update a casualty result.',
+      })
+    }
+
+    if (event.homeConfirmedAt && event.awayConfirmedAt) {
+      return reply.code(409).send({
+        message: 'Confirmed events are locked and cannot be changed.',
       })
     }
 
@@ -2087,6 +2195,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
   })
 
   app.post('/match-sessions/:sessionId/events', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = timerActionParamsSchema.safeParse(request.params)
     const bodyResult = createMatchSessionEventBodySchema.safeParse(request.body)
 
@@ -2103,19 +2217,20 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       })
     }
 
+    if (typeof bodyResult.data.playerNumber !== 'number') {
+      return reply.code(400).send({
+        message: 'Match events must include a player number.',
+      })
+    }
+
     if (bodyResult.data.eventType === 'CASUALTY') {
       if (
         !bodyResult.data.injuredTeamSide ||
-        typeof bodyResult.data.injuredPlayerNumber !== 'number'
+        typeof bodyResult.data.injuredPlayerNumber !== 'number' ||
+        !bodyResult.data.casualtyResolutionType
       ) {
         return reply.code(400).send({
-          message: 'Casualty events require an injured team and injured player number.',
-        })
-      }
-
-      if (bodyResult.data.injuredTeamSide === bodyResult.data.teamSide) {
-        return reply.code(400).send({
-          message: 'Casualty injured team must be the opposing side.',
+          message: 'Casualty events require an injured team, injured player number, and injury result.',
         })
       }
     }
@@ -2124,7 +2239,40 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       where: {
         id: paramsResult.data.sessionId,
       },
-      select: timerStateSelect,
+      include: {
+        participants: {
+          select: {
+            userId: true,
+            side: true,
+          },
+        },
+        homeTeam: {
+          select: {
+            players: {
+              select: {
+                shirtNumber: true,
+                name: true,
+                positionTemplateId: true,
+                playerStatus: true,
+                isDead: true,
+              },
+            },
+          },
+        },
+        awayTeam: {
+          select: {
+            players: {
+              select: {
+                shirtNumber: true,
+                name: true,
+                positionTemplateId: true,
+                playerStatus: true,
+                isDead: true,
+              },
+            },
+          },
+        },
+      },
     })
 
     if (!session) {
@@ -2137,6 +2285,44 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       return reply.code(409).send({
         message: 'Closed match sessions cannot be modified.',
       })
+    }
+
+    const participant = session.participants.find((entry) => entry.userId === actorUser.id)
+
+    if (!participant) {
+      return reply.code(403).send({
+        message: 'Only claimed match participants can log events.',
+      })
+    }
+
+    if (
+      session.timerTurnPhase !== 'RUNNING' &&
+      session.timerTurnPhase !== 'REVIEW'
+    ) {
+      return reply.code(409).send({
+        message: 'Start the active turn clock before logging events for this turn.',
+      })
+    }
+
+    const homePlayerMap = buildValidSessionPlayerMap(session.homeTeam)
+    const awayPlayerMap = buildValidSessionPlayerMap(session.awayTeam)
+    const actingTeamPlayerMap = bodyResult.data.teamSide === MatchSessionSide.HOME ? homePlayerMap : awayPlayerMap
+
+    if (!actingTeamPlayerMap.has(bodyResult.data.playerNumber)) {
+      return reply.code(400).send({
+        message: 'Selected acting player does not exist on that team.',
+      })
+    }
+
+    if (bodyResult.data.eventType === 'CASUALTY') {
+      const injuredTeamPlayerMap =
+        bodyResult.data.injuredTeamSide === MatchSessionSide.HOME ? homePlayerMap : awayPlayerMap
+
+      if (!injuredTeamPlayerMap.has(bodyResult.data.injuredPlayerNumber!)) {
+        return reply.code(400).send({
+          message: 'Selected injured player does not exist on that team.',
+        })
+      }
     }
 
     const event = await app.prisma.$transaction(async (transaction) => {
@@ -2154,31 +2340,20 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
           injuredPlayerNumber:
             bodyResult.data.eventType === 'CASUALTY' ? bodyResult.data.injuredPlayerNumber ?? null : null,
           notes: bodyResult.data.notes || null,
+          homeConfirmedAt: null,
+          awayConfirmedAt: null,
         },
       })
 
-      await transaction.matchSessionTurnConfirmation.upsert({
-        where: {
-          matchSessionId_half_turnNumber_side: {
+      if (bodyResult.data.eventType === 'CASUALTY' && bodyResult.data.casualtyResolutionType) {
+        await transaction.matchSessionCasualtyResolution.create({
+          data: {
             matchSessionId: session.id,
-            half: session.timerCurrentHalf,
-            turnNumber: session.timerCurrentTurnNumber,
-            side: session.timerActiveSide,
+            matchSessionEventId: createdEvent.id,
+            resolutionType: bodyResult.data.casualtyResolutionType,
           },
-        },
-        create: {
-          matchSessionId: session.id,
-          half: session.timerCurrentHalf,
-          turnNumber: session.timerCurrentTurnNumber,
-          side: session.timerActiveSide,
-          homeConfirmedAt: null,
-          awayConfirmedAt: null,
-        },
-        update: {
-          homeConfirmedAt: null,
-          awayConfirmedAt: null,
-        },
-      })
+        })
+      }
 
       await transaction.matchSession.update({
         where: {
@@ -2186,6 +2361,10 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         },
         data: {
           status: session.status === MatchSessionStatus.CLOSED ? MatchSessionStatus.PENDING : session.status,
+          timerTurnPhase:
+            session.timerTurnPhase === 'READY'
+              ? 'REVIEW'
+              : session.timerTurnPhase,
           homeFinalSignoffAt: null,
           awayFinalSignoffAt: null,
           closedAt: null,
@@ -2202,6 +2381,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
   })
 
   app.delete('/match-sessions/:sessionId/events/:eventId', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = matchSessionEventParamsSchema.safeParse(request.params)
 
     if (!paramsResult.success) {
@@ -2227,9 +2412,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       where: {
         id: paramsResult.data.sessionId,
       },
-      select: {
-        id: true,
-        status: true,
+      include: {
+        participants: {
+          select: {
+            userId: true,
+          },
+        },
       },
     })
 
@@ -2245,33 +2433,28 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       })
     }
 
+    if (!session.participants.some((participant) => participant.userId === actorUser.id)) {
+      return reply.code(403).send({
+        message: 'Only claimed match participants can remove events.',
+      })
+    }
+
+    if (event.homeConfirmedAt && event.awayConfirmedAt) {
+      return reply.code(409).send({
+        message: 'Confirmed events are locked and cannot be removed.',
+      })
+    }
+
     await app.prisma.$transaction(async (transaction) => {
-      await transaction.matchSessionEvent.delete({
+      await transaction.matchSessionCasualtyResolution.deleteMany({
         where: {
-          id: event.id,
+          matchSessionEventId: event.id,
         },
       })
 
-      await transaction.matchSessionTurnConfirmation.upsert({
+      await transaction.matchSessionEvent.delete({
         where: {
-          matchSessionId_half_turnNumber_side: {
-            matchSessionId: event.matchSessionId,
-            half: event.half,
-            turnNumber: event.turnNumber,
-            side: event.actingSide,
-          },
-        },
-        create: {
-          matchSessionId: event.matchSessionId,
-          half: event.half,
-          turnNumber: event.turnNumber,
-          side: event.actingSide,
-          homeConfirmedAt: null,
-          awayConfirmedAt: null,
-        },
-        update: {
-          homeConfirmedAt: null,
-          awayConfirmedAt: null,
+          id: event.id,
         },
       })
 
@@ -2292,20 +2475,37 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
     return reply.code(204).send()
   })
 
-  app.post('/match-sessions/:sessionId/turn-confirmation/confirm', async (request, reply) => {
-    const paramsResult = timerActionParamsSchema.safeParse(request.params)
-    const bodyResult = confirmTurnBodySchema.safeParse(request.body)
+  app.post('/match-sessions/:sessionId/events/:eventId/confirm', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
+    const paramsResult = matchSessionEventParamsSchema.safeParse(request.params)
+    const bodyResult = confirmEventBodySchema.safeParse(request.body)
 
     if (!paramsResult.success) {
-      return reply.code(400).send({
-        message: 'Invalid match session id.',
-      })
+      return reply.code(400).send({ message: 'Invalid match event id.' })
     }
 
     if (!bodyResult.success) {
       return reply.code(400).send({
-        message: 'Invalid turn confirmation payload.',
+        message: 'Invalid event confirmation payload.',
         issues: bodyResult.error.issues,
+      })
+    }
+
+    const event = await app.prisma.matchSessionEvent.findFirst({
+      where: {
+        id: paramsResult.data.eventId,
+        matchSessionId: paramsResult.data.sessionId,
+      },
+    })
+
+    if (!event) {
+      return reply.code(404).send({
+        message: 'Match session event not found.',
       })
     }
 
@@ -2313,7 +2513,14 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       where: {
         id: paramsResult.data.sessionId,
       },
-      select: timerStateSelect,
+      include: {
+        participants: {
+          select: {
+            userId: true,
+            side: true,
+          },
+        },
+      },
     })
 
     if (!session) {
@@ -2328,41 +2535,68 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       })
     }
 
-    const confirmation = await app.prisma.matchSessionTurnConfirmation.upsert({
-      where: {
-        matchSessionId_half_turnNumber_side: {
-          matchSessionId: session.id,
-          half: session.timerCurrentHalf,
-          turnNumber: session.timerCurrentTurnNumber,
-          side: session.timerActiveSide,
+    const participant = session.participants.find((entry) => entry.userId === actorUser.id)
+
+    if (!participant) {
+      return reply.code(403).send({
+        message: 'Only claimed match participants can confirm an event.',
+      })
+    }
+
+    if (participant.side !== bodyResult.data.confirmedSide) {
+      return reply.code(409).send({
+        message: 'You can only confirm an event for your own assigned side.',
+      })
+    }
+
+    if (
+      (bodyResult.data.confirmedSide === MatchSessionSide.HOME && event.homeConfirmedAt) ||
+      (bodyResult.data.confirmedSide === MatchSessionSide.AWAY && event.awayConfirmedAt)
+    ) {
+      return reply.send({
+        event: toMatchSessionEventSummary(event),
+      })
+    }
+
+    const updatedEvent = await app.prisma.$transaction(async (transaction) => {
+      const nextEvent = await transaction.matchSessionEvent.update({
+        where: {
+          id: event.id,
         },
-      },
-      create: {
-        matchSessionId: session.id,
-        half: session.timerCurrentHalf,
-        turnNumber: session.timerCurrentTurnNumber,
-        side: session.timerActiveSide,
-        homeConfirmedAt:
-          bodyResult.data.confirmedSide === MatchSessionSide.HOME ? new Date() : null,
-        awayConfirmedAt:
-          bodyResult.data.confirmedSide === MatchSessionSide.AWAY ? new Date() : null,
-      },
-      update:
-        bodyResult.data.confirmedSide === MatchSessionSide.HOME
-          ? {
-              homeConfirmedAt: new Date(),
-            }
-          : {
-              awayConfirmedAt: new Date(),
-            },
+        data:
+          bodyResult.data.confirmedSide === MatchSessionSide.HOME
+            ? { homeConfirmedAt: new Date() }
+            : { awayConfirmedAt: new Date() },
+      })
+
+      await transaction.matchSession.update({
+        where: {
+          id: session.id,
+        },
+        data: {
+          status: session.status === MatchSessionStatus.CLOSED ? MatchSessionStatus.PENDING : session.status,
+          homeFinalSignoffAt: null,
+          awayFinalSignoffAt: null,
+          closedAt: null,
+          progressionAppliedAt: null,
+        },
+      })
+
+      return nextEvent
     })
 
     return reply.send({
-      confirmation: toTurnConfirmationSummary(confirmation),
+      event: toMatchSessionEventSummary(updatedEvent),
     })
   })
 
   app.post('/match-sessions/:sessionId/final-signoff', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = timerActionParamsSchema.safeParse(request.params)
     const bodyResult = finalSignoffBodySchema.safeParse(request.body)
 
@@ -2385,6 +2619,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       },
       include: {
         events: true,
+        participants: {
+          select: {
+            userId: true,
+            side: true,
+          },
+        },
       },
     })
 
@@ -2397,6 +2637,36 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
     if (session.events.length === 0) {
       return reply.code(409).send({
         message: 'Log at least one match event before final signoff.',
+      })
+    }
+
+    if (isTurnClockRunning(session) || session.timerTurnPhase === 'PAUSE_REQUESTED') {
+      return reply.code(409).send({
+        message: 'Resolve the active turn before final signoff.',
+      })
+    }
+
+    const participant = session.participants.find((entry) => entry.userId === actorUser.id)
+
+    if (!participant) {
+      return reply.code(403).send({
+        message: 'Only claimed match participants can sign off the match.',
+      })
+    }
+
+    if (participant.side !== bodyResult.data.signedOffSide) {
+      return reply.code(409).send({
+        message: 'You can only sign off the match for your own assigned side.',
+      })
+    }
+
+    const hasUnconfirmedEvents = session.events.some(
+      (event) => !event.homeConfirmedAt || !event.awayConfirmedAt,
+    )
+
+    if (hasUnconfirmedEvents) {
+      return reply.code(409).send({
+        message: 'All logged events must be confirmed by both sides before final signoff.',
       })
     }
 
@@ -2459,6 +2729,8 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         timerCurrentHalf: true,
         timerCurrentTurnNumber: true,
         timerActiveSide: true,
+        timerTurnPhase: true,
+        timerTurnRemainingSeconds: true,
         timerTurnStartedAt: true,
         timerHomeBankRemainingSeconds: true,
         timerAwayBankRemainingSeconds: true,
@@ -2477,6 +2749,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
   })
 
   app.post('/match-sessions/:sessionId/timer/start', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = timerActionParamsSchema.safeParse(request.params)
     const bodyResult = startTimerBodySchema.safeParse(request.body)
 
@@ -2497,19 +2775,13 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       where: {
         id: paramsResult.data.sessionId,
       },
-      select: {
-        id: true,
-        status: true,
-        timerEnabled: true,
-        timerTurnSeconds: true,
-        timerBankSeconds: true,
-        timerBankResetsAtHalf: true,
-        timerCurrentHalf: true,
-        timerCurrentTurnNumber: true,
-        timerActiveSide: true,
-        timerTurnStartedAt: true,
-        timerHomeBankRemainingSeconds: true,
-        timerAwayBankRemainingSeconds: true,
+      include: {
+        participants: {
+          select: {
+            userId: true,
+            side: true,
+          },
+        },
       },
     })
 
@@ -2525,6 +2797,100 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       })
     }
 
+    if (session.participants.length < 2) {
+      return reply.code(409).send({
+        message: 'Both sides must claim the match room before the clock can start.',
+      })
+    }
+
+    if (!session.participants.some((participant) => participant.userId === actorUser.id)) {
+      return reply.code(403).send({
+        message: 'Only claimed match participants can start the turn clock.',
+      })
+    }
+
+    if (session.timerTurnPhase === 'RUNNING') {
+      return reply.code(409).send({
+        message: 'The active turn clock is already running.',
+      })
+    }
+
+    if (session.timerTurnPhase === 'PAUSE_REQUESTED') {
+      return reply.code(409).send({
+        message: 'The opponent must confirm the pause request before the clock can be resumed.',
+      })
+    }
+
+    const turnSeconds = session.timerTurnSeconds ?? getDefaultTimerConfig().perTurnSeconds
+    const currentTurnEvents =
+      session.timerTurnPhase === 'REVIEW'
+        ? await app.prisma.matchSessionEvent.findMany({
+            where: {
+              matchSessionId: session.id,
+              half: session.timerCurrentHalf,
+              turnNumber: session.timerCurrentTurnNumber,
+              actingSide: session.timerActiveSide,
+            },
+            select: {
+              homeConfirmedAt: true,
+              awayConfirmedAt: true,
+            },
+          })
+        : []
+
+    if (
+      session.timerTurnPhase === 'REVIEW' &&
+      !areAllTurnEventsConfirmed(currentTurnEvents)
+    ) {
+      return reply.code(409).send({
+        message: 'All logged events for the ended turn must be confirmed before the next turn can start.',
+      })
+    }
+
+    const requiresManualOpeningSideChoice =
+      session.timerTurnPhase === 'READY' && session.timerCurrentTurnNumber === 1
+    const nextTurnPosition =
+      session.timerTurnPhase === 'REVIEW' && !isCompletedFinalTurnOfHalf(session)
+        ? getNextTurnPosition(session.timerActiveSide, session.timerCurrentTurnNumber)
+        : null
+    const participant = session.participants.find((entry) => entry.userId === actorUser.id)
+    const requiredStartingSide =
+      requiresManualOpeningSideChoice
+        ? bodyResult.data.side ?? null
+        : session.timerTurnPhase === 'REVIEW'
+        ? nextTurnPosition?.nextActiveSide ?? session.timerActiveSide
+        : session.timerActiveSide
+
+    if (requiresManualOpeningSideChoice && !bodyResult.data.side) {
+      return reply.code(400).send({
+        message: 'Choose which side starts turn 1 before starting the clock.',
+      })
+    }
+
+    if (
+      session.timerTurnPhase === 'REVIEW' &&
+      isCompletedFinalTurnOfHalf(session)
+    ) {
+      return reply.code(session.timerCurrentHalf >= 2 ? 409 : 409).send({
+        message:
+          session.timerCurrentHalf >= 2
+            ? 'Turn 8 for the second side ends the half. Do not start turn 9; continue to final signoff.'
+            : 'Turn 8 for the second side ends the half. Press Next half before starting the clock again.',
+      })
+    }
+
+    if (!participant || participant.side !== requiredStartingSide) {
+      return reply.code(403).send({
+        message: 'Only the side about to take the turn can start or resume its turn clock.',
+      })
+    }
+
+    if (bodyResult.data.side && bodyResult.data.side !== requiredStartingSide) {
+      return reply.code(409).send({
+        message: 'The side for this turn is fixed by the room state and cannot be changed here.',
+      })
+    }
+
     const updatedSession = await app.prisma.matchSession.update({
       where: {
         id: session.id,
@@ -2532,13 +2898,19 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       data: {
         timerEnabled: true,
         status: session.status === MatchSessionStatus.CLOSED ? MatchSessionStatus.PENDING : session.status,
-        timerTurnSeconds: session.timerTurnSeconds ?? getDefaultTimerConfig().perTurnSeconds,
+        timerTurnSeconds: turnSeconds,
         timerBankSeconds: session.timerBankSeconds ?? getDefaultTimerConfig().bankSeconds,
         timerHomeBankRemainingSeconds:
           session.timerHomeBankRemainingSeconds ?? session.timerBankSeconds ?? getDefaultTimerConfig().bankSeconds,
         timerAwayBankRemainingSeconds:
           session.timerAwayBankRemainingSeconds ?? session.timerBankSeconds ?? getDefaultTimerConfig().bankSeconds,
-        timerActiveSide: bodyResult.data.side ?? session.timerActiveSide,
+        timerActiveSide: requiredStartingSide ?? nextTurnPosition?.nextActiveSide ?? session.timerActiveSide,
+        timerCurrentTurnNumber: nextTurnPosition?.nextTurnNumber ?? session.timerCurrentTurnNumber,
+        timerTurnPhase: 'RUNNING',
+        timerTurnRemainingSeconds:
+          session.timerTurnPhase === 'PAUSED'
+            ? session.timerTurnRemainingSeconds ?? turnSeconds
+            : turnSeconds,
         timerTurnStartedAt: new Date(),
         homeFinalSignoffAt: null,
         awayFinalSignoffAt: null,
@@ -2555,6 +2927,215 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         timerCurrentHalf: true,
         timerCurrentTurnNumber: true,
         timerActiveSide: true,
+        timerTurnPhase: true,
+        timerTurnRemainingSeconds: true,
+        timerTurnStartedAt: true,
+        timerHomeBankRemainingSeconds: true,
+        timerAwayBankRemainingSeconds: true,
+        homeFinalSignoffAt: true,
+        awayFinalSignoffAt: true,
+        closedAt: true,
+      },
+    })
+
+    return reply.send({
+      timer: toTimerStateSummary(updatedSession),
+    })
+  })
+
+  app.post('/match-sessions/:sessionId/timer/pause-request', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
+    const paramsResult = timerActionParamsSchema.safeParse(request.params)
+    const bodyResult = pauseTimerBodySchema.safeParse(request.body)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({ message: 'Invalid match session id.' })
+    }
+
+    if (!bodyResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid pause request payload.',
+        issues: bodyResult.error.issues,
+      })
+    }
+
+    const session = await app.prisma.matchSession.findUnique({
+      where: { id: paramsResult.data.sessionId },
+      include: {
+        participants: {
+          select: {
+            userId: true,
+            side: true,
+          },
+        },
+      },
+    })
+
+    if (!session) {
+      return reply.code(404).send({ message: 'Match session not found.' })
+    }
+
+    if (isClosedMatchSession(session)) {
+      return reply.code(409).send({ message: 'Closed match sessions cannot be modified.' })
+    }
+
+    const participant = session.participants.find((entry) => entry.userId === actorUser.id)
+
+    if (!participant || participant.side !== session.timerActiveSide) {
+      return reply.code(403).send({
+        message: 'Only the active team can request a pause.',
+      })
+    }
+
+    if (bodyResult.data.requestedSide !== session.timerActiveSide) {
+      return reply.code(409).send({
+        message: 'Pause requests must come from the active side.',
+      })
+    }
+
+    if (!isTurnClockRunning(session)) {
+      return reply.code(409).send({
+        message: 'The turn clock must be running before it can be paused.',
+      })
+    }
+
+    const defaults = getDefaultTimerConfig()
+    const turnSeconds = session.timerTurnSeconds ?? defaults.perTurnSeconds
+    const storedTurnRemainingSeconds = session.timerTurnRemainingSeconds ?? turnSeconds
+    const baseBankSeconds = session.timerBankSeconds ?? defaults.bankSeconds
+    const homeBankRemainingSeconds = session.timerHomeBankRemainingSeconds ?? baseBankSeconds
+    const awayBankRemainingSeconds = session.timerAwayBankRemainingSeconds ?? baseBankSeconds
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - session.timerTurnStartedAt!.getTime()) / 1000))
+    const overtimeSeconds = Math.max(0, elapsedSeconds - storedTurnRemainingSeconds)
+    const nextTurnRemainingSeconds = clampNonNegative(storedTurnRemainingSeconds - elapsedSeconds)
+    const nextHomeBankRemainingSeconds =
+      session.timerActiveSide === MatchSessionSide.HOME
+        ? clampNonNegative(homeBankRemainingSeconds - overtimeSeconds)
+        : homeBankRemainingSeconds
+    const nextAwayBankRemainingSeconds =
+      session.timerActiveSide === MatchSessionSide.AWAY
+        ? clampNonNegative(awayBankRemainingSeconds - overtimeSeconds)
+        : awayBankRemainingSeconds
+
+    const updatedSession = await app.prisma.matchSession.update({
+      where: { id: session.id },
+      data: {
+        status: session.status === MatchSessionStatus.CLOSED ? MatchSessionStatus.PENDING : session.status,
+        timerTurnPhase: 'PAUSE_REQUESTED',
+        timerTurnRemainingSeconds: nextTurnRemainingSeconds,
+        timerTurnStartedAt: null,
+        timerHomeBankRemainingSeconds: nextHomeBankRemainingSeconds,
+        timerAwayBankRemainingSeconds: nextAwayBankRemainingSeconds,
+        homeFinalSignoffAt: null,
+        awayFinalSignoffAt: null,
+        closedAt: null,
+        progressionAppliedAt: null,
+      },
+      select: {
+        id: true,
+        status: true,
+        timerEnabled: true,
+        timerTurnSeconds: true,
+        timerBankSeconds: true,
+        timerBankResetsAtHalf: true,
+        timerCurrentHalf: true,
+        timerCurrentTurnNumber: true,
+        timerActiveSide: true,
+        timerTurnPhase: true,
+        timerTurnRemainingSeconds: true,
+        timerTurnStartedAt: true,
+        timerHomeBankRemainingSeconds: true,
+        timerAwayBankRemainingSeconds: true,
+        homeFinalSignoffAt: true,
+        awayFinalSignoffAt: true,
+        closedAt: true,
+      },
+    })
+
+    return reply.send({
+      timer: toTimerStateSummary(updatedSession),
+    })
+  })
+
+  app.post('/match-sessions/:sessionId/timer/confirm-pause', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
+    const paramsResult = timerActionParamsSchema.safeParse(request.params)
+    const bodyResult = confirmPauseBodySchema.safeParse(request.body)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({ message: 'Invalid match session id.' })
+    }
+
+    if (!bodyResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid pause confirmation payload.',
+        issues: bodyResult.error.issues,
+      })
+    }
+
+    const session = await app.prisma.matchSession.findUnique({
+      where: { id: paramsResult.data.sessionId },
+      include: {
+        participants: {
+          select: {
+            userId: true,
+            side: true,
+          },
+        },
+      },
+    })
+
+    if (!session) {
+      return reply.code(404).send({ message: 'Match session not found.' })
+    }
+
+    const participant = session.participants.find((entry) => entry.userId === actorUser.id)
+
+    if (!participant || participant.side === session.timerActiveSide) {
+      return reply.code(403).send({
+        message: 'Only the non-active side can confirm a pause request.',
+      })
+    }
+
+    if (participant.side !== bodyResult.data.confirmedSide) {
+      return reply.code(409).send({
+        message: 'You can only confirm the pause for your own side.',
+      })
+    }
+
+    if (session.timerTurnPhase !== 'PAUSE_REQUESTED') {
+      return reply.code(409).send({
+        message: 'There is no pending pause request to confirm.',
+      })
+    }
+
+    const updatedSession = await app.prisma.matchSession.update({
+      where: { id: session.id },
+      data: {
+        timerTurnPhase: 'PAUSED',
+      },
+      select: {
+        id: true,
+        status: true,
+        timerEnabled: true,
+        timerTurnSeconds: true,
+        timerBankSeconds: true,
+        timerBankResetsAtHalf: true,
+        timerCurrentHalf: true,
+        timerCurrentTurnNumber: true,
+        timerActiveSide: true,
+        timerTurnPhase: true,
+        timerTurnRemainingSeconds: true,
         timerTurnStartedAt: true,
         timerHomeBankRemainingSeconds: true,
         timerAwayBankRemainingSeconds: true,
@@ -2570,6 +3151,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
   })
 
   app.post('/match-sessions/:sessionId/timer/end-turn', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = timerActionParamsSchema.safeParse(request.params)
 
     if (!paramsResult.success) {
@@ -2582,19 +3169,13 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       where: {
         id: paramsResult.data.sessionId,
       },
-      select: {
-        id: true,
-        status: true,
-        timerEnabled: true,
-        timerTurnSeconds: true,
-        timerBankSeconds: true,
-        timerBankResetsAtHalf: true,
-        timerCurrentHalf: true,
-        timerCurrentTurnNumber: true,
-        timerActiveSide: true,
-        timerTurnStartedAt: true,
-        timerHomeBankRemainingSeconds: true,
-        timerAwayBankRemainingSeconds: true,
+      include: {
+        participants: {
+          select: {
+            userId: true,
+            side: true,
+          },
+        },
       },
     })
 
@@ -2610,8 +3191,23 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       })
     }
 
+    const participant = session.participants.find((entry) => entry.userId === actorUser.id)
+
+    if (!participant || participant.side !== session.timerActiveSide) {
+      return reply.code(403).send({
+        message: 'Only the active team can end its turn.',
+      })
+    }
+
+    if (!isTurnClockRunning(session)) {
+      return reply.code(409).send({
+        message: 'The active turn clock is not running.',
+      })
+    }
+
     const defaults = getDefaultTimerConfig()
     const turnSeconds = session.timerTurnSeconds ?? defaults.perTurnSeconds
+    const storedTurnRemainingSeconds = session.timerTurnRemainingSeconds ?? turnSeconds
     const baseBankSeconds = session.timerBankSeconds ?? defaults.bankSeconds
     const homeBankRemainingSeconds = session.timerHomeBankRemainingSeconds ?? baseBankSeconds
     const awayBankRemainingSeconds = session.timerAwayBankRemainingSeconds ?? baseBankSeconds
@@ -2619,8 +3215,9 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       ? Math.max(0, Math.floor((Date.now() - session.timerTurnStartedAt.getTime()) / 1000))
       : 0
     const overtimeSeconds = session.timerTurnStartedAt
-      ? Math.max(0, elapsedSeconds - turnSeconds)
+      ? Math.max(0, elapsedSeconds - storedTurnRemainingSeconds)
       : 0
+    const nextTurnRemainingSeconds = clampNonNegative(storedTurnRemainingSeconds - elapsedSeconds)
 
     const nextHomeBankRemainingSeconds =
       session.timerActiveSide === MatchSessionSide.HOME
@@ -2631,15 +3228,6 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         ? clampNonNegative(awayBankRemainingSeconds - overtimeSeconds)
         : awayBankRemainingSeconds
 
-    const nextActiveSide =
-      session.timerActiveSide === MatchSessionSide.HOME
-        ? MatchSessionSide.AWAY
-        : MatchSessionSide.HOME
-    const nextTurnNumber =
-      session.timerActiveSide === MatchSessionSide.AWAY
-        ? session.timerCurrentTurnNumber + 1
-        : session.timerCurrentTurnNumber
-
     const updatedSession = await app.prisma.matchSession.update({
       where: {
         id: session.id,
@@ -2648,8 +3236,8 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         status: session.status === MatchSessionStatus.CLOSED ? MatchSessionStatus.PENDING : session.status,
         timerHomeBankRemainingSeconds: nextHomeBankRemainingSeconds,
         timerAwayBankRemainingSeconds: nextAwayBankRemainingSeconds,
-        timerActiveSide: nextActiveSide,
-        timerCurrentTurnNumber: nextTurnNumber,
+        timerTurnPhase: 'REVIEW',
+        timerTurnRemainingSeconds: nextTurnRemainingSeconds,
         timerTurnStartedAt: null,
         homeFinalSignoffAt: null,
         awayFinalSignoffAt: null,
@@ -2666,6 +3254,8 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         timerCurrentHalf: true,
         timerCurrentTurnNumber: true,
         timerActiveSide: true,
+        timerTurnPhase: true,
+        timerTurnRemainingSeconds: true,
         timerTurnStartedAt: true,
         timerHomeBankRemainingSeconds: true,
         timerAwayBankRemainingSeconds: true,
@@ -2681,6 +3271,12 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
   })
 
   app.post('/match-sessions/:sessionId/timer/reset-half', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = timerActionParamsSchema.safeParse(request.params)
 
     if (!paramsResult.success) {
@@ -2693,19 +3289,13 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       where: {
         id: paramsResult.data.sessionId,
       },
-      select: {
-        id: true,
-        status: true,
-        timerEnabled: true,
-        timerTurnSeconds: true,
-        timerBankSeconds: true,
-        timerBankResetsAtHalf: true,
-        timerCurrentHalf: true,
-        timerCurrentTurnNumber: true,
-        timerActiveSide: true,
-        timerTurnStartedAt: true,
-        timerHomeBankRemainingSeconds: true,
-        timerAwayBankRemainingSeconds: true,
+      include: {
+        participants: {
+          select: {
+            userId: true,
+            side: true,
+          },
+        },
       },
     })
 
@@ -2721,7 +3311,56 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
       })
     }
 
+    if (!session.participants.some((participant) => participant.userId === actorUser.id)) {
+      return reply.code(403).send({
+        message: 'Only claimed match participants can advance the half.',
+      })
+    }
+
+    if (isTurnClockRunning(session) || session.timerTurnPhase === 'PAUSE_REQUESTED') {
+      return reply.code(409).send({
+        message: 'End or resolve the active turn before advancing the half.',
+      })
+    }
+
+    if (session.timerCurrentHalf >= 2) {
+      return reply.code(409).send({
+        message: 'The second half is already active. Further half advancement is not allowed.',
+      })
+    }
+
+    if (
+      session.timerCurrentTurnNumber < 8 ||
+      (session.timerCurrentTurnNumber === 8 && session.timerActiveSide !== MatchSessionSide.AWAY)
+    ) {
+      return reply.code(409).send({
+        message: 'The first half can only advance after turn 8 has been completed.',
+      })
+    }
+
+    if (session.timerTurnPhase === 'REVIEW') {
+      const reviewEvents = await app.prisma.matchSessionEvent.findMany({
+        where: {
+          matchSessionId: session.id,
+          half: session.timerCurrentHalf,
+          turnNumber: session.timerCurrentTurnNumber,
+          actingSide: session.timerActiveSide,
+        },
+        select: {
+          homeConfirmedAt: true,
+          awayConfirmedAt: true,
+        },
+      })
+
+      if (!areAllTurnEventsConfirmed(reviewEvents)) {
+        return reply.code(409).send({
+          message: 'All logged events for the ended turn must be confirmed before the next half can begin.',
+        })
+      }
+    }
+
     const baseBankSeconds = session.timerBankSeconds ?? getDefaultTimerConfig().bankSeconds
+    const turnSeconds = session.timerTurnSeconds ?? getDefaultTimerConfig().perTurnSeconds
     const updatedSession = await app.prisma.matchSession.update({
       where: {
         id: session.id,
@@ -2730,7 +3369,9 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         status: session.status === MatchSessionStatus.CLOSED ? MatchSessionStatus.PENDING : session.status,
         timerCurrentHalf: session.timerCurrentHalf + 1,
         timerCurrentTurnNumber: 1,
-        timerActiveSide: MatchSessionSide.HOME,
+        timerActiveSide: session.timerActiveSide,
+        timerTurnPhase: 'READY',
+        timerTurnRemainingSeconds: turnSeconds,
         timerTurnStartedAt: null,
         timerHomeBankRemainingSeconds: session.timerBankResetsAtHalf
           ? baseBankSeconds
@@ -2753,6 +3394,8 @@ export async function registerMatchSessionRoutes(app: FastifyInstance) {
         timerCurrentHalf: true,
         timerCurrentTurnNumber: true,
         timerActiveSide: true,
+        timerTurnPhase: true,
+        timerTurnRemainingSeconds: true,
         timerTurnStartedAt: true,
         timerHomeBankRemainingSeconds: true,
         timerAwayBankRemainingSeconds: true,

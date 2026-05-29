@@ -1,5 +1,7 @@
 import type { TeamCreatorSavedTeamRecord } from './teamImport'
 
+const AUTH_SESSION_TOKEN_KEY = 'blood-bowl-toolkit:auth:session-token'
+
 export interface MatchSessionTeamSummary {
   id: string
   name: string
@@ -40,6 +42,12 @@ export interface MatchSessionParticipantSummary {
   }
 }
 
+export interface MatchSessionViewerSummary {
+  userId: string | null
+  assignedSide: 'HOME' | 'AWAY' | null
+  participantSide: 'HOME' | 'AWAY' | null
+}
+
 export interface MatchSessionSummary {
   id: string
   leagueId: string | null
@@ -64,6 +72,7 @@ export interface MatchSessionTimerState {
   currentHalf: number
   currentTurnNumber: number
   activeSide: 'HOME' | 'AWAY'
+  phase: 'READY' | 'RUNNING' | 'PAUSE_REQUESTED' | 'PAUSED' | 'REVIEW'
   turnStartedAt: string | null
   serverNow: string
   perTurnRemainingSeconds: number
@@ -83,20 +92,11 @@ export interface MatchSessionEventSummary {
   injuredTeamSide: 'HOME' | 'AWAY' | null
   injuredPlayerNumber: number | null
   notes: string | null
-  createdAt: string
-}
-
-export interface MatchSessionTurnConfirmation {
-  id: string | null
-  half: number | null
-  turnNumber: number | null
-  side: 'HOME' | 'AWAY' | null
   homeConfirmedAt: string | null
   awayConfirmedAt: string | null
   homeConfirmed: boolean
   awayConfirmed: boolean
-  createdAt: string | null
-  updatedAt: string | null
+  createdAt: string
 }
 
 export interface MatchSessionFinalSignoff {
@@ -185,6 +185,7 @@ export type MatchSessionCasualtyResolutionValue =
 
 export interface BlockDiceSessionContextResponse {
   matchSession: MatchSessionSummary
+  viewer: MatchSessionViewerSummary
   teams: {
     home: TeamCreatorSavedTeamRecord
     away: TeamCreatorSavedTeamRecord
@@ -196,9 +197,9 @@ export interface MatchSessionEventsResponse {
     half: number
     turnNumber: number
     side: 'HOME' | 'AWAY'
+    phase: 'READY' | 'RUNNING' | 'PAUSE_REQUESTED' | 'PAUSED' | 'REVIEW'
   }
   events: MatchSessionEventSummary[]
-  confirmation: MatchSessionTurnConfirmation
   signoff: MatchSessionFinalSignoff
 }
 
@@ -227,6 +228,53 @@ function buildApiBaseUrl() {
   return (configuredBaseUrl || 'http://127.0.0.1:3001').replace(/\/+$/u, '')
 }
 
+function getStoredSessionToken() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  return window.localStorage.getItem(AUTH_SESSION_TOKEN_KEY)
+}
+
+function createAuthHeaders(headers?: HeadersInit) {
+  const nextHeaders = new Headers(headers)
+  const sessionToken = getStoredSessionToken()
+
+  if (sessionToken) {
+    nextHeaders.set('Authorization', `Bearer ${sessionToken}`)
+  }
+
+  return nextHeaders
+}
+
+export function bootstrapMatchSessionAuthFromUrl() {
+  if (typeof window === 'undefined') {
+    return {
+      sessionCode: null as string | null,
+    }
+  }
+
+  const url = new URL(window.location.href)
+  const sessionCode = url.searchParams.get('sessionCode')?.trim().toUpperCase() ?? null
+  const hashParams = new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : url.hash)
+  const authToken = hashParams.get('authToken')?.trim() ?? null
+
+  if (authToken) {
+    window.localStorage.setItem(AUTH_SESSION_TOKEN_KEY, authToken)
+    hashParams.delete('authToken')
+    const nextHash = hashParams.toString()
+    window.history.replaceState(
+      {},
+      document.title,
+      `${url.pathname}${url.search}${nextHash ? `#${nextHash}` : ''}`,
+    )
+  }
+
+  return {
+    sessionCode,
+  }
+}
+
 export async function fetchBlockDiceSessionContextByCode(sessionCode: string) {
   const baseUrl = buildApiBaseUrl()
   const normalizedCode = sessionCode.trim().toUpperCase()
@@ -236,12 +284,17 @@ export async function fetchBlockDiceSessionContextByCode(sessionCode: string) {
   }
 
   const sessionLookup = await parseResponse<{ matchSession: MatchSessionSummary }>(
-    await fetch(`${baseUrl}/match-sessions/code/${encodeURIComponent(normalizedCode)}`),
+    await fetch(`${baseUrl}/match-sessions/code/${encodeURIComponent(normalizedCode)}`, {
+      headers: createAuthHeaders(),
+    }),
   )
 
   return parseResponse<BlockDiceSessionContextResponse>(
     await fetch(
       `${baseUrl}/match-sessions/${encodeURIComponent(sessionLookup.matchSession.id)}/block-dice-context`,
+      {
+        headers: createAuthHeaders(),
+      },
     ),
   )
 }
@@ -254,14 +307,18 @@ export async function fetchBlockDiceSessionContext(sessionId: string) {
   }
 
   return parseResponse<BlockDiceSessionContextResponse>(
-    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/block-dice-context`),
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/block-dice-context`, {
+      headers: createAuthHeaders(),
+    }),
   )
 }
 
 export async function fetchSharedTeams() {
   const baseUrl = buildApiBaseUrl()
   const payload = await parseResponse<{ teams: SharedTeamSummary[] }>(
-    await fetch(`${baseUrl}/teams`),
+    await fetch(`${baseUrl}/teams`, {
+      headers: createAuthHeaders(),
+    }),
   )
 
   return payload.teams
@@ -270,7 +327,9 @@ export async function fetchSharedTeams() {
 export async function fetchSharedTeam(teamId: string) {
   const baseUrl = buildApiBaseUrl()
   const payload = await parseResponse<{ team: SharedTeamRecord }>(
-    await fetch(`${baseUrl}/teams/${encodeURIComponent(teamId)}`),
+    await fetch(`${baseUrl}/teams/${encodeURIComponent(teamId)}`, {
+      headers: createAuthHeaders(),
+    }),
   )
 
   return payload.team
@@ -297,9 +356,9 @@ export async function createBlockDiceSessionContext(homeTeamId: string, awayTeam
   const createdSession = await parseResponse<{ matchSession: MatchSessionSummary }>(
     await fetch(`${baseUrl}/match-sessions`, {
       method: 'POST',
-      headers: {
+      headers: createAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify(sessionPayload),
     }),
   )
@@ -307,6 +366,9 @@ export async function createBlockDiceSessionContext(homeTeamId: string, awayTeam
   const context = await parseResponse<BlockDiceSessionContextResponse>(
     await fetch(
       `${baseUrl}/match-sessions/${encodeURIComponent(createdSession.matchSession.id)}/block-dice-context`,
+      {
+        headers: createAuthHeaders(),
+      },
     ),
   )
 
@@ -316,7 +378,9 @@ export async function createBlockDiceSessionContext(homeTeamId: string, awayTeam
 export async function fetchMatchSessionTimer(sessionId: string) {
   const baseUrl = buildApiBaseUrl()
   const payload = await parseResponse<{ timer: MatchSessionTimerState }>(
-    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/timer`),
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/timer`, {
+      headers: createAuthHeaders(),
+    }),
   )
 
   return payload.timer
@@ -327,10 +391,40 @@ export async function startMatchSessionTimer(sessionId: string, side?: 'HOME' | 
   const payload = await parseResponse<{ timer: MatchSessionTimerState }>(
     await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/timer/start`, {
       method: 'POST',
-      headers: {
+      headers: createAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify(side ? { side } : {}),
+    }),
+  )
+
+  return payload.timer
+}
+
+export async function requestMatchSessionPause(sessionId: string, requestedSide: 'HOME' | 'AWAY') {
+  const baseUrl = buildApiBaseUrl()
+  const payload = await parseResponse<{ timer: MatchSessionTimerState }>(
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/timer/pause-request`, {
+      method: 'POST',
+      headers: createAuthHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ requestedSide }),
+    }),
+  )
+
+  return payload.timer
+}
+
+export async function confirmMatchSessionPause(sessionId: string, confirmedSide: 'HOME' | 'AWAY') {
+  const baseUrl = buildApiBaseUrl()
+  const payload = await parseResponse<{ timer: MatchSessionTimerState }>(
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/timer/confirm-pause`, {
+      method: 'POST',
+      headers: createAuthHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ confirmedSide }),
     }),
   )
 
@@ -342,9 +436,9 @@ export async function endMatchSessionTurn(sessionId: string) {
   const payload = await parseResponse<{ timer: MatchSessionTimerState }>(
     await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/timer/end-turn`, {
       method: 'POST',
-      headers: {
+      headers: createAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify({}),
     }),
   )
@@ -357,9 +451,9 @@ export async function resetMatchSessionHalf(sessionId: string) {
   const payload = await parseResponse<{ timer: MatchSessionTimerState }>(
     await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/timer/reset-half`, {
       method: 'POST',
-      headers: {
+      headers: createAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify({}),
     }),
   )
@@ -370,7 +464,9 @@ export async function resetMatchSessionHalf(sessionId: string) {
 export async function fetchMatchSessionEvents(sessionId: string) {
   const baseUrl = buildApiBaseUrl()
   return parseResponse<MatchSessionEventsResponse>(
-    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/events`),
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/events`, {
+      headers: createAuthHeaders(),
+    }),
   )
 }
 
@@ -382,6 +478,18 @@ export async function createMatchSessionEvent(
     playerNumber?: number | null
     injuredTeamSide?: MatchSessionEventSummary['teamSide'] | null
     injuredPlayerNumber?: number | null
+    casualtyResolutionType?:
+      | 'NONE'
+      | 'MISS_NEXT_GAME'
+      | 'NIGGLING_INJURY'
+      | 'SERIOUS_INJURY'
+      | 'LASTING_INJURY_ARMOUR'
+      | 'LASTING_INJURY_MOVEMENT'
+      | 'LASTING_INJURY_PASSING'
+      | 'LASTING_INJURY_AGILITY'
+      | 'LASTING_INJURY_STRENGTH'
+      | 'DEAD'
+      | null
     notes?: string | null
   },
 ) {
@@ -389,9 +497,9 @@ export async function createMatchSessionEvent(
   const payload = await parseResponse<{ event: MatchSessionEventSummary }>(
     await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/events`, {
       method: 'POST',
-      headers: {
+      headers: createAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify(input),
     }),
   )
@@ -405,6 +513,7 @@ export async function deleteMatchSessionEvent(sessionId: string, eventId: string
     `${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/events/${encodeURIComponent(eventId)}`,
     {
       method: 'DELETE',
+      headers: createAuthHeaders(),
     },
   )
 
@@ -413,19 +522,20 @@ export async function deleteMatchSessionEvent(sessionId: string, eventId: string
   }
 }
 
-export async function confirmMatchSessionTurn(
+export async function confirmMatchSessionEvent(
   sessionId: string,
+  eventId: string,
   confirmedSide: 'HOME' | 'AWAY',
 ) {
   const baseUrl = buildApiBaseUrl()
-  const payload = await parseResponse<{ confirmation: MatchSessionTurnConfirmation }>(
+  const payload = await parseResponse<{ event: MatchSessionEventSummary }>(
     await fetch(
-      `${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/turn-confirmation/confirm`,
+      `${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/events/${encodeURIComponent(eventId)}/confirm`,
       {
         method: 'POST',
-        headers: {
+        headers: createAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({
           confirmedSide,
         }),
@@ -433,7 +543,7 @@ export async function confirmMatchSessionTurn(
     ),
   )
 
-  return payload.confirmation
+  return payload.event
 }
 
 export async function signOffMatchSession(
@@ -446,9 +556,9 @@ export async function signOffMatchSession(
       `${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/final-signoff`,
       {
         method: 'POST',
-        headers: {
+        headers: createAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({
           signedOffSide,
         }),
@@ -462,7 +572,9 @@ export async function signOffMatchSession(
 export async function fetchMatchSessionProgression(sessionId: string) {
   const baseUrl = buildApiBaseUrl()
   const payload = await parseResponse<{ progression: MatchSessionProgressionSummary }>(
-    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/progression`),
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/progression`, {
+      headers: createAuthHeaders(),
+    }),
   )
 
   return payload.progression
@@ -473,9 +585,9 @@ export async function applyMatchSessionProgression(sessionId: string) {
   const payload = await parseResponse<{ progression: MatchSessionProgressionSummary }>(
     await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/progression/apply`, {
       method: 'POST',
-      headers: {
+      headers: createAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify({}),
     }),
   )
@@ -494,9 +606,9 @@ export async function updateMatchSessionCasualtyResolution(
       `${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/casualty-resolution/${encodeURIComponent(eventId)}`,
       {
         method: 'PUT',
-        headers: {
+        headers: createAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({
           resolutionType,
         }),
@@ -505,4 +617,22 @@ export async function updateMatchSessionCasualtyResolution(
   )
 
   return payload.progression
+}
+
+export async function claimMatchSessionParticipant(sessionId: string) {
+  const baseUrl = buildApiBaseUrl()
+  const payload = await parseResponse<{
+    participant: MatchSessionParticipantSummary
+    matchSessionStatus: MatchSessionSummary['status']
+  }>(
+    await fetch(`${baseUrl}/match-sessions/${encodeURIComponent(sessionId)}/join`, {
+      method: 'POST',
+      headers: createAuthHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({}),
+    }),
+  )
+
+  return payload
 }

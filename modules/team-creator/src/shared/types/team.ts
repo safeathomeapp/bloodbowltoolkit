@@ -34,6 +34,11 @@ export interface SavedTeam {
   rosterTemplateId: string
   name: string
   status: 'DRAFT' | 'ACTIVE' | 'RETIRED'
+  baseTeamId?: string | null
+  competitionEntryId?: string | null
+  isCompetitionCopy?: boolean
+  competitionLocked?: boolean
+  competitionLockedAt?: string | null
   draftBudget: number
   rerollCount: number
   assistantCoachCount: number
@@ -72,6 +77,11 @@ export interface SavedTeamSummary {
   rosterTemplateId: string
   name: string
   status: SavedTeam['status']
+  baseTeamId?: string | null
+  competitionEntryId?: string | null
+  isCompetitionCopy?: boolean
+  competitionLocked?: boolean
+  competitionLockedAt?: string | null
   playerCount: number
   totalValue: number
   updatedAt: string

@@ -1,6 +1,7 @@
 import Fastify from 'fastify'
 
 import { registerPrisma } from './plugins/prisma.js'
+import { registerAuthRoutes } from './routes/auth.js'
 import { registerCompetitionRoutes } from './routes/competitions.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerLeagueRoutes } from './routes/leagues.js'
@@ -16,8 +17,8 @@ export async function buildApp() {
   app.addHook('onRequest', async (request, reply) => {
     reply.header('Access-Control-Allow-Origin', request.headers.origin ?? '*')
     reply.header('Vary', 'Origin')
-    reply.header('Access-Control-Allow-Headers', 'Content-Type')
-    reply.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+    reply.header('Access-Control-Allow-Headers', 'Authorization, Content-Type')
+    reply.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
 
     if (request.method === 'OPTIONS') {
       return reply.code(204).send()
@@ -26,6 +27,7 @@ export async function buildApp() {
 
   await registerPrisma(app)
   await registerHealthRoutes(app)
+  await registerAuthRoutes(app)
   await registerUserRoutes(app)
   await registerCompetitionRoutes(app)
   await registerLeagueRoutes(app)

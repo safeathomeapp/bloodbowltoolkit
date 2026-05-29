@@ -1,3 +1,4 @@
+import { AuthClient } from '../api/authClient'
 import { BrowserLocalStorageStore, MemoryKeyValueStore } from '../storage/keyValueStore'
 import type { TeamRepository } from './teamRepository'
 import { ApiTeamRepository } from './apiTeamRepository'
@@ -17,11 +18,13 @@ function resolveRepositoryMode() {
   return 'auto' as const
 }
 
-export function createTeamRepository(): TeamRepository {
-  return resolveTeamRepositorySelection().repository
+export function createTeamRepository(options?: { authClient?: AuthClient | null }): TeamRepository {
+  return resolveTeamRepositorySelection(options).repository
 }
 
-export function resolveTeamRepositorySelection(): {
+export function resolveTeamRepositorySelection(options?: {
+  authClient?: AuthClient | null
+}): {
   repository: TeamRepository
   label: string
   mode: 'local' | 'api'
@@ -45,6 +48,7 @@ export function resolveTeamRepositorySelection(): {
       repository: new ApiTeamRepository({
         baseUrl,
         store,
+        authClient: options?.authClient ?? undefined,
       }),
       label: `Shared API (${baseUrl})`,
       mode: 'api',

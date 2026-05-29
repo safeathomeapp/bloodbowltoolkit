@@ -1,21 +1,105 @@
+Status: active project direction doc
+
 # Roadmap
 
-## Stable Baseline
+## Current Product Shape
 
-- `modules/block-dice-calculator/` is stable working MVP software
-- `modules/team-creator/` is now a working local-first drafting MVP
-- roster templates are seeded from uploaded rulebook screenshots
-- skill popups and draft-rule help popups are wired into the team creator
-- persistence is still local to the browser through a repository boundary
+The repository is no longer a single-tool MVP.
 
-## Design Direction
+It is now a small suite with three active layers:
 
-- treat the team creator as the `team management module`, not only a draft screen
-- keep one canonical saved team record
-- layer `draft rules`, `progression`, `league rules`, and `event/tournament rules` on top of that record
-- do not bake one specific event pack or league format directly into the core team schema
+- `modules/block-dice-calculator/`
+  Stable tactical helper for block-dice calculation and shared match-room controls.
+- `modules/team-creator/`
+  Canonical team drafting and team-management module.
+- `services/api/`
+  Shared persistence and competition/session backend.
 
-## Canonical Data Split
+The current product direction is:
+
+- one canonical saved team
+- shared backend persistence
+- competition-aware loading into block dice
+- live progressing league teams
+- frozen tournament submission snapshots
+
+The current structural direction is:
+
+- preserve the stable `block-dice-calculator` module
+- redesign accounts, competitions, locking, and workflow boundaries around it
+- separate league, matched play, and exhibition into explicit procedures instead of loose editor modes
+
+## What Is Stable
+
+- block-dice board editing, selection flow, and rules engine
+- `WHY?` explanation flow
+- import and resolved-player placement flow
+- team creator drafting MVP
+- roster template library and rule popups
+- shared API for users, leagues, teams, competitions, fixtures, and match sessions
+- fixture-backed match rooms
+- shared timer, bank time, event log, turn confirmation, and final signoff
+
+## Current Canon
+
+The mandatory startup docs are now:
+
+- `docs/SESSION_BRIEF.md`
+- `docs/ARCHITECTURE_CANON.md`
+
+All other docs should be treated as reference or history unless explicitly needed for the task.
+
+## What Is Already Implemented
+
+### Backend
+
+- `User`
+- `League`
+- `LeagueMembership`
+- `Team`
+- `TeamPlayer`
+- `Competition`
+- `CompetitionEntry`
+- `CompetitionTeamSubmission`
+- `CompetitionTeamSubmissionPlayer`
+- `Fixture`
+- `MatchSession`
+
+### Competition Flow
+
+- competition create/list/detail/join
+- tournament team submission and approval
+- knockout fixture generation
+- fixture-attached match-room creation
+
+### Live Match Flow
+
+- session-code room loading in block dice
+- home/away team preload from shared backend context
+- shared timer and bank-time control
+- match event log
+- turn confirmation
+- final signoff
+- progression preview
+- one-time live-team progression application
+
+Current interpretation:
+
+- this live match room should now be treated as the baseline `MATCHED_PLAY` room model
+- matched play should finish by returning result/state to the competition surface
+- league play should reuse the room for match logging, then continue into a separate post-game progression workflow
+
+### Team Management
+
+- local repository and shared API repository behind one interface
+- editable `SPP`, `NI`, and `MNG`
+- player lifecycle state
+- active vs inactive roster presentation
+- destructive action confirmation
+- temporary-retirement semantics tightened against rulebook guidance
+- firing guard now checks `eligible for next game >= 11`
+
+## Canonical Team Model
 
 ### Base Team State
 
@@ -27,231 +111,93 @@
 - cheerleaders
 - dedicated fans
 - apothecary
-- treasury
-- team value
+- draft budget / treasury basis
 
-### Player Progression State
+### Mutable Player State
 
-- SPP
-- injuries
-- miss next game
-- added skills
-- stat increases or decreases
-- current player value adjustments
+- `playerStatus`
+- `SPP`
+- `missNextGame`
+- `nigglingInjuries`
+- `extraSkills`
+- `statAdjustments`
+- `currentValue`
 
-### Ruleset And Event Overlay State
+### Competition Overlay State
 
-- draft budget
-- resurrection or league flag
-- tiering
-- bonus TV
-- bonus skills
-- event-specific restrictions
-- redraft or competition constraints
+- competition type and format
+- team submission snapshot for tournaments
+- fixture attachment
+- timer policy and room operation
 
-## Completed Phases
+## Runtime Reality
 
-- repository cleanup and branch consolidation onto `main`
-- stable packaging of the block-dice app under `modules/block-dice-calculator/`
-- local-first `modules/team-creator/` scaffold
-- rulebook-backed roster template library
-- roster template audit coverage
-- first-pass `bbroster`-style team creator frontend
-- saved team vault flow
-- one-page draft sheet flow
-- clickable skill reference popups
-- draft-rule help popups for team-building controls
+The previous roadmap drifted from the real runtime model. The current important runtime facts are:
 
-## Current State
+- `services/api/.env.example` defaults to `127.0.0.1:3001`
+- `modules/team-creator/.env.local` currently sets:
+  - `VITE_TEAM_REPOSITORY_MODE=api`
+  - `VITE_API_BASE_URL=http://127.0.0.1:3001`
+- browser local storage is origin-specific
+- `http://localhost:5173` and `http://127.0.0.1:5173` do not share the same local browser data
 
-- the team creator is good enough to count as an MVP drafting tool
-- the team creator is still local-first and single-user
-- the block-dice module is still separate and stable
-- there is no backend service in the repository yet
-- the latest block-dice team import work proved that cross-device flow is now the main blocker
+## Current Constraints
 
-## Route Pivot
+- block dice must remain stable
+- tournaments must remain snapshot-based
+- leagues must remain live-team based
+- do not fold post-game league mutation into tournament snapshot history
+- do not move into standings/redraft before post-game team administration is coherent
 
-As of `2026-05-19`, the practical product flow is now understood more clearly:
+## Immediate Next Build Target
 
-- Player A and Player B should be able to operate on separate devices
-- league or competition context should identify who is playing whom
-- block dice should load the correct teams automatically from that shared context
+The next real implementation direction is not a pile-on of more ad hoc features into the current mixed workflow.
 
-Because of that, the earlier order of `more local-first team depth first, backend later` is no longer the best route.
+The next correct sequence is:
 
-The team creator MVP has already done its main job:
+1. freeze the architecture boundary:
+   - current shared match room is the `MATCHED_PLAY` baseline
+   - league progression should not be folded into the timer room itself
+2. update competition creation pages so competition type and workflow intent are explicit
+3. preserve block-dice compatibility as a protected contract
+4. then implement:
+   - matched-play ruleset enforcement and return-to-competition flow
+   - explicit league pre-game flow
+   - explicit league post-game flow
 
-- validate the saved team model
-- validate roster template data
-- validate first-pass block-dice team loading
+## Sequence After That
 
-The next blocker is shared persistence and shared match/session loading.
+1. widen progression fields only where the post-game flow requires them
+2. keep tournament history and live team mutation cleanly separate
+3. return to richer league administration after post-game bookkeeping is stable
+4. only then consider standings, league results, and redraft
 
-## Competition Direction
+## Things To Explore
 
-The product direction is now clearer than `teams plus tools`.
+- overtime rules and how they should affect timer flow, half/turn transitions, and any extra-period UI/state handling
 
-The toolkit is becoming a full Blood Bowl competition aid system:
+## Explicitly Not Next
 
-- competitions are created and administered by a commissioner
-- users join competitions first and can submit teams later
-- one user can enter only one team per competition
-- leagues and tournaments share most infrastructure
-- leagues use live progressing teams
-- tournaments use static submitted team snapshots
-- live matches happen in one shared room used by both players
-- in-match tooling should include:
-  - block calculator
-  - turn timer with bank time
-  - SPP and event logging
-  - turn-end confirmation
-  - final signoff
+- standings
+- redraft workflow
+- rewriting block dice
+- deleting local repository support entirely
 
-See:
+Also not next:
 
-- `docs/architecture/2026-05-19_competition_domain_model.md`
-- `docs/architecture/2026-05-19_competition_backend_spec.md`
+- more drift-inducing documentation sprawl
+- bolting full competition workflow onto the old blended team-creator flow without first separating the mode boundaries
 
-## Execution Order
+## Deferred Cleanup
 
-### Phase 1: Lock The Existing Frontend MVPs
+These are valid tidy-ups, but not high-ROI while foundation work is still underway:
 
-- keep improving the team creator only where it removes clear friction
-- do not broaden scope without protecting the current working flow
-- keep block-dice integration stable enough for reference use
-- avoid large new frontend rewrites while the shared data model is introduced
-
-### Phase 2: Define Shared Backend Contracts
-
-- define the minimal shared entities needed for real multi-user flow
-- include:
-  - user
-  - league
-  - league membership
-  - team ownership
-  - match or session identity
-  - side assignment for a given session
-- keep the canonical saved-team model intact while moving persistence behind a shared interface
-
-### Phase 3: Introduce Backend Infrastructure
-
-- create `services/api/`
-- keep repository boundaries explicit
-- start with the minimum persistence and API surface needed for:
-  - league creation
-  - joining a league
-  - saving teams under a user or league context
-  - creating or loading a match session
-- this phase is now largely in place for the MVP backend slice
-
-### Phase 4: Introduce Competition Domain
-
-- add a shared `Competition` parent model
-- start with knockout-first tournament support
-- keep extension hooks for:
-  - swiss
-  - round robin
-- define:
-  - competition entries
-  - team submission deadline
-  - live league team links
-  - static tournament team snapshots
-  - fixture generation with commissioner override hooks
-
-### Phase 5: Replace Local-Only Team Loading
-
-- migrate the team creator away from browser-only storage as the main path
-- keep local-only mode only if still useful as a fallback or temporary offline mode
-- remove the need for manual export/import to move teams between apps or devices
-
-### Phase 6: Preload Teams Into Block Dice From Match Context
-
-- allow block dice to open with attacker and defender context already known
-- support:
-  - player-selected team assignment
-  - fixture or match-code loading
-- session-based side designation
-- keep block-dice calculation logic independent from progression and event logic
-- treat this as a data-source integration, not a rewrite
-
-### Phase 7: Add Live Match Room Tools
-
-- move from loose sessions toward shared live match rooms attached to fixtures
-- start small:
-  - turn timer
-  - bank time
-  - bank reset at halftime
-  - small SPP event log
-  - turn-end confirmation
-  - final signoff
-- keep this implementation extensible for fuller match administration later
-
-### Phase 8: Add Player Progression On Top Of Shared Teams
-
-- add editable player progression fields to the roster editor
-- support:
-  - SPP
-  - injuries
-  - miss next game
-  - added skills
-  - stat changes
-  - current player value overrides
-- keep progression as mutable player state, not as edits to the roster template
-- apply this only once the shared team identity and storage model are stable
-
-### Phase 9: Introduce Ruleset Profiles And Event Overlays
-
-- add a `ruleset profile` concept above the base team
-- first profiles should cover:
-  - standard draft
-  - league team
-  - resurrection event
-  - exhibition
-- support one-day and tournament-specific modifiers
-- include optional event data such as:
-  - tier
-  - bonus gold or TV
-  - free skills
-  - special roster restrictions
-- make these saveable as explicit event entries or applied views
-- do not overwrite the underlying base team silently
-
-### Phase 10: League Tooling
-
-- add competition and league workflows only after team and progression models are stable
-- support:
-  - leagues
-  - fixtures
-  - results
-  - standings
-  - redraft support if still justified
-- keep league administration as a separate layer above core team management
-
-## Immediate Next Step
-
-- tighten progression flow now that roster-side editing exists:
-  - keep post-game review clear
-  - widen injury/result modelling carefully
-  - preserve the split between live team mutation and tournament history
-- keep the canonical saved-team model and shared repository path aligned
-- continue using `docs/architecture/2026-05-19_competition_backend_spec.md` as the backend contract
-
-## Deferred Until Proven Necessary
-
-- authentication
-- multi-user collaboration
-- online play
-- match simulation
-- probability helpers outside the block-dice tool
-- advanced permissions
-- background jobs
-- microservice split
+- consider renaming account `displayName` to `coachName` across the stack once account, competition, and team-copy workflows are stable
+- only do this when the rename will not create churn against block-dice compatibility or active backend/frontend integration work
 
 ## Scope Boundary
 
-- `modules/block-dice-calculator/` remains stable working software
-- `modules/team-creator/` remains the place for team drafting and management
-- `services/api/` should become the shared persistence and session layer
-- event and league logic should sit on top of base team data, not distort it
-- backend work should now solve the proven cross-device workflow blocker, not chase speculative platform complexity
+- `modules/block-dice-calculator/` remains the tactical source of truth
+- `modules/team-creator/` remains the canonical team editing surface
+- `services/api/` remains the shared persistence and session boundary
+- event packs and league rules stay as overlays over the canonical team, not forks of it

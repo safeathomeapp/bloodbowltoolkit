@@ -8,6 +8,7 @@ import {
   FixtureStatus,
   MatchSessionStatus,
   Prisma,
+  TeamStatus,
   TeamPlayerStatus,
   TournamentTeamSourceType,
 } from '@prisma/client'
@@ -18,6 +19,7 @@ import {
   generateUniqueSessionCode,
   toMatchSessionSummary,
 } from './matchSessions.js'
+import { doesActorMatchUserId, requireAuthenticatedUser } from '../auth/authorization.js'
 
 const competitionParamsSchema = z.object({
   competitionId: z.string().min(1),
@@ -49,6 +51,17 @@ const createCompetitionBodySchema = z.object({
   submissionDeadline: z.string().datetime({ offset: true }).nullable().optional(),
   allowUnofficialRosters: z.boolean().default(false),
   configJson: z.record(z.string(), z.unknown()).default({}),
+})
+
+const updateCompetitionBodySchema = z.object({
+  requestedByUserId: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(2000).nullable().optional(),
+  status: z.nativeEnum(CompetitionStatus).optional(),
+  visibility: z.nativeEnum(CompetitionVisibility).optional(),
+  maxEntrants: z.number().int().positive(),
+  submissionDeadline: z.string().datetime({ offset: true }).nullable().optional(),
+  allowUnofficialRosters: z.boolean(),
 })
 
 const joinCompetitionBodySchema = z.object({
@@ -218,6 +231,7 @@ function toCompetitionEntrySummary(entry: {
   submission?: {
     id: string
     sourceTeamId: string | null
+    competitionTeamId: string | null
     teamName: string
     rosterTemplateId: string
     submittedAt: Date
@@ -240,6 +254,7 @@ function toCompetitionEntrySummary(entry: {
       ? {
           id: entry.submission.id,
           sourceTeamId: entry.submission.sourceTeamId,
+          competitionTeamId: entry.submission.competitionTeamId,
           teamName: entry.submission.teamName,
           rosterTemplateId: entry.submission.rosterTemplateId,
           submittedAt: entry.submission.submittedAt.toISOString(),
@@ -253,6 +268,7 @@ function toCompetitionSubmissionDetail(submission: {
   competitionEntryId: string
   sourceType: TournamentTeamSourceType
   sourceTeamId: string | null
+  competitionTeamId: string | null
   rosterTemplateId: string
   teamName: string
   tierId: string | null
@@ -286,6 +302,7 @@ function toCompetitionSubmissionDetail(submission: {
     competitionEntryId: submission.competitionEntryId,
     sourceType: submission.sourceType,
     sourceTeamId: submission.sourceTeamId,
+    competitionTeamId: submission.competitionTeamId,
     rosterTemplateId: submission.rosterTemplateId,
     teamName: submission.teamName,
     tierId: submission.tierId,
@@ -419,6 +436,7 @@ async function fetchCompetitionDetail(app: FastifyInstance, competitionId: strin
             select: {
               id: true,
               sourceTeamId: true,
+              competitionTeamId: true,
               teamName: true,
               rosterTemplateId: true,
               submittedAt: true,
@@ -531,14 +549,164 @@ async function fetchCompetitionFixtures(prisma: FixtureReader, competitionId: st
   })
 }
 
+function buildCompetitionTeamName(baseTeamName: string, competitionName: string) {
+  return `${baseTeamName} - ${competitionName}`
+}
+
+async function upsertCompetitionTeamCopy(
+  transaction: Prisma.TransactionClient,
+  input: {
+    competitionName: string
+    competitionEntryId: string
+    ownerUserId: string
+    sourceTeam: {
+      id: string
+      rosterTemplateId: string
+      name: string
+      status: 'DRAFT' | 'ACTIVE' | 'RETIRED'
+      draftBudget: number
+      rerollCount: number
+      assistantCoachCount: number
+      cheerleaderCount: number
+      dedicatedFans: number
+      apothecaryPurchased: boolean
+      players: Array<{
+        positionTemplateId: string
+        name: string
+        shirtNumber: number | null
+        playerStatus?: TeamPlayerStatus
+        currentValue: number
+        spp: number
+        nigglingInjuries: number
+        missNextGame?: boolean
+        isDead?: boolean
+        extraSkills: string[]
+        statAdjustments: Prisma.JsonValue
+        displayOrder: number
+      }>
+    }
+  },
+) {
+  const existingCompetitionTeam = await transaction.team.findFirst({
+    where: {
+      competitionEntryId: input.competitionEntryId,
+      isCompetitionCopy: true,
+    },
+    select: {
+      id: true,
+    },
+  })
+
+  if (existingCompetitionTeam) {
+    await transaction.teamPlayer.deleteMany({
+      where: {
+        teamId: existingCompetitionTeam.id,
+      },
+    })
+
+    return transaction.team.update({
+      where: {
+        id: existingCompetitionTeam.id,
+      },
+      data: {
+        ownerUserId: input.ownerUserId,
+        baseTeamId: input.sourceTeam.id,
+        competitionEntryId: input.competitionEntryId,
+        rosterTemplateId: input.sourceTeam.rosterTemplateId,
+        name: buildCompetitionTeamName(input.sourceTeam.name, input.competitionName),
+        status: input.sourceTeam.status,
+        draftBudget: input.sourceTeam.draftBudget,
+        rerollCount: input.sourceTeam.rerollCount,
+        assistantCoachCount: input.sourceTeam.assistantCoachCount,
+        cheerleaderCount: input.sourceTeam.cheerleaderCount,
+        dedicatedFans: input.sourceTeam.dedicatedFans,
+        apothecaryPurchased: input.sourceTeam.apothecaryPurchased,
+        isCompetitionCopy: true,
+        competitionLocked: false,
+        competitionLockedAt: null,
+        players: {
+          create: input.sourceTeam.players.map((player) => ({
+            positionTemplateId: player.positionTemplateId,
+            name: player.name,
+            shirtNumber: player.shirtNumber,
+            playerStatus:
+              player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE),
+            currentValue: player.currentValue,
+            spp: player.spp,
+            nigglingInjuries: player.nigglingInjuries,
+            missNextGame: player.missNextGame ?? false,
+            isDead:
+              (player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE)) ===
+              TeamPlayerStatus.DEAD,
+            extraSkills: player.extraSkills,
+            statAdjustments: player.statAdjustments as Prisma.InputJsonValue,
+            displayOrder: player.displayOrder,
+          })),
+        },
+      },
+    })
+  }
+
+  return transaction.team.create({
+    data: {
+      ownerUserId: input.ownerUserId,
+      baseTeamId: input.sourceTeam.id,
+      competitionEntryId: input.competitionEntryId,
+      rosterTemplateId: input.sourceTeam.rosterTemplateId,
+      name: buildCompetitionTeamName(input.sourceTeam.name, input.competitionName),
+      status: input.sourceTeam.status,
+      draftBudget: input.sourceTeam.draftBudget,
+      rerollCount: input.sourceTeam.rerollCount,
+      assistantCoachCount: input.sourceTeam.assistantCoachCount,
+      cheerleaderCount: input.sourceTeam.cheerleaderCount,
+      dedicatedFans: input.sourceTeam.dedicatedFans,
+      apothecaryPurchased: input.sourceTeam.apothecaryPurchased,
+      isCompetitionCopy: true,
+      competitionLocked: false,
+      competitionLockedAt: null,
+      players: {
+        create: input.sourceTeam.players.map((player) => ({
+          positionTemplateId: player.positionTemplateId,
+          name: player.name,
+          shirtNumber: player.shirtNumber,
+          playerStatus:
+            player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE),
+          currentValue: player.currentValue,
+          spp: player.spp,
+          nigglingInjuries: player.nigglingInjuries,
+          missNextGame: player.missNextGame ?? false,
+          isDead:
+            (player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE)) ===
+            TeamPlayerStatus.DEAD,
+          extraSkills: player.extraSkills,
+          statAdjustments: player.statAdjustments as Prisma.InputJsonValue,
+          displayOrder: player.displayOrder,
+        })),
+      },
+    },
+  })
+}
+
 export async function registerCompetitionRoutes(app: FastifyInstance) {
   app.post('/competitions', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const bodyResult = createCompetitionBodySchema.safeParse(request.body)
 
     if (!bodyResult.success) {
       return reply.code(400).send({
         message: 'Invalid competition payload.',
         issues: bodyResult.error.issues,
+      })
+    }
+
+    if (!doesActorMatchUserId(actorUser, bodyResult.data.createdByUserId)) {
+      return reply.code(403).send({
+        message: 'Competition owner must match the signed-in user.',
       })
     }
 
@@ -586,6 +754,104 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
     })
 
     return reply.code(201).send({
+      competition: toCompetitionSummary(competition),
+    })
+  })
+
+  app.put('/competitions/:competitionId', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
+    const paramsResult = competitionParamsSchema.safeParse(request.params)
+    const bodyResult = updateCompetitionBodySchema.safeParse(request.body)
+
+    if (!paramsResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid competition id.',
+      })
+    }
+
+    if (!bodyResult.success) {
+      return reply.code(400).send({
+        message: 'Invalid competition update payload.',
+        issues: bodyResult.error.issues,
+      })
+    }
+
+    if (!doesActorMatchUserId(actorUser, bodyResult.data.requestedByUserId)) {
+      return reply.code(403).send({
+        message: 'Competition updates must match the signed-in user.',
+      })
+    }
+
+    const existingCompetition = await app.prisma.competition.findUnique({
+      where: {
+        id: paramsResult.data.competitionId,
+      },
+      include: {
+        _count: {
+          select: {
+            entries: true,
+          },
+        },
+      },
+    })
+
+    if (!existingCompetition) {
+      return reply.code(404).send({
+        message: 'Competition not found.',
+      })
+    }
+
+    if (existingCompetition.createdByUserId !== bodyResult.data.requestedByUserId) {
+      return reply.code(403).send({
+        message: 'Only the competition owner can edit competition settings.',
+      })
+    }
+
+    if (bodyResult.data.maxEntrants < existingCompetition._count.entries) {
+      return reply.code(409).send({
+        message: 'Maximum entrants cannot be reduced below the number of joined entries.',
+      })
+    }
+
+    const competition = await app.prisma.competition.update({
+      where: {
+        id: existingCompetition.id,
+      },
+      data: {
+        name: bodyResult.data.name,
+        description: bodyResult.data.description ?? null,
+        status: bodyResult.data.status ?? existingCompetition.status,
+        visibility: bodyResult.data.visibility ?? existingCompetition.visibility,
+        maxEntrants: bodyResult.data.maxEntrants,
+        submissionDeadline:
+          bodyResult.data.submissionDeadline === undefined
+            ? existingCompetition.submissionDeadline
+            : bodyResult.data.submissionDeadline
+              ? new Date(bodyResult.data.submissionDeadline)
+              : null,
+        allowUnofficialRosters: bodyResult.data.allowUnofficialRosters,
+      },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        _count: {
+          select: {
+            entries: true,
+          },
+        },
+      },
+    })
+
+    return reply.send({
       competition: toCompetitionSummary(competition),
     })
   })
@@ -665,6 +931,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
   })
 
   app.post('/competitions/:competitionId/join', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = competitionParamsSchema.safeParse(request.params)
     const bodyResult = joinCompetitionBodySchema.safeParse(request.body)
 
@@ -678,6 +950,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
       return reply.code(400).send({
         message: 'Invalid join payload.',
         issues: bodyResult.error.issues,
+      })
+    }
+
+    if (!doesActorMatchUserId(actorUser, bodyResult.data.userId)) {
+      return reply.code(403).send({
+        message: 'Competition joins must match the signed-in user.',
       })
     }
 
@@ -798,6 +1076,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
   })
 
   app.post('/competitions/:competitionId/entries/:entryId/submission', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = entryParamsSchema.safeParse(request.params)
     const bodyResult = submissionBodySchema.safeParse(request.body)
 
@@ -823,6 +1107,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
     if (!entry) {
       return reply.code(404).send({
         message: 'Competition entry not found.',
+      })
+    }
+
+    if (!doesActorMatchUserId(actorUser, entry.userId)) {
+      return reply.code(403).send({
+        message: 'You can only submit teams for your own competition entry.',
       })
     }
 
@@ -884,6 +1174,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
       })
     }
 
+    if (team.isCompetitionCopy) {
+      return reply.code(409).send({
+        message: 'Competition submissions must be created from a base saved team, not an existing competition copy.',
+      })
+    }
+
     if (team.ownerUserId !== entry.userId) {
       return reply.code(409).send({
         message: 'Users may only submit their own saved teams.',
@@ -904,13 +1200,21 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
     const teamValue = activePlayers.reduce((sum, player) => sum + player.currentValue, 0)
     const submittedAt = new Date()
     const createdSubmission = await app.prisma.$transaction(async (transaction) => {
+      const competitionTeam = await upsertCompetitionTeamCopy(transaction, {
+        competitionName: entry.competition.name,
+        competitionEntryId: entry.id,
+        ownerUserId: entry.userId,
+        sourceTeam: team,
+      })
+
       const submission = await transaction.competitionTeamSubmission.create({
         data: {
           competitionEntryId: entry.id,
+          competitionTeamId: competitionTeam.id,
           sourceType: TournamentTeamSourceType.COPIED_FROM_TEAM,
           sourceTeamId: team.id,
           rosterTemplateId: team.rosterTemplateId,
-          teamName: team.name,
+          teamName: competitionTeam.name,
           tierId: bodyResult.data.tierId ?? null,
           teamValue,
           draftBudget: team.draftBudget,
@@ -963,6 +1267,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
   })
 
   app.put('/competitions/:competitionId/entries/:entryId/submission', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = entryParamsSchema.safeParse(request.params)
     const bodyResult = submissionBodySchema.safeParse(request.body)
 
@@ -988,6 +1298,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
     if (!entry) {
       return reply.code(404).send({
         message: 'Competition entry not found.',
+      })
+    }
+
+    if (!doesActorMatchUserId(actorUser, entry.userId)) {
+      return reply.code(403).send({
+        message: 'You can only update teams for your own competition entry.',
       })
     }
 
@@ -1037,6 +1353,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
       })
     }
 
+    if (team.isCompetitionCopy) {
+      return reply.code(409).send({
+        message: 'Competition submissions must be updated from a base saved team, not an existing competition copy.',
+      })
+    }
+
     if (team.ownerUserId !== entry.userId) {
       return reply.code(409).send({
         message: 'Users may only submit their own saved teams.',
@@ -1057,6 +1379,13 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
     const teamValue = activePlayers.reduce((sum, player) => sum + player.currentValue, 0)
     const submittedAt = new Date()
     const updatedSubmission = await app.prisma.$transaction(async (transaction) => {
+      const competitionTeam = await upsertCompetitionTeamCopy(transaction, {
+        competitionName: entry.competition.name,
+        competitionEntryId: entry.id,
+        ownerUserId: entry.userId,
+        sourceTeam: team,
+      })
+
       await transaction.competitionTeamSubmissionPlayer.deleteMany({
         where: {
           competitionTeamSubmissionId: entry.submission!.id,
@@ -1068,10 +1397,11 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
           id: entry.submission!.id,
         },
         data: {
+          competitionTeamId: competitionTeam.id,
           sourceType: TournamentTeamSourceType.COPIED_FROM_TEAM,
           sourceTeamId: team.id,
           rosterTemplateId: team.rosterTemplateId,
-          teamName: team.name,
+          teamName: competitionTeam.name,
           tierId: bodyResult.data.tierId ?? null,
           teamValue,
           draftBudget: team.draftBudget,
@@ -1124,6 +1454,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
   })
 
   app.post('/competitions/:competitionId/entries/:entryId/approve', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = entryParamsSchema.safeParse(request.params)
     const bodyResult = approveSubmissionBodySchema.safeParse(request.body)
 
@@ -1137,6 +1473,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
       return reply.code(400).send({
         message: 'Invalid competition approval payload.',
         issues: bodyResult.error.issues,
+      })
+    }
+
+    if (!doesActorMatchUserId(actorUser, bodyResult.data.approvedByUserId)) {
+      return reply.code(403).send({
+        message: 'Competition approval must match the signed-in user.',
       })
     }
 
@@ -1171,31 +1513,47 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
     }
 
     const approvedAt = new Date()
-    const approvedEntry = await app.prisma.competitionEntry.update({
-      where: {
-        id: entry.id,
-      },
-      data: {
-        status: CompetitionEntryStatus.TEAM_APPROVED,
-        approvedAt,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            displayName: true,
+    const approvedEntry = await app.prisma.$transaction(async (transaction) => {
+      if (entry.submission?.competitionTeamId) {
+        await transaction.team.update({
+          where: {
+            id: entry.submission.competitionTeamId,
+          },
+          data: {
+            competitionLocked: true,
+            competitionLockedAt: approvedAt,
+            status: TeamStatus.ACTIVE,
+          },
+        })
+      }
+
+      return transaction.competitionEntry.update({
+        where: {
+          id: entry.id,
+        },
+        data: {
+          status: CompetitionEntryStatus.TEAM_APPROVED,
+          approvedAt,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              displayName: true,
+            },
+          },
+          submission: {
+            select: {
+              id: true,
+              sourceTeamId: true,
+              competitionTeamId: true,
+              teamName: true,
+              rosterTemplateId: true,
+              submittedAt: true,
+            },
           },
         },
-        submission: {
-          select: {
-            id: true,
-            sourceTeamId: true,
-            teamName: true,
-            rosterTemplateId: true,
-            submittedAt: true,
-          },
-        },
-      },
+      })
     })
 
     return reply.send({
@@ -1204,6 +1562,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
   })
 
   app.post('/competitions/:competitionId/fixtures/generate', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = competitionParamsSchema.safeParse(request.params)
     const bodyResult = generateFixturesBodySchema.safeParse(request.body)
 
@@ -1217,6 +1581,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
       return reply.code(400).send({
         message: 'Invalid fixture generation payload.',
         issues: bodyResult.error.issues,
+      })
+    }
+
+    if (!doesActorMatchUserId(actorUser, bodyResult.data.requestedByUserId)) {
+      return reply.code(403).send({
+        message: 'Fixture generation must match the signed-in user.',
       })
     }
 
@@ -1439,6 +1809,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
   })
 
   app.post('/competitions/:competitionId/fixtures/:fixtureId/match-session', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = fixtureParamsSchema.safeParse(request.params)
     const bodyResult = createFixtureMatchSessionBodySchema.safeParse(request.body)
 
@@ -1452,6 +1828,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
       return reply.code(400).send({
         message: 'Invalid fixture match session payload.',
         issues: bodyResult.error.issues,
+      })
+    }
+
+    if (!doesActorMatchUserId(actorUser, bodyResult.data.requestedByUserId)) {
+      return reply.code(403).send({
+        message: 'Fixture match room creation must match the signed-in user.',
       })
     }
 
@@ -1511,9 +1893,14 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
       })
     }
 
-    if (!fixture.homeEntry.submission.sourceTeamId || !fixture.awayEntry.submission.sourceTeamId) {
+    const homeCompetitionTeamId =
+      fixture.homeEntry.submission.competitionTeamId ?? fixture.homeEntry.submission.sourceTeamId
+    const awayCompetitionTeamId =
+      fixture.awayEntry.submission.competitionTeamId ?? fixture.awayEntry.submission.sourceTeamId
+
+    if (!homeCompetitionTeamId || !awayCompetitionTeamId) {
       return reply.code(409).send({
-        message: 'Live match room creation currently requires submitted teams copied from saved teams.',
+        message: 'Live match room creation requires competition-bound teams for both fixture sides.',
       })
     }
 
@@ -1523,8 +1910,8 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
       data: {
         fixtureId: fixture.id,
         leagueId: null,
-        homeTeamId: fixture.homeEntry.submission.sourceTeamId,
-        awayTeamId: fixture.awayEntry.submission.sourceTeamId,
+        homeTeamId: homeCompetitionTeamId,
+        awayTeamId: awayCompetitionTeamId,
         sessionCode,
         status: MatchSessionStatus.PENDING,
         timerEnabled: timerPolicy.enabled,
@@ -1591,6 +1978,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
   })
 
   app.put('/competitions/:competitionId/fixtures/:fixtureId', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = fixtureParamsSchema.safeParse(request.params)
     const bodyResult = updateFixtureBodySchema.safeParse(request.body)
 
@@ -1604,6 +1997,12 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
       return reply.code(400).send({
         message: 'Invalid fixture update payload.',
         issues: bodyResult.error.issues,
+      })
+    }
+
+    if (!doesActorMatchUserId(actorUser, bodyResult.data.requestedByUserId)) {
+      return reply.code(403).send({
+        message: 'Fixture updates must match the signed-in user.',
       })
     }
 

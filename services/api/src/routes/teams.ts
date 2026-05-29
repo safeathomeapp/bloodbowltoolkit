@@ -2,6 +2,8 @@ import { TeamPlayerStatus, TeamStatus } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
+import { doesActorMatchUserId, requireAuthenticatedUser } from '../auth/authorization.js'
+
 const statAdjustmentsSchema = z.object({
   movement: z.number().int().optional(),
   strength: z.number().int().optional(),
@@ -51,6 +53,9 @@ const teamParamsSchema = z.object({
 const listTeamsQuerySchema = z.object({
   ownerUserId: z.string().min(1).optional(),
   leagueId: z.string().min(1).optional(),
+  competitionEntryId: z.string().min(1).optional(),
+  includeCompetitionCopies: z.enum(['true', 'false']).optional(),
+  teamScope: z.enum(['base', 'competition', 'all']).optional(),
 })
 
 function toIsoString(value: Date) {
@@ -59,6 +64,10 @@ function toIsoString(value: Date) {
 
 function isRosterOrderLocked(status: TeamStatus) {
   return status !== TeamStatus.DRAFT
+}
+
+function reservesShirtNumber(status: TeamPlayerStatus) {
+  return status === TeamPlayerStatus.ACTIVE || status === TeamPlayerStatus.RETIRED
 }
 
 function normalizePersistedPlayers(
@@ -70,7 +79,7 @@ function normalizePersistedPlayers(
   return players.map((player) => {
     const playerStatus = player.playerStatus ?? (player.isDead ? TeamPlayerStatus.DEAD : TeamPlayerStatus.ACTIVE)
 
-    if (!isRosterOrderLocked(status) || playerStatus !== TeamPlayerStatus.ACTIVE) {
+    if (!isRosterOrderLocked(status) || !reservesShirtNumber(playerStatus)) {
       return {
         ...player,
         playerStatus,
@@ -112,6 +121,11 @@ function toSavedTeam(playerTeam: {
   rosterTemplateId: string
   name: string
   status: TeamStatus
+  baseTeamId: string | null
+  competitionEntryId: string | null
+  isCompetitionCopy: boolean
+  competitionLocked: boolean
+  competitionLockedAt: Date | null
   draftBudget: number
   rerollCount: number
   assistantCoachCount: number
@@ -162,6 +176,11 @@ function toSavedTeam(playerTeam: {
     rosterTemplateId: playerTeam.rosterTemplateId,
     name: playerTeam.name,
     status: playerTeam.status,
+    baseTeamId: playerTeam.baseTeamId,
+    competitionEntryId: playerTeam.competitionEntryId,
+    isCompetitionCopy: playerTeam.isCompetitionCopy,
+    competitionLocked: playerTeam.competitionLocked,
+    competitionLockedAt: playerTeam.competitionLockedAt?.toISOString() ?? null,
     draftBudget: playerTeam.draftBudget,
     rerollCount: playerTeam.rerollCount,
     assistantCoachCount: playerTeam.assistantCoachCount,
@@ -179,6 +198,11 @@ function toSavedTeamSummary(team: {
   rosterTemplateId: string
   name: string
   status: TeamStatus
+  baseTeamId: string | null
+  competitionEntryId: string | null
+  isCompetitionCopy: boolean
+  competitionLocked: boolean
+  competitionLockedAt: Date | null
   updatedAt: Date
   players: Array<{ currentValue: number; playerStatus: TeamPlayerStatus }>
 }) {
@@ -190,6 +214,11 @@ function toSavedTeamSummary(team: {
     rosterTemplateId: team.rosterTemplateId,
     name: team.name,
     status: team.status,
+    baseTeamId: team.baseTeamId,
+    competitionEntryId: team.competitionEntryId,
+    isCompetitionCopy: team.isCompetitionCopy,
+    competitionLocked: team.competitionLocked,
+    competitionLockedAt: team.competitionLockedAt?.toISOString() ?? null,
     playerCount: activePlayers.length,
     totalValue,
     updatedAt: toIsoString(team.updatedAt),
@@ -255,6 +284,12 @@ async function validateTeamRelations(app: FastifyInstance, team: z.infer<typeof 
 
 export async function registerTeamRoutes(app: FastifyInstance) {
   app.get('/teams', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const queryResult = listTeamsQuerySchema.safeParse(request.query)
 
     if (!queryResult.success) {
@@ -264,10 +299,26 @@ export async function registerTeamRoutes(app: FastifyInstance) {
       })
     }
 
+    if (queryResult.data.ownerUserId && !doesActorMatchUserId(actorUser, queryResult.data.ownerUserId)) {
+      return reply.code(403).send({
+        message: 'You can only list teams for the signed-in user.',
+      })
+    }
+
     const teams = await app.prisma.team.findMany({
       where: {
-        ownerUserId: queryResult.data.ownerUserId,
+        ownerUserId: queryResult.data.ownerUserId ?? actorUser.id,
         leagueId: queryResult.data.leagueId,
+        competitionEntryId: queryResult.data.competitionEntryId,
+        ...(queryResult.data.teamScope === 'competition'
+          ? {
+              isCompetitionCopy: true,
+            }
+          : queryResult.data.teamScope === 'all' || queryResult.data.includeCompetitionCopies === 'true'
+            ? {}
+            : {
+                isCompetitionCopy: false,
+              }),
       },
       include: {
         players: {
@@ -288,6 +339,12 @@ export async function registerTeamRoutes(app: FastifyInstance) {
   })
 
   app.get('/teams/:teamId', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = teamParamsSchema.safeParse(request.params)
 
     if (!paramsResult.success) {
@@ -315,12 +372,24 @@ export async function registerTeamRoutes(app: FastifyInstance) {
       })
     }
 
+    if (!doesActorMatchUserId(actorUser, team.ownerUserId)) {
+      return reply.code(403).send({
+        message: 'You can only load teams owned by the signed-in user.',
+      })
+    }
+
     return reply.send({
       team: toSavedTeam(team),
     })
   })
 
   app.post('/teams', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const bodyResult = savedTeamSchema.safeParse(request.body)
 
     if (!bodyResult.success) {
@@ -333,6 +402,12 @@ export async function registerTeamRoutes(app: FastifyInstance) {
     const normalizedTeam = {
       ...bodyResult.data,
       players: normalizePersistedPlayers(bodyResult.data.status, bodyResult.data.players),
+    }
+
+    if (!doesActorMatchUserId(actorUser, normalizedTeam.ownerUserId)) {
+      return reply.code(403).send({
+        message: 'Team owner must match the signed-in user.',
+      })
     }
 
     const relationError = await validateTeamRelations(app, normalizedTeam)
@@ -404,6 +479,12 @@ export async function registerTeamRoutes(app: FastifyInstance) {
   })
 
   app.put('/teams/:teamId', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = teamParamsSchema.safeParse(request.params)
     const bodyResult = savedTeamSchema.safeParse(request.body)
 
@@ -438,9 +519,27 @@ export async function registerTeamRoutes(app: FastifyInstance) {
       })
     }
 
+    if (!doesActorMatchUserId(actorUser, existingTeam.ownerUserId)) {
+      return reply.code(403).send({
+        message: 'You can only update teams owned by the signed-in user.',
+      })
+    }
+
+    if (existingTeam.isCompetitionCopy) {
+      return reply.code(409).send({
+        message: 'Competition-bound team copies are managed through competition workflow only.',
+      })
+    }
+
     const normalizedTeam = {
       ...bodyResult.data,
       players: normalizePersistedPlayers(bodyResult.data.status, bodyResult.data.players),
+    }
+
+    if (!doesActorMatchUserId(actorUser, normalizedTeam.ownerUserId)) {
+      return reply.code(403).send({
+        message: 'Team owner must match the signed-in user.',
+      })
     }
 
     const relationError = await validateTeamRelations(app, normalizedTeam)
@@ -510,6 +609,12 @@ export async function registerTeamRoutes(app: FastifyInstance) {
   })
 
   app.delete('/teams/:teamId', async (request, reply) => {
+    const actorUser = await requireAuthenticatedUser(app, request, reply)
+
+    if (!actorUser) {
+      return
+    }
+
     const paramsResult = teamParamsSchema.safeParse(request.params)
 
     if (!paramsResult.success) {
@@ -541,6 +646,18 @@ export async function registerTeamRoutes(app: FastifyInstance) {
           },
           take: 1,
         },
+        derivedCompetitionTeams: {
+          select: {
+            id: true,
+          },
+          take: 1,
+        },
+        competitionSubmissions: {
+          select: {
+            id: true,
+          },
+          take: 1,
+        },
       },
     })
 
@@ -550,13 +667,27 @@ export async function registerTeamRoutes(app: FastifyInstance) {
       })
     }
 
+    if (!doesActorMatchUserId(actorUser, existingTeam.ownerUserId)) {
+      return reply.code(403).send({
+        message: 'You can only delete teams owned by the signed-in user.',
+      })
+    }
+
+    if (existingTeam.isCompetitionCopy) {
+      return reply.code(409).send({
+        message: 'Competition-bound team copies cannot be deleted from the standard team vault.',
+      })
+    }
+
     if (
       existingTeam.homeSessions.length > 0 ||
       existingTeam.awaySessions.length > 0 ||
-      existingTeam.sessionParticipants.length > 0
+      existingTeam.sessionParticipants.length > 0 ||
+      existingTeam.derivedCompetitionTeams.length > 0 ||
+      existingTeam.competitionSubmissions.length > 0
     ) {
       return reply.code(409).send({
-        message: 'Team cannot be deleted while linked to a match session.',
+        message: 'Team cannot be deleted while linked to a competition copy or match session.',
       })
     }
 

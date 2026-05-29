@@ -63,6 +63,10 @@ export class LocalTeamRepository implements TeamRepository {
     return this.listTeamsSync()
   }
 
+  async listCompetitionTeams() {
+    return [] as SavedTeamSummary[]
+  }
+
   listTeamsSync() {
     const teams = this.readTeams()
 

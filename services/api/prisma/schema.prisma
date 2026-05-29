@@ -12,6 +12,12 @@ enum LeagueMembershipRole {
   MEMBER
 }
 
+enum UserAuthTokenPurpose {
+  EMAIL_VERIFICATION
+  MAGIC_LINK_LOGIN
+  EMAIL_CHANGE_VERIFICATION
+}
+
 enum TeamStatus {
   DRAFT
   ACTIVE
@@ -34,6 +40,14 @@ enum MatchSessionStatus {
 enum MatchSessionSide {
   HOME
   AWAY
+}
+
+enum MatchSessionTurnPhase {
+  READY
+  RUNNING
+  PAUSE_REQUESTED
+  PAUSED
+  REVIEW
 }
 
 enum CompetitionType {
@@ -114,6 +128,14 @@ enum MatchSessionCasualtyResolutionType {
 model User {
   id                    String                    @id @default(cuid())
   displayName           String
+  email                 String?                   @unique
+  normalizedEmail       String?                   @unique
+  pendingEmail          String?                   @unique
+  pendingNormalizedEmail String?                  @unique
+  emailVerifiedAt       DateTime?
+  passwordHash          String?
+  townOrCity            String?
+  country               String?
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime                  @updatedAt
   ownedLeagues          League[]                  @relation("LeagueOwner")
@@ -123,6 +145,34 @@ model User {
   matchParticipants     MatchSessionParticipant[]
   createdCompetitions   Competition[]             @relation("CompetitionOwner")
   competitionEntries    CompetitionEntry[]
+  authTokens            UserAuthToken[]
+  sessions              UserSession[]
+}
+
+model UserAuthToken {
+  id         String               @id @default(cuid())
+  userId      String
+  purpose     UserAuthTokenPurpose
+  tokenHash   String               @unique
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime             @default(now())
+  user        User                 @relation(fields: [userId], references: [id])
+
+  @@index([userId, purpose, expiresAt])
+}
+
+model UserSession {
+  id          String   @id @default(cuid())
+  userId       String
+  tokenHash    String   @unique
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+  lastUsedAt   DateTime?
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, expiresAt])
 }
 
 model League {
@@ -153,6 +203,8 @@ model Team {
   id                    String       @id @default(cuid())
   ownerUserId           String
   leagueId              String?
+  baseTeamId            String?
+  competitionEntryId    String?      @unique
   rosterTemplateId      String
   name                  String
   status                TeamStatus
@@ -162,15 +214,22 @@ model Team {
   cheerleaderCount      Int
   dedicatedFans         Int
   apothecaryPurchased   Boolean
+  isCompetitionCopy     Boolean      @default(false)
+  competitionLocked     Boolean      @default(false)
+  competitionLockedAt   DateTime?
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
   owner                 User         @relation(fields: [ownerUserId], references: [id])
   league                League?      @relation(fields: [leagueId], references: [id])
+  baseTeam              Team?        @relation("CompetitionBaseTeam", fields: [baseTeamId], references: [id])
+  derivedCompetitionTeams Team[]     @relation("CompetitionBaseTeam")
+  competitionEntry      CompetitionEntry? @relation(fields: [competitionEntryId], references: [id])
   players               TeamPlayer[]
   homeSessions          MatchSession[] @relation("HomeTeam")
   awaySessions          MatchSession[] @relation("AwayTeam")
   sessionParticipants   MatchSessionParticipant[]
   competitionSubmissions CompetitionTeamSubmission[]
+  competitionSubmissionSnapshot CompetitionTeamSubmission? @relation("SubmissionCompetitionTeam")
 }
 
 model TeamPlayer {
@@ -208,6 +267,8 @@ model MatchSession {
   timerCurrentHalf Int                    @default(1)
   timerCurrentTurnNumber Int              @default(1)
   timerActiveSide MatchSessionSide        @default(HOME)
+  timerTurnPhase MatchSessionTurnPhase    @default(READY)
+  timerTurnRemainingSeconds Int?
   timerTurnStartedAt DateTime?
   timerHomeBankRemainingSeconds Int?
   timerAwayBankRemainingSeconds Int?
@@ -255,6 +316,8 @@ model MatchSessionEvent {
   playerNumber   Int?
   injuredPlayerNumber Int?
   notes          String?
+  homeConfirmedAt DateTime?
+  awayConfirmedAt DateTime?
   createdAt      DateTime              @default(now())
   matchSession   MatchSession          @relation(fields: [matchSessionId], references: [id])
   casualtyResolution MatchSessionCasualtyResolution?
@@ -325,6 +388,7 @@ model CompetitionEntry {
   competition   Competition            @relation(fields: [competitionId], references: [id])
   user          User                   @relation(fields: [userId], references: [id])
   submission    CompetitionTeamSubmission?
+  competitionTeam Team?
   homeFixtures  Fixture[]              @relation("FixtureHomeEntry")
   awayFixtures  Fixture[]              @relation("FixtureAwayEntry")
   winningFixtures Fixture[]            @relation("FixtureWinnerEntry")
@@ -336,6 +400,7 @@ model CompetitionEntry {
 model CompetitionTeamSubmission {
   id                     String                      @id @default(cuid())
   competitionEntryId     String                      @unique
+  competitionTeamId      String?                     @unique
   sourceType             TournamentTeamSourceType
   sourceTeamId           String?
   rosterTemplateId       String
@@ -353,6 +418,7 @@ model CompetitionTeamSubmission {
   createdAt              DateTime                    @default(now())
   updatedAt              DateTime                    @updatedAt
   competitionEntry       CompetitionEntry            @relation(fields: [competitionEntryId], references: [id])
+  competitionTeam        Team?                       @relation("SubmissionCompetitionTeam", fields: [competitionTeamId], references: [id])
   sourceTeam             Team?                       @relation(fields: [sourceTeamId], references: [id])
   players                CompetitionTeamSubmissionPlayer[]
 }

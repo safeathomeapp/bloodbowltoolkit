@@ -1,11 +1,9 @@
 import { rosterTemplates } from '../../data/rosterTemplates'
+import { AuthClient } from '../api/authClient'
 import type { KeyValueStore } from '../storage/keyValueStore'
 import type { RosterTemplate, SavedTeam, SavedTeamSummary } from '../types/team'
 import { normalizeTeamShirtNumbers } from '../utils/shirtNumbers'
 import type { TeamRepository } from './teamRepository'
-
-const API_USER_ID_KEY = 'blood-bowl-toolkit:team-creator:api-user-id'
-const DEFAULT_DISPLAY_NAME = 'Local Coach'
 
 type FetchLike = typeof fetch
 
@@ -76,6 +74,11 @@ function toSavedTeam(team: TeamApiPayload): SavedTeam {
     rosterTemplateId: team.rosterTemplateId,
     name: team.name,
     status: team.status,
+    baseTeamId: team.baseTeamId ?? null,
+    competitionEntryId: team.competitionEntryId ?? null,
+    isCompetitionCopy: team.isCompetitionCopy ?? false,
+    competitionLocked: team.competitionLocked ?? false,
+    competitionLockedAt: team.competitionLockedAt ?? null,
     draftBudget: team.draftBudget,
     rerollCount: team.rerollCount,
     assistantCoachCount: team.assistantCoachCount,
@@ -90,24 +93,46 @@ function toSavedTeam(team: TeamApiPayload): SavedTeam {
 
 export class ApiTeamRepository implements TeamRepository {
   private readonly baseUrl: string
-  private readonly store: KeyValueStore
   private readonly fetchImpl: FetchLike
-  private userIdPromise: Promise<string> | null = null
+  private readonly authClient: AuthClient
 
   constructor(options: {
     baseUrl: string
     store: KeyValueStore
+    authClient?: AuthClient
     fetchImpl?: FetchLike
   }) {
     this.baseUrl = options.baseUrl.replace(/\/+$/u, '')
-    this.store = options.store
     this.fetchImpl = options.fetchImpl ?? ((input, init) => globalThis.fetch(input, init))
+    this.authClient =
+      options.authClient ??
+      new AuthClient({
+        baseUrl: this.baseUrl,
+        store: options.store,
+        fetchImpl: this.fetchImpl,
+      })
   }
 
   async listTeams() {
-    const ownerUserId = await this.ensureUserId()
+    const ownerUserId = await this.getCurrentUserId()
     const response = await this.fetchImpl(
       `${this.baseUrl}/teams?ownerUserId=${encodeURIComponent(ownerUserId)}`,
+      {
+        headers: this.authClient.createAuthHeaders(),
+      },
+    )
+    const payload = await parseResponse<{ teams: SavedTeamSummary[] }>(response)
+
+    return payload.teams
+  }
+
+  async listCompetitionTeams() {
+    const ownerUserId = await this.getCurrentUserId()
+    const response = await this.fetchImpl(
+      `${this.baseUrl}/teams?ownerUserId=${encodeURIComponent(ownerUserId)}&teamScope=competition`,
+      {
+        headers: this.authClient.createAuthHeaders(),
+      },
     )
     const payload = await parseResponse<{ teams: SavedTeamSummary[] }>(response)
 
@@ -115,7 +140,9 @@ export class ApiTeamRepository implements TeamRepository {
   }
 
   async getTeam(id: string) {
-    const response = await this.fetchImpl(`${this.baseUrl}/teams/${encodeURIComponent(id)}`)
+    const response = await this.fetchImpl(`${this.baseUrl}/teams/${encodeURIComponent(id)}`, {
+      headers: this.authClient.createAuthHeaders(),
+    })
 
     if (response.status === 404) {
       return null
@@ -126,7 +153,7 @@ export class ApiTeamRepository implements TeamRepository {
   }
 
   async saveTeam(team: SavedTeam) {
-    const ownerUserId = await this.ensureUserId()
+    const ownerUserId = await this.getCurrentUserId()
     const payload = JSON.stringify({
       ...normalizeTeam(team),
       ownerUserId,
@@ -137,9 +164,9 @@ export class ApiTeamRepository implements TeamRepository {
       `${this.baseUrl}/teams/${encodeURIComponent(team.id)}`,
       {
         method: 'PUT',
-        headers: {
+        headers: this.authClient.createAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: payload,
       },
     )
@@ -155,9 +182,9 @@ export class ApiTeamRepository implements TeamRepository {
 
     const createResponse = await this.fetchImpl(`${this.baseUrl}/teams`, {
       method: 'POST',
-      headers: {
+      headers: this.authClient.createAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: payload,
     })
 
@@ -167,6 +194,7 @@ export class ApiTeamRepository implements TeamRepository {
   async deleteTeam(id: string) {
     const response = await this.fetchImpl(`${this.baseUrl}/teams/${encodeURIComponent(id)}`, {
       method: 'DELETE',
+      headers: this.authClient.createAuthHeaders(),
     })
 
     if (response.status === 404 || response.status === 204) {
@@ -180,34 +208,8 @@ export class ApiTeamRepository implements TeamRepository {
     return structuredClone(rosterTemplates)
   }
 
-  private async ensureUserId() {
-    if (!this.userIdPromise) {
-      this.userIdPromise = this.createOrLoadUserId()
-    }
-
-    return this.userIdPromise
-  }
-
-  private async createOrLoadUserId() {
-    const existingUserId = this.store.getItem(API_USER_ID_KEY)
-
-    if (existingUserId) {
-      return existingUserId
-    }
-
-    const response = await this.fetchImpl(`${this.baseUrl}/users`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        displayName: DEFAULT_DISPLAY_NAME,
-      }),
-    })
-    const payload = await parseResponse<{ user: { id: string } }>(response)
-
-    this.store.setItem(API_USER_ID_KEY, payload.user.id)
-
-    return payload.user.id
+  private async getCurrentUserId() {
+    const user = await this.authClient.getCurrentUser()
+    return user.id
   }
 }

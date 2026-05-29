@@ -15,7 +15,10 @@ import {
 } from '../../../shared/integration/teamCreatorStore'
 import {
   applyMatchSessionProgression,
-  confirmMatchSessionTurn,
+  bootstrapMatchSessionAuthFromUrl,
+  claimMatchSessionParticipant,
+  confirmMatchSessionEvent,
+  confirmMatchSessionPause,
   createMatchSessionEvent,
   createBlockDiceSessionContext,
   deleteMatchSessionEvent,
@@ -28,14 +31,14 @@ import {
   fetchSharedTeam,
   fetchSharedTeams,
   resetMatchSessionHalf,
+  requestMatchSessionPause,
   signOffMatchSession,
   startMatchSessionTimer,
-  updateMatchSessionCasualtyResolution,
   type MatchSessionEventSummary,
   type MatchSessionFinalSignoff,
   type MatchSessionProgressionSummary,
   type MatchSessionTimerState,
-  type MatchSessionTurnConfirmation,
+  type MatchSessionViewerSummary,
   type SharedTeamSummary,
 } from '../../../shared/integration/matchSessionApi'
 import type { ImportedBlockDicePlayer, ImportedBlockDiceTeam } from '../../../shared/integration/teamImport'
@@ -212,7 +215,7 @@ function getTokenRoleLabel(options: { isBlocker: boolean; isTarget: boolean; isB
 
 function formatImportedPlayerOptionLabel(player: ImportedBlockDicePlayer) {
   const numberLabel = player.shirtNumber ?? '-'
-  return `${numberLabel} - ${player.playerName}`
+  return `${numberLabel}. ${player.playerName} - ${player.positionName}`
 }
 
 function toDiceLabel(count: number, chooser: 'ATTACKER' | 'DEFENDER' | 'NONE') {
@@ -303,6 +306,7 @@ function toEventTypeLabel(eventType: MatchSessionEventSummary['eventType']) {
 }
 
 export function BlockDiceCalculator() {
+  const bootstrappedSession = bootstrapMatchSessionAuthFromUrl()
   const persistedState = loadPersistedState()
   const savedTeams = readAvailableTeamsFromWindow()
   const [sharedImportedTeamOptions, setSharedImportedTeamOptions] = useState<ImportedBlockDiceTeam[]>([])
@@ -377,19 +381,37 @@ export function BlockDiceCalculator() {
   const [teamImportFeedback, setTeamImportFeedback] = useState('')
   const [isSessionLoaderOpen, setIsSessionLoaderOpen] = useState(false)
   const [isCreateSessionOpen, setIsCreateSessionOpen] = useState(false)
-  const [sessionCodeInput, setSessionCodeInput] = useState(persistedState?.sessionCodeInput ?? '')
-  const [currentSessionId, setCurrentSessionId] = useState(persistedState?.currentSessionId ?? '')
+  const [sessionCodeInput, setSessionCodeInput] = useState(
+    bootstrappedSession.sessionCode ?? persistedState?.sessionCodeInput ?? '',
+  )
+  const [currentSessionId, setCurrentSessionId] = useState(
+    bootstrappedSession.sessionCode ? '' : (persistedState?.currentSessionId ?? ''),
+  )
   const [sessionTimer, setSessionTimer] = useState<MatchSessionTimerState | null>(null)
   const [sessionEvents, setSessionEvents] = useState<MatchSessionEventSummary[]>([])
-  const [sessionTurnConfirmation, setSessionTurnConfirmation] = useState<MatchSessionTurnConfirmation | null>(null)
   const [sessionFinalSignoff, setSessionFinalSignoff] = useState<MatchSessionFinalSignoff | null>(null)
   const [sessionProgression, setSessionProgression] = useState<MatchSessionProgressionSummary | null>(null)
+  const [sessionViewer, setSessionViewer] = useState<MatchSessionViewerSummary | null>(null)
   const [selectedSessionEventType, setSelectedSessionEventType] =
     useState<MatchSessionEventSummary['eventType']>('TOUCHDOWN')
   const [selectedSessionEventTeamSide, setSelectedSessionEventTeamSide] =
     useState<MatchSessionEventSummary['teamSide']>('HOME')
   const [sessionEventPlayerNumberInput, setSessionEventPlayerNumberInput] = useState('')
+  const [sessionEventInjuredTeamSide, setSessionEventInjuredTeamSide] =
+    useState<MatchSessionEventSummary['teamSide']>('AWAY')
   const [sessionEventInjuredPlayerNumberInput, setSessionEventInjuredPlayerNumberInput] = useState('')
+  const [sessionEventCasualtyResolutionType, setSessionEventCasualtyResolutionType] = useState<
+    | 'NONE'
+    | 'MISS_NEXT_GAME'
+    | 'NIGGLING_INJURY'
+    | 'SERIOUS_INJURY'
+    | 'LASTING_INJURY_ARMOUR'
+    | 'LASTING_INJURY_MOVEMENT'
+    | 'LASTING_INJURY_PASSING'
+    | 'LASTING_INJURY_AGILITY'
+    | 'LASTING_INJURY_STRENGTH'
+    | 'DEAD'
+  >('NONE')
   const [sessionEventNotes, setSessionEventNotes] = useState('')
   const [isSessionLoading, setIsSessionLoading] = useState(false)
   const [isSessionTimerLoading, setIsSessionTimerLoading] = useState(false)
@@ -941,6 +963,7 @@ export function BlockDiceCalculator() {
     homeTeam: Parameters<typeof buildTeamCreatorExchangePackage>[0][number]
     awayTeam: Parameters<typeof buildTeamCreatorExchangePackage>[0][number]
     sessionCode: string
+    viewer?: MatchSessionViewerSummary | null
     silent?: boolean
   }) => {
     if (typeof window !== 'undefined') {
@@ -958,6 +981,10 @@ export function BlockDiceCalculator() {
     setSelectedEditPlayerIds({ A: null, B: null })
     setCurrentSessionId(options.sessionId)
     setSessionCodeInput(options.sessionCode)
+    setSessionViewer(options.viewer ?? null)
+    setSessionEvents([])
+    setSessionFinalSignoff(null)
+    setSessionProgression(null)
     if (!options.silent) {
       setTeamImportFeedback(
         `Loaded session ${options.sessionCode}. Blue: ${options.homeTeam.name}. Red: ${options.awayTeam.name}.`,
@@ -969,13 +996,20 @@ export function BlockDiceCalculator() {
     setIsSessionLoading(true)
 
     try {
-      const sessionContext = await fetchBlockDiceSessionContextByCode(sessionCodeInput)
+      let sessionContext = await fetchBlockDiceSessionContextByCode(sessionCodeInput)
+
+      if (sessionContext.viewer.userId && !sessionContext.viewer.participantSide) {
+        await claimMatchSessionParticipant(sessionContext.matchSession.id)
+        sessionContext = await fetchBlockDiceSessionContext(sessionContext.matchSession.id)
+      }
+
       setIsSessionLoaderOpen(false)
       applySessionContext({
         sessionId: sessionContext.matchSession.id,
         homeTeam: sessionContext.teams.home,
         awayTeam: sessionContext.teams.away,
         sessionCode: sessionContext.matchSession.sessionCode,
+        viewer: sessionContext.viewer,
       })
     } catch (error) {
       setTeamImportFeedback(
@@ -995,7 +1029,12 @@ export function BlockDiceCalculator() {
 
     async function refreshSessionContext() {
       try {
-        const sessionContext = await fetchBlockDiceSessionContext(currentSessionId)
+        let sessionContext = await fetchBlockDiceSessionContext(currentSessionId)
+
+        if (sessionContext.viewer.userId && sessionContext.viewer.assignedSide && !sessionContext.viewer.participantSide) {
+          await claimMatchSessionParticipant(currentSessionId)
+          sessionContext = await fetchBlockDiceSessionContext(currentSessionId)
+        }
 
         if (isDisposed) {
           return
@@ -1006,6 +1045,7 @@ export function BlockDiceCalculator() {
           homeTeam: sessionContext.teams.home,
           awayTeam: sessionContext.teams.away,
           sessionCode: sessionContext.matchSession.sessionCode,
+          viewer: sessionContext.viewer,
           silent: true,
         })
       } catch {
@@ -1019,6 +1059,14 @@ export function BlockDiceCalculator() {
       isDisposed = true
     }
   }, [currentSessionId])
+
+  useEffect(() => {
+    if (!bootstrappedSession.sessionCode) {
+      return
+    }
+
+    void handleLoadSessionByCode()
+  }, [bootstrappedSession.sessionCode])
 
   useEffect(() => {
     if (!isCreateSessionOpen) {
@@ -1082,6 +1130,7 @@ export function BlockDiceCalculator() {
         homeTeam: sessionContext.teams.home,
         awayTeam: sessionContext.teams.away,
         sessionCode: sessionContext.matchSession.sessionCode,
+        viewer: sessionContext.viewer,
       })
     } catch (error) {
       setTeamImportFeedback(
@@ -1092,11 +1141,37 @@ export function BlockDiceCalculator() {
     }
   }
 
+  const handleClaimAssignedSide = async () => {
+    if (!currentSessionId) {
+      return
+    }
+
+    try {
+      setIsSessionLoading(true)
+      await claimMatchSessionParticipant(currentSessionId)
+      const sessionContext = await fetchBlockDiceSessionContext(currentSessionId)
+      applySessionContext({
+        sessionId: sessionContext.matchSession.id,
+        homeTeam: sessionContext.teams.home,
+        awayTeam: sessionContext.teams.away,
+        sessionCode: sessionContext.matchSession.sessionCode,
+        viewer: sessionContext.viewer,
+        silent: true,
+      })
+      setTeamImportFeedback('Match room side claimed.')
+    } catch (error) {
+      setTeamImportFeedback(
+        error instanceof Error ? `Side claim failed: ${error.message}` : 'Side claim failed.',
+      )
+    } finally {
+      setIsSessionLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (!currentSessionId) {
       setSessionTimer(null)
       setSessionEvents([])
-      setSessionTurnConfirmation(null)
       setSessionFinalSignoff(null)
       setSessionProgression(null)
       return
@@ -1149,7 +1224,6 @@ export function BlockDiceCalculator() {
 
         if (!isDisposed) {
           setSessionEvents(payload.events)
-          setSessionTurnConfirmation(payload.confirmation)
           setSessionFinalSignoff(payload.signoff)
         }
       } catch (error) {
@@ -1209,6 +1283,46 @@ export function BlockDiceCalculator() {
     }
   }, [currentSessionId, sessionFinalSignoff?.status, sessionEvents.length])
 
+  useEffect(() => {
+    if (!currentSessionId) {
+      return
+    }
+
+    let isDisposed = false
+
+    const refreshLiveMatchState = async () => {
+      try {
+        const [timer, eventsPayload, progression, sessionContext] = await Promise.all([
+          fetchMatchSessionTimer(currentSessionId),
+          fetchMatchSessionEvents(currentSessionId),
+          fetchMatchSessionProgression(currentSessionId),
+          fetchBlockDiceSessionContext(currentSessionId),
+        ])
+
+        if (isDisposed) {
+          return
+        }
+
+        setSessionTimer(timer)
+        setSessionEvents(eventsPayload.events)
+        setSessionFinalSignoff(eventsPayload.signoff)
+        setSessionProgression(progression)
+        setSessionViewer(sessionContext.viewer)
+      } catch {
+        // Keep the last known local state if the poll fails.
+      }
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshLiveMatchState()
+    }, 2500)
+
+    return () => {
+      isDisposed = true
+      window.clearInterval(intervalId)
+    }
+  }, [currentSessionId])
+
   const handleStartSessionTurn = async (side?: 'HOME' | 'AWAY') => {
     if (!currentSessionId) {
       return
@@ -1219,11 +1333,40 @@ export function BlockDiceCalculator() {
       setSessionTimer(timer)
       const payload = await fetchMatchSessionEvents(currentSessionId)
       setSessionEvents(payload.events)
-      setSessionTurnConfirmation(payload.confirmation)
       setSessionFinalSignoff(payload.signoff)
     } catch (error) {
       setTeamImportFeedback(
         error instanceof Error ? `Timer start failed: ${error.message}` : 'Timer start failed.',
+      )
+    }
+  }
+
+  const handleRequestSessionPause = async () => {
+    if (!currentSessionId || !viewerParticipantSide) {
+      return
+    }
+
+    try {
+      const timer = await requestMatchSessionPause(currentSessionId, viewerParticipantSide)
+      setSessionTimer(timer)
+    } catch (error) {
+      setTeamImportFeedback(
+        error instanceof Error ? `Pause request failed: ${error.message}` : 'Pause request failed.',
+      )
+    }
+  }
+
+  const handleConfirmSessionPause = async () => {
+    if (!currentSessionId || !viewerParticipantSide) {
+      return
+    }
+
+    try {
+      const timer = await confirmMatchSessionPause(currentSessionId, viewerParticipantSide)
+      setSessionTimer(timer)
+    } catch (error) {
+      setTeamImportFeedback(
+        error instanceof Error ? `Pause confirmation failed: ${error.message}` : 'Pause confirmation failed.',
       )
     }
   }
@@ -1238,7 +1381,6 @@ export function BlockDiceCalculator() {
       setSessionTimer(timer)
       const payload = await fetchMatchSessionEvents(currentSessionId)
       setSessionEvents(payload.events)
-      setSessionTurnConfirmation(payload.confirmation)
       setSessionFinalSignoff(payload.signoff)
     } catch (error) {
       setTeamImportFeedback(
@@ -1257,7 +1399,6 @@ export function BlockDiceCalculator() {
       setSessionTimer(timer)
       const payload = await fetchMatchSessionEvents(currentSessionId)
       setSessionEvents(payload.events)
-      setSessionTurnConfirmation(payload.confirmation)
       setSessionFinalSignoff(payload.signoff)
     } catch (error) {
       setTeamImportFeedback(
@@ -1271,6 +1412,40 @@ export function BlockDiceCalculator() {
       return
     }
 
+    if (!sessionTimer || (sessionTimer.phase !== 'RUNNING' && sessionTimer.phase !== 'REVIEW')) {
+      setTeamImportFeedback('Events can only be added while the turn is running or during turn review.')
+      return
+    }
+
+    if (!sessionEventPlayerNumberInput.trim()) {
+      setTeamImportFeedback('Choose a player number before adding an event.')
+      return
+    }
+
+    if (
+      !sessionEventPlayerOptions.some(
+        (player) => String(player.shirtNumber ?? '') === sessionEventPlayerNumberInput,
+      )
+    ) {
+      setTeamImportFeedback('Choose a valid player from the selected team before adding an event.')
+      return
+    }
+
+    if (selectedSessionEventType === 'CASUALTY' && !sessionEventInjuredPlayerNumberInput.trim()) {
+      setTeamImportFeedback('Choose the injured player number for a casualty event.')
+      return
+    }
+
+    if (
+      selectedSessionEventType === 'CASUALTY' &&
+      !sessionEventInjuredPlayerOptions.some(
+        (player) => String(player.shirtNumber ?? '') === sessionEventInjuredPlayerNumberInput,
+      )
+    ) {
+      setTeamImportFeedback('Choose a valid injured player from the selected team before adding an event.')
+      return
+    }
+
     try {
       setIsSessionEventLoading(true)
       await createMatchSessionEvent(currentSessionId, {
@@ -1280,19 +1455,24 @@ export function BlockDiceCalculator() {
           ? Number(sessionEventPlayerNumberInput)
           : null,
         injuredTeamSide:
-          selectedSessionEventType === 'CASUALTY' ? getOpposingSessionSide(selectedSessionEventTeamSide) : null,
+          selectedSessionEventType === 'CASUALTY' ? sessionEventInjuredTeamSide : null,
         injuredPlayerNumber:
           selectedSessionEventType === 'CASUALTY' && sessionEventInjuredPlayerNumberInput.trim()
             ? Number(sessionEventInjuredPlayerNumberInput)
             : null,
+        casualtyResolutionType:
+          selectedSessionEventType === 'CASUALTY' ? sessionEventCasualtyResolutionType : null,
         notes: sessionEventNotes.trim() || null,
       })
       const payload = await fetchMatchSessionEvents(currentSessionId)
+      const progression = await fetchMatchSessionProgression(currentSessionId)
       setSessionEvents(payload.events)
-      setSessionTurnConfirmation(payload.confirmation)
       setSessionFinalSignoff(payload.signoff)
+      setSessionProgression(progression)
       setSessionEventPlayerNumberInput('')
+      setSessionEventInjuredTeamSide(getOpposingSessionSide(selectedSessionEventTeamSide))
       setSessionEventInjuredPlayerNumberInput('')
+      setSessionEventCasualtyResolutionType('NONE')
       setSessionEventNotes('')
     } catch (error) {
       setTeamImportFeedback(
@@ -1312,9 +1492,10 @@ export function BlockDiceCalculator() {
       setIsSessionEventLoading(true)
       await deleteMatchSessionEvent(currentSessionId, eventId)
       const payload = await fetchMatchSessionEvents(currentSessionId)
+      const progression = await fetchMatchSessionProgression(currentSessionId)
       setSessionEvents(payload.events)
-      setSessionTurnConfirmation(payload.confirmation)
       setSessionFinalSignoff(payload.signoff)
+      setSessionProgression(progression)
     } catch (error) {
       setTeamImportFeedback(
         error instanceof Error ? `Match event delete failed: ${error.message}` : 'Match event delete failed.',
@@ -1324,17 +1505,19 @@ export function BlockDiceCalculator() {
     }
   }
 
-  const handleConfirmSessionTurn = async (side: 'HOME' | 'AWAY') => {
+  const handleConfirmSessionEvent = async (eventId: string, side: 'HOME' | 'AWAY') => {
     if (!currentSessionId) {
       return
     }
 
     try {
-      const confirmation = await confirmMatchSessionTurn(currentSessionId, side)
-      setSessionTurnConfirmation(confirmation)
+      await confirmMatchSessionEvent(currentSessionId, eventId, side)
+      const payload = await fetchMatchSessionEvents(currentSessionId)
+      setSessionEvents(payload.events)
+      setSessionFinalSignoff(payload.signoff)
     } catch (error) {
       setTeamImportFeedback(
-        error instanceof Error ? `Turn confirmation failed: ${error.message}` : 'Turn confirmation failed.',
+        error instanceof Error ? `Event confirmation failed: ${error.message}` : 'Event confirmation failed.',
       )
     }
   }
@@ -1375,52 +1558,20 @@ export function BlockDiceCalculator() {
     }
   }
 
-  const handleUpdateCasualtyResolution = async (
-    eventId: string,
-    resolutionType:
-      | 'NONE'
-      | 'MISS_NEXT_GAME'
-      | 'NIGGLING_INJURY'
-      | 'SERIOUS_INJURY'
-      | 'LASTING_INJURY_ARMOUR'
-      | 'LASTING_INJURY_MOVEMENT'
-      | 'LASTING_INJURY_PASSING'
-      | 'LASTING_INJURY_AGILITY'
-      | 'LASTING_INJURY_STRENGTH'
-      | 'DEAD',
-  ) => {
-    if (!currentSessionId) {
-      return
-    }
-
-    try {
-      setIsSessionEventLoading(true)
-      const progression = await updateMatchSessionCasualtyResolution(
-        currentSessionId,
-        eventId,
-        resolutionType,
-      )
-      setSessionProgression(progression)
-      const payload = await fetchMatchSessionEvents(currentSessionId)
-      setSessionEvents(payload.events)
-      setSessionTurnConfirmation(payload.confirmation)
-      setSessionFinalSignoff(payload.signoff)
-    } catch (error) {
-      setTeamImportFeedback(
-        error instanceof Error
-          ? `Casualty resolution update failed: ${error.message}`
-          : 'Casualty resolution update failed.',
-      )
-    } finally {
-      setIsSessionEventLoading(false)
-    }
-  }
-
   useEffect(() => {
     if (sessionTimer) {
       setSelectedSessionEventTeamSide(sessionTimer.activeSide)
     }
   }, [sessionTimer?.activeSide])
+
+  useEffect(() => {
+    setSessionEventPlayerNumberInput('')
+    setSessionEventInjuredTeamSide(getOpposingSessionSide(selectedSessionEventTeamSide))
+  }, [selectedSessionEventTeamSide])
+
+  useEffect(() => {
+    setSessionEventInjuredPlayerNumberInput('')
+  }, [sessionEventInjuredTeamSide])
 
   const defendingTeam: TeamSide = activeTeam === 'A' ? 'B' : 'A'
   const selectedEditPlayerA =
@@ -1451,6 +1602,22 @@ export function BlockDiceCalculator() {
         )
       : [],
   }
+  const sessionEventPlayerOptions =
+    selectedSessionEventTeamSide === 'HOME'
+      ? [...(importedTeamsBySide.A?.players ?? [])].sort(
+          (left, right) => (left.shirtNumber ?? 999) - (right.shirtNumber ?? 999),
+        )
+      : [...(importedTeamsBySide.B?.players ?? [])].sort(
+          (left, right) => (left.shirtNumber ?? 999) - (right.shirtNumber ?? 999),
+        )
+  const sessionEventInjuredPlayerOptions =
+    sessionEventInjuredTeamSide === 'HOME'
+      ? [...(importedTeamsBySide.A?.players ?? [])].sort(
+          (left, right) => (left.shirtNumber ?? 999) - (right.shirtNumber ?? 999),
+        )
+      : [...(importedTeamsBySide.B?.players ?? [])].sort(
+          (left, right) => (left.shirtNumber ?? 999) - (right.shirtNumber ?? 999),
+        )
   const pendingImportedPlayersBySide: Record<TeamSide, ImportedBlockDicePlayer | null> = {
     A:
       availableImportedPlayersBySide.A.find((player) => player.id === selectedImportedPlayerIds.A) ??
@@ -1630,7 +1797,26 @@ export function BlockDiceCalculator() {
   const currentCandidatePositionLabel = currentCandidate
     ? `${currentCandidate.position.row + 1},${currentCandidate.position.col + 1}`
     : null
-  const timerActiveTeamLabel = sessionTimer?.activeSide === 'HOME' ? 'BLUE' : 'RED'
+  const homeSessionTeamName = importedTeamsBySide.A?.name ?? 'Blue team'
+  const awaySessionTeamName = importedTeamsBySide.B?.name ?? 'Red team'
+  const timerActiveTeamLabel =
+    sessionTimer?.activeSide === 'HOME' ? homeSessionTeamName : awaySessionTeamName
+  const requiresManualTurnStartChoice =
+    sessionTimer?.phase === 'READY' && sessionTimer.currentTurnNumber === 1
+  const nextTurnStartSide =
+    requiresManualTurnStartChoice
+      ? null
+      : sessionTimer?.phase === 'REVIEW'
+      ? sessionTimer.activeSide === 'HOME'
+        ? 'AWAY'
+        : 'HOME'
+      : sessionTimer?.activeSide ?? null
+  const nextTurnStartTeamLabel =
+    nextTurnStartSide === 'HOME'
+      ? homeSessionTeamName
+      : nextTurnStartSide === 'AWAY'
+        ? awaySessionTeamName
+        : 'Next team'
   const timerTurnClockLabel = sessionTimer ? formatClock(sessionTimer.perTurnRemainingSeconds) : '--:--'
   const timerHomeBankLabel = sessionTimer ? formatClock(sessionTimer.homeBankRemainingSeconds) : '--:--'
   const timerAwayBankLabel = sessionTimer ? formatClock(sessionTimer.awayBankRemainingSeconds) : '--:--'
@@ -1642,11 +1828,61 @@ export function BlockDiceCalculator() {
           event.actingSide === sessionTimer.activeSide,
       )
     : []
-  const homeTurnConfirmed = sessionTurnConfirmation?.homeConfirmed ?? false
-  const awayTurnConfirmed = sessionTurnConfirmation?.awayConfirmed ?? false
+  const currentTurnLocked =
+    currentTurnEvents.length > 0 &&
+    currentTurnEvents.every((event) => event.homeConfirmed && event.awayConfirmed)
   const homeFinalSignedOff = sessionFinalSignoff?.homeSignedOff ?? false
   const awayFinalSignedOff = sessionFinalSignoff?.awaySignedOff ?? false
   const isCurrentSessionClosed = sessionFinalSignoff?.status === 'CLOSED'
+  const viewerAssignedSide = sessionViewer?.assignedSide ?? null
+  const viewerParticipantSide = sessionViewer?.participantSide ?? null
+  const viewerCanStartOrResume = viewerParticipantSide === nextTurnStartSide
+  const viewerIsActiveSide = viewerParticipantSide === (sessionTimer?.activeSide ?? null)
+  const pauseAwaitsOpponent =
+    sessionTimer?.phase === 'PAUSE_REQUESTED' && viewerParticipantSide && !viewerIsActiveSide
+  const viewerControlledTeamLabel =
+    viewerParticipantSide === 'HOME'
+      ? homeSessionTeamName
+      : viewerParticipantSide === 'AWAY'
+        ? awaySessionTeamName
+        : null
+  const viewerControlledColorLabel =
+    viewerParticipantSide === 'HOME'
+      ? 'BLUE'
+      : viewerParticipantSide === 'AWAY'
+        ? 'RED'
+        : null
+  const viewerCanChooseOpeningSide =
+    Boolean(viewerParticipantSide) && requiresManualTurnStartChoice
+  const canRenderPrimaryTurnAction =
+    (viewerCanChooseOpeningSide || viewerCanStartOrResume) &&
+    (sessionTimer?.phase === 'READY' || sessionTimer?.phase === 'PAUSED' || sessionTimer?.phase === 'REVIEW')
+  const shouldShowPauseAction = viewerIsActiveSide && sessionTimer?.phase === 'RUNNING'
+  const shouldShowEndTurnAction = viewerIsActiveSide && sessionTimer?.phase === 'RUNNING'
+  const shouldShowConfirmPauseAction = Boolean(pauseAwaitsOpponent)
+  const unresolvedCurrentTurnEventCount = currentTurnEvents.filter(
+    (event) => !event.homeConfirmed || !event.awayConfirmed,
+  ).length
+  const completedSecondSideTurnEight =
+    sessionTimer?.currentTurnNumber === 8 && sessionTimer.activeSide === 'AWAY'
+  const halfTransitionPending =
+    sessionTimer?.currentHalf === 1 && sessionTimer.phase === 'REVIEW' && completedSecondSideTurnEight
+  const matchEndReviewPending =
+    sessionTimer?.currentHalf === 2 && sessionTimer.phase === 'REVIEW' && completedSecondSideTurnEight
+  const canAdvanceToNextHalf =
+    Boolean(viewerParticipantSide) &&
+    sessionTimer?.currentHalf === 1 &&
+    sessionTimer?.currentTurnNumber === 8 &&
+    sessionTimer?.activeSide === 'AWAY' &&
+    (sessionTimer?.phase === 'READY' ||
+      sessionTimer?.phase === 'PAUSED' ||
+      (sessionTimer?.phase === 'REVIEW' && unresolvedCurrentTurnEventCount === 0))
+  const primaryTurnActionLabel =
+    sessionTimer?.phase === 'PAUSED'
+      ? `Resume ${timerActiveTeamLabel}`
+      : requiresManualTurnStartChoice
+        ? `Start ${viewerControlledTeamLabel ?? 'your team'}`
+        : `Start ${nextTurnStartTeamLabel}`
   const sessionEventTotals = LIVE_MATCH_EVENT_OPTIONS.map((eventType) => ({
     eventType,
     total: sessionFinalSignoff?.eventTotals[eventType] ?? 0,
@@ -1789,51 +2025,137 @@ export function BlockDiceCalculator() {
             <p className={styles.statusNote}>{teamImportFeedback}</p>
           ) : null}
           {currentSessionId && sessionTimer ? (
-            <section className={styles.timerPanel} aria-label="Live match timer">
+            <section
+              className={`${styles.timerPanel} ${
+                viewerParticipantSide === 'HOME'
+                  ? styles.controlledByBlue
+                  : viewerParticipantSide === 'AWAY'
+                    ? styles.controlledByRed
+                    : ''
+              }`}
+              aria-label="Live match timer"
+            >
               <div className={styles.timerHeader}>
                 <div>
                   <p className={styles.eyebrow}>Live Match Timer</p>
                   <p className={styles.resultHeadline}>
                     Half {sessionTimer.currentHalf} · Turn {sessionTimer.currentTurnNumber} · {timerActiveTeamLabel}
                   </p>
+                  {viewerControlledTeamLabel && viewerControlledColorLabel ? (
+                    <div
+                      className={
+                        viewerParticipantSide === 'HOME'
+                          ? `${styles.controlBadge} ${styles.controlBadgeBlue}`
+                          : `${styles.controlBadge} ${styles.controlBadgeRed}`
+                      }
+                    >
+                      You are controlling {viewerControlledTeamLabel} ({viewerControlledColorLabel})
+                    </div>
+                  ) : null}
+                  <p className={styles.statusNote}>
+                    {viewerAssignedSide
+                      ? `Assigned side: ${
+                          viewerAssignedSide === 'HOME' ? homeSessionTeamName : awaySessionTeamName
+                        } (${toSessionSideLabel(viewerAssignedSide)})`
+                      : 'Signed-in user is not assigned to this fixture.'}
+                    {viewerParticipantSide
+                      ? ` · Claimed side: ${
+                          viewerParticipantSide === 'HOME' ? homeSessionTeamName : awaySessionTeamName
+                        } (${toSessionSideLabel(viewerParticipantSide)})`
+                      : ' · Side not yet claimed in this room.'}
+                  </p>
+                  <p className={styles.statusNote}>
+                    Blue: {homeSessionTeamName} · Red: {awaySessionTeamName} · Turn state:{' '}
+                    {sessionTimer.phase.replace(/_/gu, ' ').toLowerCase()}
+                  </p>
+                  {requiresManualTurnStartChoice ? (
+                    <p className={styles.statusNote}>
+                      Choose which side starts turn 1 before the clock begins for this half.
+                    </p>
+                  ) : null}
+                  {sessionTimer.phase === 'REVIEW' ? (
+                    <p className={styles.statusNote}>
+                      {halfTransitionPending
+                        ? 'Turn review is complete for the end of the half. Once all events are confirmed, press Next half before starting the clock again.'
+                        : matchEndReviewPending
+                          ? 'Turn review is complete for the end of the second half. Once all events are confirmed, continue to final signoff instead of starting another turn.'
+                          : `Turn review is still on ${timerActiveTeamLabel}. Once all events are confirmed, ${nextTurnStartTeamLabel} can start the next turn.`}
+                    </p>
+                  ) : null}
+                  {viewerAssignedSide && !viewerParticipantSide ? (
+                    <button
+                      type="button"
+                      className={styles.actionButtonSecondary}
+                      onClick={() => void handleClaimAssignedSide()}
+                      disabled={isSessionLoading}
+                    >
+                      Claim my side
+                    </button>
+                  ) : null}
                 </div>
                 <p className={styles.timerClock}>{timerTurnClockLabel}</p>
               </div>
               <div className={styles.timerBankRow}>
                 <p className={styles.timerBankCard}>
-                  <span>Blue bank</span>
+                  <span>{homeSessionTeamName} bank</span>
                   <strong>{timerHomeBankLabel}</strong>
                 </p>
                 <p className={styles.timerBankCard}>
-                  <span>Red bank</span>
+                  <span>{awaySessionTeamName} bank</span>
                   <strong>{timerAwayBankLabel}</strong>
                 </p>
               </div>
               <div className={styles.timerActionRow}>
-                <button
-                  type="button"
-                  className={styles.actionButtonPrimary}
-                  onClick={() => void handleStartSessionTurn()}
-                  disabled={isSessionTimerLoading || isCurrentSessionClosed}
-                >
-                  {sessionTimer.isRunning ? 'Restart turn' : `Start ${timerActiveTeamLabel} turn`}
-                </button>
-                <button
-                  type="button"
-                  className={styles.actionButtonSecondary}
-                  onClick={() => void handleEndSessionTurn()}
-                  disabled={isSessionTimerLoading || isCurrentSessionClosed}
-                >
-                  End turn
-                </button>
-                <button
-                  type="button"
-                  className={styles.actionButtonSecondary}
-                  onClick={() => void handleResetSessionHalf()}
-                  disabled={isSessionTimerLoading || isCurrentSessionClosed}
-                >
-                  Next half
-                </button>
+                {canRenderPrimaryTurnAction ? (
+                  <button
+                    type="button"
+                    className={styles.actionButtonPrimary}
+                    onClick={() => void handleStartSessionTurn(requiresManualTurnStartChoice ? viewerParticipantSide ?? undefined : undefined)}
+                    disabled={isSessionTimerLoading || isCurrentSessionClosed}
+                  >
+                    {primaryTurnActionLabel}
+                  </button>
+                ) : null}
+                {shouldShowPauseAction ? (
+                  <button
+                    type="button"
+                    className={styles.actionButtonPrimary}
+                    onClick={() => void handleRequestSessionPause()}
+                    disabled={isSessionTimerLoading || isCurrentSessionClosed}
+                  >
+                    Pause {timerActiveTeamLabel}
+                  </button>
+                ) : null}
+                {shouldShowConfirmPauseAction ? (
+                  <button
+                    type="button"
+                    className={styles.actionButtonSecondary}
+                    onClick={() => void handleConfirmSessionPause()}
+                    disabled={isSessionTimerLoading || isCurrentSessionClosed}
+                  >
+                    Confirm pause
+                  </button>
+                ) : null}
+                {shouldShowEndTurnAction ? (
+                  <button
+                    type="button"
+                    className={styles.actionButtonSecondary}
+                    onClick={() => void handleEndSessionTurn()}
+                    disabled={isSessionTimerLoading || isCurrentSessionClosed}
+                  >
+                    End turn
+                  </button>
+                ) : null}
+                {canAdvanceToNextHalf ? (
+                  <button
+                    type="button"
+                    className={styles.actionButtonSecondary}
+                    onClick={() => void handleResetSessionHalf()}
+                    disabled={isSessionTimerLoading || isCurrentSessionClosed}
+                  >
+                    Next half
+                  </button>
+                ) : null}
               </div>
               {isCurrentSessionClosed ? (
                 <p className={styles.statusNote}>This match room is closed after final signoff.</p>
@@ -1841,7 +2163,16 @@ export function BlockDiceCalculator() {
             </section>
           ) : null}
           {currentSessionId && sessionTimer ? (
-            <section className={styles.eventPanel} aria-label="Live match event log">
+            <section
+              className={`${styles.eventPanel} ${
+                viewerParticipantSide === 'HOME'
+                  ? styles.controlledByBlue
+                  : viewerParticipantSide === 'AWAY'
+                    ? styles.controlledByRed
+                    : ''
+              }`}
+              aria-label="Live match event log"
+            >
               <div className={styles.timerHeader}>
                 <div>
                   <p className={styles.eyebrow}>Turn Log</p>
@@ -1861,6 +2192,7 @@ export function BlockDiceCalculator() {
                       setSelectedSessionEventType(nextType)
                       if (nextType !== 'CASUALTY') {
                         setSessionEventInjuredPlayerNumberInput('')
+                        setSessionEventCasualtyResolutionType('NONE')
                       }
                     }}
                   >
@@ -1880,39 +2212,86 @@ export function BlockDiceCalculator() {
                       setSelectedSessionEventTeamSide(event.target.value as 'HOME' | 'AWAY')
                     }
                   >
-                    <option value="HOME">Blue</option>
-                    <option value="AWAY">Red</option>
+                    <option value="HOME">{homeSessionTeamName}</option>
+                    <option value="AWAY">{awaySessionTeamName}</option>
                   </select>
                 </label>
                 <label className={styles.sessionLoaderField}>
                   <span className={styles.playerCardControlLabel}>
                     {selectedSessionEventType === 'CASUALTY' ? 'Causing player #' : 'Player #'}
                   </span>
-                  <input
+                  <select
                     className={styles.sessionLoaderInput}
-                    inputMode="numeric"
                     value={sessionEventPlayerNumberInput}
-                    onChange={(event) =>
-                      setSessionEventPlayerNumberInput(event.target.value.replace(/[^\d]/gu, ''))
-                    }
-                    placeholder="Optional"
-                  />
+                    onChange={(event) => setSessionEventPlayerNumberInput(event.target.value)}
+                  >
+                    <option value="">Choose player</option>
+                    {sessionEventPlayerOptions.map((player) => (
+                      <option key={player.id} value={player.shirtNumber ?? ''}>
+                        {formatImportedPlayerOptionLabel(player)}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 {selectedSessionEventType === 'CASUALTY' ? (
-                  <label className={styles.sessionLoaderField}>
-                    <span className={styles.playerCardControlLabel}>
-                      Injured {toSessionSideLabel(getOpposingSessionSide(selectedSessionEventTeamSide))} player #
-                    </span>
-                    <input
-                      className={styles.sessionLoaderInput}
-                      inputMode="numeric"
-                      value={sessionEventInjuredPlayerNumberInput}
-                      onChange={(event) =>
-                        setSessionEventInjuredPlayerNumberInput(event.target.value.replace(/[^\d]/gu, ''))
-                      }
-                      placeholder="Required"
-                    />
-                  </label>
+                  <>
+                    <label className={styles.sessionLoaderField}>
+                      <span className={styles.playerCardControlLabel}>Injured team</span>
+                      <select
+                        className={styles.sessionLoaderInput}
+                        value={sessionEventInjuredTeamSide}
+                        onChange={(event) =>
+                          setSessionEventInjuredTeamSide(event.target.value as 'HOME' | 'AWAY')
+                        }
+                      >
+                        <option value="HOME">{homeSessionTeamName}</option>
+                        <option value="AWAY">{awaySessionTeamName}</option>
+                      </select>
+                    </label>
+                    <label className={styles.sessionLoaderField}>
+                      <span className={styles.playerCardControlLabel}>Injured player</span>
+                      <select
+                        className={styles.sessionLoaderInput}
+                        value={sessionEventInjuredPlayerNumberInput}
+                        onChange={(event) => setSessionEventInjuredPlayerNumberInput(event.target.value)}
+                      >
+                        <option value="">Choose injured player</option>
+                        {sessionEventInjuredPlayerOptions.map((player) => (
+                          <option key={player.id} value={player.shirtNumber ?? ''}>
+                            {formatImportedPlayerOptionLabel(player)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={styles.sessionLoaderField}>
+                      <span className={styles.playerCardControlLabel}>Injury result</span>
+                      <select
+                        className={styles.sessionLoaderInput}
+                        value={sessionEventCasualtyResolutionType}
+                        onChange={(event) =>
+                          setSessionEventCasualtyResolutionType(
+                            event.target.value as
+                              | 'NONE'
+                              | 'MISS_NEXT_GAME'
+                              | 'NIGGLING_INJURY'
+                              | 'SERIOUS_INJURY'
+                              | 'LASTING_INJURY_ARMOUR'
+                              | 'LASTING_INJURY_MOVEMENT'
+                              | 'LASTING_INJURY_PASSING'
+                              | 'LASTING_INJURY_AGILITY'
+                              | 'LASTING_INJURY_STRENGTH'
+                              | 'DEAD',
+                          )
+                        }
+                      >
+                        {CASUALTY_RESOLUTION_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
                 ) : null}
                 <label className={styles.sessionLoaderField}>
                   <span className={styles.playerCardControlLabel}>Note</span>
@@ -1929,33 +2308,21 @@ export function BlockDiceCalculator() {
                   type="button"
                   className={styles.actionButtonPrimary}
                   onClick={() => void handleCreateSessionEvent()}
-                  disabled={isSessionEventLoading || isCurrentSessionClosed}
+                  disabled={
+                    isSessionEventLoading ||
+                    isCurrentSessionClosed ||
+                    !viewerParticipantSide ||
+                    (sessionTimer.phase !== 'RUNNING' && sessionTimer.phase !== 'REVIEW')
+                  }
                 >
                   Add event
                 </button>
-                <button
-                  type="button"
-                  className={styles.actionButtonSecondary}
-                  onClick={() => void handleConfirmSessionTurn('HOME')}
-                  disabled={isSessionEventLoading || homeTurnConfirmed || isCurrentSessionClosed}
-                >
-                  {homeTurnConfirmed ? 'Blue confirmed' : 'Confirm blue'}
-                </button>
-                <button
-                  type="button"
-                  className={styles.actionButtonSecondary}
-                  onClick={() => void handleConfirmSessionTurn('AWAY')}
-                  disabled={isSessionEventLoading || awayTurnConfirmed || isCurrentSessionClosed}
-                >
-                  {awayTurnConfirmed ? 'Red confirmed' : 'Confirm red'}
-                </button>
               </div>
               <div className={styles.confirmationStatusRow}>
-                <span className={homeTurnConfirmed ? styles.confirmedPill : styles.pendingPill}>
-                  Blue {homeTurnConfirmed ? 'confirmed' : 'pending'}
-                </span>
-                <span className={awayTurnConfirmed ? styles.confirmedPill : styles.pendingPill}>
-                  Red {awayTurnConfirmed ? 'confirmed' : 'pending'}
+                <span className={currentTurnLocked ? styles.confirmedPill : styles.pendingPill}>
+                  {unresolvedCurrentTurnEventCount === 0
+                    ? 'All current-turn events confirmed'
+                    : `${unresolvedCurrentTurnEventCount} event confirmation${unresolvedCurrentTurnEventCount === 1 ? '' : 's'} pending`}
                 </span>
               </div>
               {currentTurnEvents.length === 0 ? (
@@ -1981,48 +2348,48 @@ export function BlockDiceCalculator() {
                       </div>
                       {event.notes ? <p className={styles.eventNote}>{event.notes}</p> : null}
                       {event.eventType === 'CASUALTY' ? (
-                        <label className={styles.sessionLoaderField}>
-                          <span className={styles.playerCardControlLabel}>Injury result</span>
-                          <select
-                            className={styles.sessionLoaderInput}
-                            value={casualtyResolutionByEventId.get(event.id) ?? ''}
-                            onChange={(changeEvent) =>
-                              void handleUpdateCasualtyResolution(
-                                event.id,
-                                changeEvent.target.value as
-                                  | 'NONE'
-                                  | 'MISS_NEXT_GAME'
-                                  | 'NIGGLING_INJURY'
-                                  | 'SERIOUS_INJURY'
-                                  | 'LASTING_INJURY_ARMOUR'
-                                  | 'LASTING_INJURY_MOVEMENT'
-                                  | 'LASTING_INJURY_PASSING'
-                                  | 'LASTING_INJURY_AGILITY'
-                                  | 'LASTING_INJURY_STRENGTH'
-                                  | 'DEAD',
-                              )
-                            }
-                            disabled={isSessionEventLoading || progressionApplied}
-                          >
-                            <option value="" disabled>
-                              Choose result
-                            </option>
-                            {CASUALTY_RESOLUTION_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                        <p className={styles.eventNote}>
+                          Injury result: {CASUALTY_RESOLUTION_OPTIONS.find((option) => option.value === (casualtyResolutionByEventId.get(event.id) ?? ''))?.label ?? 'Not recorded'}
+                        </p>
                       ) : null}
-                      <button
-                        type="button"
-                        className={styles.actionButtonSecondary}
-                        onClick={() => void handleDeleteSessionEvent(event.id)}
-                        disabled={isSessionEventLoading || isCurrentSessionClosed}
-                      >
-                        Remove
-                      </button>
+                      <div className={styles.confirmationStatusRow}>
+                        <span className={event.homeConfirmed ? styles.confirmedPill : styles.pendingPill}>
+                          Blue {event.homeConfirmed ? 'confirmed' : 'pending'}
+                        </span>
+                        <span className={event.awayConfirmed ? styles.confirmedPill : styles.pendingPill}>
+                          Red {event.awayConfirmed ? 'confirmed' : 'pending'}
+                        </span>
+                      </div>
+                      <div className={styles.timerActionRow}>
+                        {viewerParticipantSide === 'HOME' ? (
+                          <button
+                            type="button"
+                            className={styles.actionButtonSecondary}
+                            onClick={() => void handleConfirmSessionEvent(event.id, 'HOME')}
+                            disabled={isSessionEventLoading || isCurrentSessionClosed || event.homeConfirmed}
+                          >
+                            {event.homeConfirmed ? 'Blue confirmed' : 'Confirm blue'}
+                          </button>
+                        ) : null}
+                        {viewerParticipantSide === 'AWAY' ? (
+                          <button
+                            type="button"
+                            className={styles.actionButtonSecondary}
+                            onClick={() => void handleConfirmSessionEvent(event.id, 'AWAY')}
+                            disabled={isSessionEventLoading || isCurrentSessionClosed || event.awayConfirmed}
+                          >
+                            {event.awayConfirmed ? 'Red confirmed' : 'Confirm red'}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className={styles.actionButtonSecondary}
+                          onClick={() => void handleDeleteSessionEvent(event.id)}
+                          disabled={isSessionEventLoading || isCurrentSessionClosed || (event.homeConfirmed && event.awayConfirmed)}
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </article>
                   ))}
                 </div>
@@ -2056,48 +2423,18 @@ export function BlockDiceCalculator() {
                       </div>
                       {event.notes ? <p className={styles.eventNote}>{event.notes}</p> : null}
                       {event.eventType === 'CASUALTY' ? (
-                        <label className={styles.sessionLoaderField}>
-                          <span className={styles.playerCardControlLabel}>Injury result</span>
-                          <select
-                            className={styles.sessionLoaderInput}
-                            value={casualtyResolutionByEventId.get(event.id) ?? ''}
-                            onChange={(changeEvent) =>
-                              void handleUpdateCasualtyResolution(
-                                event.id,
-                                changeEvent.target.value as
-                                  | 'NONE'
-                                  | 'MISS_NEXT_GAME'
-                                  | 'NIGGLING_INJURY'
-                                  | 'SERIOUS_INJURY'
-                                  | 'LASTING_INJURY_ARMOUR'
-                                  | 'LASTING_INJURY_MOVEMENT'
-                                  | 'LASTING_INJURY_PASSING'
-                                  | 'LASTING_INJURY_AGILITY'
-                                  | 'LASTING_INJURY_STRENGTH'
-                                  | 'DEAD',
-                              )
-                            }
-                            disabled={isSessionEventLoading || progressionApplied}
-                          >
-                            <option value="" disabled>
-                              Choose result
-                            </option>
-                            {CASUALTY_RESOLUTION_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                        <p className={styles.eventNote}>
+                          Injury result: {CASUALTY_RESOLUTION_OPTIONS.find((option) => option.value === (casualtyResolutionByEventId.get(event.id) ?? ''))?.label ?? 'Not recorded'}
+                        </p>
                       ) : null}
-                      <button
-                        type="button"
-                        className={styles.actionButtonSecondary}
-                        onClick={() => void handleDeleteSessionEvent(event.id)}
-                        disabled={isSessionEventLoading || isCurrentSessionClosed}
-                      >
-                        Remove
-                      </button>
+                      <div className={styles.confirmationStatusRow}>
+                        <span className={event.homeConfirmed ? styles.confirmedPill : styles.pendingPill}>
+                          Blue {event.homeConfirmed ? 'confirmed' : 'pending'}
+                        </span>
+                        <span className={event.awayConfirmed ? styles.confirmedPill : styles.pendingPill}>
+                          Red {event.awayConfirmed ? 'confirmed' : 'pending'}
+                        </span>
+                      </div>
                     </article>
                   ))}
                 </div>
@@ -2142,22 +2479,26 @@ export function BlockDiceCalculator() {
                 </article>
               </div>
               <div className={styles.timerActionRow}>
-                <button
-                  type="button"
-                  className={styles.actionButtonPrimary}
-                  onClick={() => void handleFinalSessionSignoff('HOME')}
-                  disabled={isSessionEventLoading || homeFinalSignedOff || isCurrentSessionClosed}
-                >
-                  {homeFinalSignedOff ? 'Blue signed off' : 'Sign off blue'}
-                </button>
-                <button
-                  type="button"
-                  className={styles.actionButtonSecondary}
-                  onClick={() => void handleFinalSessionSignoff('AWAY')}
-                  disabled={isSessionEventLoading || awayFinalSignedOff || isCurrentSessionClosed}
-                >
-                  {awayFinalSignedOff ? 'Red signed off' : 'Sign off red'}
-                </button>
+                {viewerParticipantSide === 'HOME' ? (
+                  <button
+                    type="button"
+                    className={styles.actionButtonPrimary}
+                    onClick={() => void handleFinalSessionSignoff('HOME')}
+                    disabled={isSessionEventLoading || homeFinalSignedOff || isCurrentSessionClosed}
+                  >
+                    {homeFinalSignedOff ? `${homeSessionTeamName} signed off` : `Sign off ${homeSessionTeamName}`}
+                  </button>
+                ) : null}
+                {viewerParticipantSide === 'AWAY' ? (
+                  <button
+                    type="button"
+                    className={styles.actionButtonSecondary}
+                    onClick={() => void handleFinalSessionSignoff('AWAY')}
+                    disabled={isSessionEventLoading || awayFinalSignedOff || isCurrentSessionClosed}
+                  >
+                    {awayFinalSignedOff ? `${awaySessionTeamName} signed off` : `Sign off ${awaySessionTeamName}`}
+                  </button>
+                ) : null}
               </div>
               {sessionFinalSignoff.closedAt ? (
                 <p className={styles.statusNote}>Closed at {new Date(sessionFinalSignoff.closedAt).toLocaleString()}.</p>

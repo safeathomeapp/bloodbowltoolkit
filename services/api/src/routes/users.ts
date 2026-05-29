@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
+import { toPublicUser } from '../auth/users.js'
+
 const userParamsSchema = z.object({
   userId: z.string().min(1),
 })
@@ -32,7 +34,7 @@ export async function registerUserRoutes(app: FastifyInstance) {
     }
 
     return reply.send({
-      user,
+      user: toPublicUser(user),
     })
   })
 
@@ -53,7 +55,7 @@ export async function registerUserRoutes(app: FastifyInstance) {
     })
 
     return reply.code(201).send({
-      user,
+      user: toPublicUser(user),
     })
   })
 }

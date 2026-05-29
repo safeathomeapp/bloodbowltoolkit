@@ -1,14 +1,9 @@
 import type { KeyValueStore } from '../storage/keyValueStore'
-
-const API_USER_ID_KEY = 'blood-bowl-toolkit:team-creator:api-user-id'
-const DEFAULT_DISPLAY_NAME = 'Local Coach'
+import { AuthClient, type AuthApiUser } from './authClient'
 
 type FetchLike = typeof fetch
 
-export type SharedApiUser = {
-  id: string
-  displayName: string
-}
+export type SharedApiUser = AuthApiUser
 
 export type CompetitionSummary = {
   id: string
@@ -63,6 +58,7 @@ export type CompetitionEntrySummary = {
   submission: {
     id: string
     sourceTeamId: string | null
+    competitionTeamId: string | null
     teamName: string
     rosterTemplateId: string
     submittedAt: string
@@ -79,6 +75,7 @@ export type CompetitionSubmissionDetail = {
   competitionEntryId: string
   sourceType: 'COPIED_FROM_TEAM' | 'DIRECT_EVENT_BUILD'
   sourceTeamId: string | null
+  competitionTeamId: string | null
   rosterTemplateId: string
   teamName: string
   tierId: string | null
@@ -203,34 +200,28 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
 export class CompetitionClient {
   private readonly baseUrl: string
-  private readonly store: KeyValueStore
   private readonly fetchImpl: FetchLike
-  private userIdPromise: Promise<string> | null = null
+  private readonly authClient: AuthClient
 
   constructor(options: {
     baseUrl: string
     store: KeyValueStore
+    authClient?: AuthClient
     fetchImpl?: FetchLike
   }) {
     this.baseUrl = options.baseUrl.replace(/\/+$/u, '')
-    this.store = options.store
     this.fetchImpl = options.fetchImpl ?? ((input, init) => globalThis.fetch(input, init))
-  }
-
-  async ensureUserId() {
-    if (!this.userIdPromise) {
-      this.userIdPromise = this.createOrLoadUserId()
-    }
-
-    return this.userIdPromise
+    this.authClient =
+      options.authClient ??
+      new AuthClient({
+        baseUrl: this.baseUrl,
+        store: options.store,
+        fetchImpl: this.fetchImpl,
+      })
   }
 
   async getCurrentUser() {
-    const userId = await this.ensureUserId()
-    const response = await this.fetchImpl(`${this.baseUrl}/users/${encodeURIComponent(userId)}`)
-    const payload = await parseResponse<{ user: SharedApiUser }>(response)
-
-    return payload.user
+    return this.authClient.getCurrentUser()
   }
 
   async listCompetitions() {
@@ -258,12 +249,12 @@ export class CompetitionClient {
     submissionDeadline: string | null
     allowUnofficialRosters: boolean
   }) {
-    const createdByUserId = await this.ensureUserId()
+    const createdByUserId = await this.getCurrentUserId()
     const response = await this.fetchImpl(`${this.baseUrl}/competitions`, {
       method: 'POST',
-      headers: {
+      headers: this.authClient.createAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify({
         createdByUserId,
         name: input.name,
@@ -291,15 +282,46 @@ export class CompetitionClient {
     return payload.competition
   }
 
+  async updateCompetition(competitionId: string, input: {
+    name: string
+    description: string
+    maxEntrants: number
+    submissionDeadline: string | null
+    allowUnofficialRosters: boolean
+    status?: CompetitionSummary['status']
+    visibility?: CompetitionSummary['visibility']
+  }) {
+    const requestedByUserId = await this.getCurrentUserId()
+    const response = await this.fetchImpl(`${this.baseUrl}/competitions/${encodeURIComponent(competitionId)}`, {
+      method: 'PUT',
+      headers: this.authClient.createAuthHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        requestedByUserId,
+        name: input.name,
+        description: input.description || null,
+        maxEntrants: input.maxEntrants,
+        submissionDeadline: input.submissionDeadline,
+        allowUnofficialRosters: input.allowUnofficialRosters,
+        status: input.status,
+        visibility: input.visibility,
+      }),
+    })
+    const payload = await parseResponse<{ competition: CompetitionSummary }>(response)
+
+    return payload.competition
+  }
+
   async joinCompetition(competitionId: string) {
-    const userId = await this.ensureUserId()
+    const userId = await this.getCurrentUserId()
     const response = await this.fetchImpl(
       `${this.baseUrl}/competitions/${encodeURIComponent(competitionId)}/join`,
       {
         method: 'POST',
-        headers: {
+        headers: this.authClient.createAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({
           userId,
         }),
@@ -336,9 +358,9 @@ export class CompetitionClient {
       `${this.baseUrl}/competitions/${encodeURIComponent(competitionId)}/entries/${encodeURIComponent(entryId)}/submission`,
       {
         method: 'POST',
-        headers: {
+        headers: this.authClient.createAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify(input),
       },
     )
@@ -356,9 +378,9 @@ export class CompetitionClient {
       `${this.baseUrl}/competitions/${encodeURIComponent(competitionId)}/entries/${encodeURIComponent(entryId)}/submission`,
       {
         method: 'PUT',
-        headers: {
+        headers: this.authClient.createAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify(input),
       },
     )
@@ -368,14 +390,14 @@ export class CompetitionClient {
   }
 
   async approveSubmission(competitionId: string, entryId: string) {
-    const approvedByUserId = await this.ensureUserId()
+    const approvedByUserId = await this.getCurrentUserId()
     const response = await this.fetchImpl(
       `${this.baseUrl}/competitions/${encodeURIComponent(competitionId)}/entries/${encodeURIComponent(entryId)}/approve`,
       {
         method: 'POST',
-        headers: {
+        headers: this.authClient.createAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({
           approvedByUserId,
         }),
@@ -396,14 +418,14 @@ export class CompetitionClient {
   }
 
   async generateFixtures(competitionId: string) {
-    const requestedByUserId = await this.ensureUserId()
+    const requestedByUserId = await this.getCurrentUserId()
     const response = await this.fetchImpl(
       `${this.baseUrl}/competitions/${encodeURIComponent(competitionId)}/fixtures/generate`,
       {
         method: 'POST',
-        headers: {
+        headers: this.authClient.createAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({
           requestedByUserId,
         }),
@@ -424,14 +446,14 @@ export class CompetitionClient {
   }
 
   async createFixtureMatchSession(competitionId: string, fixtureId: string) {
-    const requestedByUserId = await this.ensureUserId()
+    const requestedByUserId = await this.getCurrentUserId()
     const response = await this.fetchImpl(
       `${this.baseUrl}/competitions/${encodeURIComponent(competitionId)}/fixtures/${encodeURIComponent(fixtureId)}/match-session`,
       {
         method: 'POST',
-        headers: {
+        headers: this.authClient.createAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({
           requestedByUserId,
         }),
@@ -442,55 +464,8 @@ export class CompetitionClient {
     return payload.matchSession
   }
 
-  async switchIdentity(displayName: string) {
-    const normalizedDisplayName = displayName.trim()
-
-    if (!normalizedDisplayName) {
-      throw new Error('Display name is required.')
-    }
-
-    const response = await this.fetchImpl(`${this.baseUrl}/users`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        displayName: normalizedDisplayName,
-      }),
-    })
-    const payload = await parseResponse<{ user: SharedApiUser }>(response)
-
-    this.store.setItem(API_USER_ID_KEY, payload.user.id)
-    this.userIdPromise = Promise.resolve(payload.user.id)
-
-    return payload.user
-  }
-
-  clearIdentity() {
-    this.store.removeItem(API_USER_ID_KEY)
-    this.userIdPromise = null
-  }
-
-  private async createOrLoadUserId() {
-    const existingUserId = this.store.getItem(API_USER_ID_KEY)
-
-    if (existingUserId) {
-      return existingUserId
-    }
-
-    const response = await this.fetchImpl(`${this.baseUrl}/users`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        displayName: DEFAULT_DISPLAY_NAME,
-      }),
-    })
-    const payload = await parseResponse<{ user: { id: string } }>(response)
-
-    this.store.setItem(API_USER_ID_KEY, payload.user.id)
-
-    return payload.user.id
+  private async getCurrentUserId() {
+    const user = await this.authClient.getCurrentUser()
+    return user.id
   }
 }

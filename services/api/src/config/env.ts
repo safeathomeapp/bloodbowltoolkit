@@ -7,6 +7,9 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   PORT: z.coerce.number().int().positive().default(3001),
   HOST: z.string().min(1).default('127.0.0.1'),
+  AUTH_EMAIL_VERIFICATION_TTL_HOURS: z.coerce.number().int().positive().default(24),
+  AUTH_MAGIC_LINK_TTL_MINUTES: z.coerce.number().int().positive().default(30),
+  AUTH_SESSION_TTL_DAYS: z.coerce.number().int().positive().default(30),
 })
 
 export type AppEnv = z.infer<typeof envSchema>

@@ -7,8 +7,30 @@ const DEDICATED_FAN_STEP_COST = 5_000
 const MINIMUM_TEAM_SIZE = 11
 const MAXIMUM_TEAM_SIZE = 16
 
-function isActivePlayer(player: Pick<SavedTeam['players'][number], 'playerStatus'>) {
+export function isActivePlayer(player: Pick<SavedTeam['players'][number], 'playerStatus'>) {
   return player.playerStatus === 'ACTIVE'
+}
+
+export function isRosteredPlayer(player: Pick<SavedTeam['players'][number], 'playerStatus'>) {
+  return player.playerStatus === 'ACTIVE' || player.playerStatus === 'RETIRED'
+}
+
+export function isEligibleForNextGamePlayer(
+  player: Pick<SavedTeam['players'][number], 'playerStatus' | 'missNextGame'>,
+) {
+  return player.playerStatus === 'ACTIVE' && !player.missNextGame
+}
+
+export function countActivePlayers(team: SavedTeam) {
+  return team.players.filter(isActivePlayer).length
+}
+
+export function countRosteredPlayers(team: SavedTeam) {
+  return team.players.filter(isRosteredPlayer).length
+}
+
+export function countEligiblePlayers(team: SavedTeam) {
+  return team.players.filter(isEligibleForNextGamePlayer).length
 }
 
 export function calculatePlayerValue(team: SavedTeam) {
@@ -60,14 +82,13 @@ export function calculateMinimumTeamSize(template: RosterTemplate) {
 
 export function getDraftWarnings(team: SavedTeam, template: RosterTemplate) {
   const warnings: string[] = []
+  const activePlayers = countActivePlayers(team)
 
-  const activePlayers = team.players.filter(isActivePlayer)
-
-  if (activePlayers.length < Math.max(MINIMUM_TEAM_SIZE, calculateMinimumTeamSize(template))) {
+  if (activePlayers < Math.max(MINIMUM_TEAM_SIZE, calculateMinimumTeamSize(template))) {
     warnings.push('Draft list needs at least 11 players.')
   }
 
-  if (activePlayers.length > MAXIMUM_TEAM_SIZE) {
+  if (activePlayers > MAXIMUM_TEAM_SIZE) {
     warnings.push('Draft list cannot exceed 16 players.')
   }
 
@@ -99,10 +120,12 @@ export function getDraftWarnings(team: SavedTeam, template: RosterTemplate) {
 }
 
 export function countPlayersByPosition(team: SavedTeam) {
-  return team.players.filter(isActivePlayer).reduce<Record<string, number>>((counts, player) => {
-    counts[player.positionTemplateId] = (counts[player.positionTemplateId] ?? 0) + 1
-    return counts
-  }, {})
+  return team.players
+    .filter(isRosteredPlayer)
+    .reduce<Record<string, number>>((counts, player) => {
+      counts[player.positionTemplateId] = (counts[player.positionTemplateId] ?? 0) + 1
+      return counts
+    }, {})
 }
 
 export function countPlayersInSharedGroup(
@@ -120,5 +143,5 @@ export function countPlayersInSharedGroup(
       .map((candidate) => candidate.id),
   )
 
-  return team.players.filter((player) => isActivePlayer(player) && groupedPositionIds.has(player.positionTemplateId)).length
+  return team.players.filter((player) => isRosteredPlayer(player) && groupedPositionIds.has(player.positionTemplateId)).length
 }

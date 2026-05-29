@@ -9,6 +9,9 @@ import {
   calculateRerollValue,
   calculateTeamValue,
   calculateTreasury,
+  countEligiblePlayers,
+  countPlayersByPosition,
+  countRosteredPlayers,
   getDraftWarnings,
 } from '../../../shared/utils/teamMath'
 import type { SavedTeam } from '../../../shared/types/team'
@@ -108,5 +111,126 @@ describe('teamMath', () => {
       'Dedicated fans must stay between 1 and 7 during drafting.',
       'Draft spending exceeds the current draft budget.',
     ])
+  })
+
+  it('keeps temporarily retired players on the team list but out of team value', () => {
+    const team: SavedTeam = {
+      id: 'team-3',
+      rosterTemplateId: 'amazon',
+      name: 'Seasoned Harpies',
+      status: 'ACTIVE',
+      draftBudget: 1000000,
+      rerollCount: 0,
+      assistantCoachCount: 0,
+      cheerleaderCount: 0,
+      dedicatedFans: 1,
+      apothecaryPurchased: false,
+      createdAt: '2026-05-15T00:00:00.000Z',
+      updatedAt: '2026-05-15T00:00:00.000Z',
+      players: [
+        {
+          id: 'player-1',
+          teamId: 'team-3',
+          positionTemplateId: 'amazon-eagle-warrior',
+          name: 'Ayla',
+          shirtNumber: 1,
+          playerStatus: 'ACTIVE',
+          currentValue: 50000,
+          spp: 0,
+          nigglingInjuries: 0,
+          missNextGame: false,
+          isDead: false,
+          extraSkills: [],
+          statAdjustments: {},
+        },
+        {
+          id: 'player-2',
+          teamId: 'team-3',
+          positionTemplateId: 'amazon-eagle-warrior',
+          name: 'Brena',
+          shirtNumber: 2,
+          playerStatus: 'RETIRED',
+          currentValue: 50000,
+          spp: 5,
+          nigglingInjuries: 1,
+          missNextGame: false,
+          isDead: false,
+          extraSkills: [],
+          statAdjustments: {},
+        },
+      ],
+    }
+
+    expect(calculatePlayerValue(team)).toBe(50000)
+    expect(countRosteredPlayers(team)).toBe(2)
+    expect(countPlayersByPosition(team)).toEqual({
+      'amazon-eagle-warrior': 2,
+    })
+  })
+
+  it('counts only non-mng active players as eligible for the next game', () => {
+    const team: SavedTeam = {
+      id: 'team-4',
+      rosterTemplateId: 'amazon',
+      name: 'Eligible Harpies',
+      status: 'ACTIVE',
+      draftBudget: 1000000,
+      rerollCount: 0,
+      assistantCoachCount: 0,
+      cheerleaderCount: 0,
+      dedicatedFans: 1,
+      apothecaryPurchased: false,
+      createdAt: '2026-05-15T00:00:00.000Z',
+      updatedAt: '2026-05-15T00:00:00.000Z',
+      players: [
+        {
+          id: 'player-1',
+          teamId: 'team-4',
+          positionTemplateId: 'amazon-eagle-warrior',
+          name: 'Ayla',
+          shirtNumber: 1,
+          playerStatus: 'ACTIVE',
+          currentValue: 50000,
+          spp: 0,
+          nigglingInjuries: 0,
+          missNextGame: false,
+          isDead: false,
+          extraSkills: [],
+          statAdjustments: {},
+        },
+        {
+          id: 'player-2',
+          teamId: 'team-4',
+          positionTemplateId: 'amazon-piranha-warrior',
+          name: 'Brena',
+          shirtNumber: 2,
+          playerStatus: 'ACTIVE',
+          currentValue: 90000,
+          spp: 0,
+          nigglingInjuries: 0,
+          missNextGame: true,
+          isDead: false,
+          extraSkills: [],
+          statAdjustments: {},
+        },
+        {
+          id: 'player-3',
+          teamId: 'team-4',
+          positionTemplateId: 'amazon-piranha-warrior',
+          name: 'Cyra',
+          shirtNumber: 3,
+          playerStatus: 'RETIRED',
+          currentValue: 90000,
+          spp: 0,
+          nigglingInjuries: 0,
+          missNextGame: false,
+          isDead: false,
+          extraSkills: [],
+          statAdjustments: {},
+        },
+      ],
+    }
+
+    expect(countEligiblePlayers(team)).toBe(1)
   })
 })

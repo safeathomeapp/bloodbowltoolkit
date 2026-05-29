@@ -218,6 +218,18 @@
   gap: 0.85rem;
 }
 
+.controlledByBlue {
+  border-color: rgba(96, 169, 255, 0.78);
+  box-shadow: inset 0 0 0 3px rgba(96, 169, 255, 0.42), 0 0 0 1px rgba(30, 82, 162, 0.42);
+  background: linear-gradient(180deg, rgba(42, 84, 148, 0.22), rgba(246, 239, 228, 0.05));
+}
+
+.controlledByRed {
+  border-color: rgba(248, 108, 115, 0.78);
+  box-shadow: inset 0 0 0 3px rgba(248, 108, 115, 0.42), 0 0 0 1px rgba(142, 38, 51, 0.42);
+  background: linear-gradient(180deg, rgba(145, 50, 68, 0.22), rgba(246, 239, 228, 0.05));
+}
+
 .timerHeader {
   display: flex;
   align-items: flex-start;
@@ -268,6 +280,32 @@
   background: rgba(216, 233, 255, 0.04);
   display: grid;
   gap: 0.85rem;
+}
+
+.controlBadge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 2rem;
+  margin-top: 0.55rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.84rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  border: 2px solid transparent;
+}
+
+.controlBadgeBlue {
+  background: rgba(63, 140, 255, 0.22);
+  border-color: rgba(96, 169, 255, 0.82);
+  color: #d8e9ff;
+}
+
+.controlBadgeRed {
+  background: rgba(223, 72, 89, 0.22);
+  border-color: rgba(248, 108, 115, 0.82);
+  color: #ffd7db;
 }
 
 .eventFormGrid {
