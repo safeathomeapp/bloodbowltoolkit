@@ -245,6 +245,10 @@ export class CompetitionClient {
   async createCompetition(input: {
     name: string
     description: string
+    type: CompetitionSummary['type']
+    format: CompetitionSummary['format']
+    status: CompetitionSummary['status']
+    visibility: CompetitionSummary['visibility']
     maxEntrants: number
     submissionDeadline: string | null
     allowUnofficialRosters: boolean
@@ -259,10 +263,10 @@ export class CompetitionClient {
         createdByUserId,
         name: input.name,
         description: input.description || null,
-        type: 'TOURNAMENT',
-        format: 'KNOCKOUT',
-        status: 'TEAM_SUBMISSION_OPEN',
-        visibility: 'INVITE_ONLY',
+        type: input.type,
+        format: input.format,
+        status: input.status,
+        visibility: input.visibility,
         maxEntrants: input.maxEntrants,
         submissionDeadline: input.submissionDeadline,
         allowUnofficialRosters: input.allowUnofficialRosters,
@@ -288,8 +292,8 @@ export class CompetitionClient {
     maxEntrants: number
     submissionDeadline: string | null
     allowUnofficialRosters: boolean
-    status?: CompetitionSummary['status']
-    visibility?: CompetitionSummary['visibility']
+    status: CompetitionSummary['status']
+    visibility: CompetitionSummary['visibility']
   }) {
     const requestedByUserId = await this.getCurrentUserId()
     const response = await this.fetchImpl(`${this.baseUrl}/competitions/${encodeURIComponent(competitionId)}`, {

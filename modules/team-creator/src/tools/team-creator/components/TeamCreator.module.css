@@ -290,9 +290,66 @@
   gap: 12px;
 }
 
+.competitionModeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.competitionWorkflowGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.competitionModeCard {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid rgba(137, 65, 51, 0.16);
+  border-radius: 16px;
+  padding: 16px;
+  color: #31231e;
+}
+
+.competitionModeCardActive {
+  border-color: #244a7a;
+  box-shadow: 0 0 0 2px rgba(36, 74, 122, 0.12);
+  background: #f4f8fc;
+}
+
+.competitionWorkflowCard {
+  display: grid;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid rgba(137, 65, 51, 0.16);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.modeSettingsPanel {
+  display: grid;
+  gap: 10px;
+  background: #fffdfa;
+  border: 1px solid rgba(137, 65, 51, 0.12);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.modeSettingsList {
+  display: grid;
+  gap: 8px;
+}
+
 .competitionList {
   display: grid;
   gap: 14px;
+}
+
+.competitionGroupStack {
+  display: grid;
+  gap: 12px;
 }
 
 .subsectionHeader {

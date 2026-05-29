@@ -53,6 +53,10 @@ type ReferenceModalContent = {
 type CompetitionCreateFormState = {
   name: string
   description: string
+  type: 'LEAGUE' | 'TOURNAMENT'
+  format: 'KNOCKOUT' | 'SWISS' | 'ROUND_ROBIN'
+  status: 'DRAFT' | 'OPEN_FOR_JOIN' | 'TEAM_SUBMISSION_OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'ARCHIVED'
+  visibility: 'PRIVATE' | 'INVITE_ONLY' | 'OPEN'
   maxEntrants: string
   submissionDeadline: string
   allowUnofficialRosters: boolean
@@ -114,6 +118,13 @@ type ConfirmationDialogState =
       message: string
       confirmLabel: string
     }
+
+type CompetitionTypeCard = {
+  type: CompetitionCreateFormState['type']
+  title: string
+  eyebrow: string
+  description: string
+}
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() ?? ''
 const blockDiceBaseUrl = (import.meta.env.VITE_BLOCK_DICE_URL?.trim() || 'http://127.0.0.1:5174').replace(/\/+$/u, '')
@@ -268,12 +279,136 @@ function toDateTimeLocalValue(isoString: string | null) {
   return isoString ? isoString.slice(0, 16) : ''
 }
 
+const defaultCompetitionFormState: CompetitionCreateFormState = {
+  name: '',
+  description: '',
+  type: 'TOURNAMENT',
+  format: 'KNOCKOUT',
+  status: 'TEAM_SUBMISSION_OPEN',
+  visibility: 'INVITE_ONLY',
+  maxEntrants: '8',
+  submissionDeadline: '',
+  allowUnofficialRosters: false,
+}
+
+const competitionModeCards: CompetitionTypeCard[] = [
+  {
+    type: 'TOURNAMENT',
+    eyebrow: 'Resurrection Baseline',
+    title: 'Resurrection / Matched Play',
+    description:
+      'Use the current shared match room flow for event-bound play. Teams stay non-destructive here and the result should return to competition context after signoff.',
+  },
+  {
+    type: 'LEAGUE',
+    eyebrow: 'Progressive League',
+    title: 'League',
+    description:
+      'Use competition-bound live teams that will later move through explicit pre-game and post-game progression steps outside the timer room.',
+  },
+]
+
+function applyCompetitionTypeDefaults(
+  current: CompetitionCreateFormState,
+  nextType: CompetitionCreateFormState['type'],
+): CompetitionCreateFormState {
+  return {
+    ...current,
+    type: nextType,
+    format: nextType === 'LEAGUE' ? 'ROUND_ROBIN' : 'KNOCKOUT',
+    status: nextType === 'LEAGUE' ? 'OPEN_FOR_JOIN' : 'TEAM_SUBMISSION_OPEN',
+  }
+}
+
+function getCompetitionTypeLabel(type: CompetitionCreateFormState['type']) {
+  return type === 'TOURNAMENT' ? 'Resurrection / Matched Play' : 'League'
+}
+
+function getCompetitionModeSummary(type: CompetitionCreateFormState['type']) {
+  return type === 'TOURNAMENT'
+    ? 'Event rosters stay locked and non-destructive. Use the shared match room, then return the result to the competition page.'
+    : 'Competition-bound teams progress over time. Match logging can reuse the room later, but roster mutation belongs in league workflow outside the timer room.'
+}
+
+function getCompetitionFormatGuidance(type: CompetitionCreateFormState['type']) {
+  return type === 'TOURNAMENT'
+    ? 'Resurrection / matched play can still use knockout, swiss, or round-robin pairing styles without changing the non-destructive roster model.'
+    : 'League defaults should favour persistent season structure, with round-robin as the cleanest current baseline until richer league administration is added.'
+}
+
+function getCompetitionSeatLabel(type: CompetitionCreateFormState['type']) {
+  return type === 'TOURNAMENT' ? 'Entrants' : 'Coaches'
+}
+
+function getCompetitionDeadlineLabel(type: CompetitionCreateFormState['type']) {
+  return type === 'TOURNAMENT' ? 'Submission Deadline' : 'Entry Deadline'
+}
+
+function getCompetitionStatusChoices(type: CompetitionCreateFormState['type']) {
+  return type === 'TOURNAMENT'
+    ? [
+        { value: 'DRAFT', label: 'Draft' },
+        { value: 'OPEN_FOR_JOIN', label: 'Open For Join' },
+        { value: 'TEAM_SUBMISSION_OPEN', label: 'Team Submission Open' },
+      ]
+    : [
+        { value: 'DRAFT', label: 'Draft' },
+        { value: 'OPEN_FOR_JOIN', label: 'Open For Join' },
+      ]
+}
+
+function getCompetitionWorkflowHighlights(type: CompetitionCreateFormState['type']) {
+  return type === 'TOURNAMENT'
+    ? [
+        'Use locked event rosters with no post-game team mutation.',
+        'The shared match room is the intended tactical flow for this mode.',
+        'After signoff, the result should return to competition context.',
+      ]
+    : [
+        'Use progressing competition-bound teams rather than one-off event rosters.',
+        'Match logging can reuse the shared room, but post-game roster changes belong elsewhere.',
+        'This mode is the setup point for later pre-game and post-game league workflow.',
+      ]
+}
+
+function getCompetitionFormatChoices(type: CompetitionCreateFormState['type']) {
+  return type === 'TOURNAMENT'
+    ? [
+        { value: 'KNOCKOUT', label: 'Knockout' },
+        { value: 'SWISS', label: 'Swiss' },
+        { value: 'ROUND_ROBIN', label: 'Round Robin' },
+      ]
+    : [{ value: 'ROUND_ROBIN', label: 'Round Robin' }]
+}
+
+function getModeSpecificSettingsTitle(type: CompetitionCreateFormState['type']) {
+  return type === 'TOURNAMENT' ? 'Resurrection Settings' : 'League Settings'
+}
+
+function getModeSpecificSettingsNotes(type: CompetitionCreateFormState['type']) {
+  return type === 'TOURNAMENT'
+    ? [
+        'Default toward event-ready states such as open joining and team submission rather than long-running league administration.',
+        'Use pairing formats that suit a one-event cycle, then hand finished matches back to competition context.',
+        'Keep roster handling lightweight here because post-game progression does not belong to this mode.',
+      ]
+    : [
+        'Use round-robin as the current safe default while league workflow is still being made explicit.',
+        'Think of this page as setting up the league shell, not the full progression engine.',
+        'Post-game mutations, treasury changes, and roster administration will be handled in later league-specific workflow.',
+      ]
+}
+
+function getUnofficialRosterLabel(type: CompetitionCreateFormState['type']) {
+  return type === 'TOURNAMENT' ? 'Allow Unofficial Event Rosters' : 'Allow Unofficial League Rosters'
+}
+
 export function TeamCreator() {
   const [templates, setTemplates] = useState<RosterTemplate[]>([])
   const [teams, setTeams] = useState<SavedTeamSummary[]>([])
   const [competitionTeams, setCompetitionTeams] = useState<SavedTeamSummary[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
-  const [libraryView, setLibraryView] = useState<'CREATE' | 'LOAD' | 'COMPETITIONS'>('CREATE')
+  const [libraryView, setLibraryView] = useState<'CREATE' | 'LOAD' | 'COMPETITIONS' | 'CREATE_COMPETITION'>('CREATE')
   const [activeTeam, setActiveTeam] = useState<SavedTeam | null>(null)
   const [selectedPositionId, setSelectedPositionId] = useState('')
   const [activeReference, setActiveReference] = useState<ReferenceModalContent | null>(null)
@@ -292,13 +427,7 @@ export function TeamCreator() {
   const [isCompetitionLoading, setIsCompetitionLoading] = useState(false)
   const [competitionUserId, setCompetitionUserId] = useState('')
   const [currentApiUser, setCurrentApiUser] = useState<AuthApiUser | null>(null)
-  const [competitionForm, setCompetitionForm] = useState<CompetitionCreateFormState>({
-    name: '',
-    description: '',
-    maxEntrants: '8',
-    submissionDeadline: '',
-    allowUnofficialRosters: false,
-  })
+  const [competitionForm, setCompetitionForm] = useState<CompetitionCreateFormState>(defaultCompetitionFormState)
   const [editingCompetitionId, setEditingCompetitionId] = useState<string | null>(null)
   const [selectedCompetitionTeamIds, setSelectedCompetitionTeamIds] = useState<Record<string, string>>({})
   const [selectedCompetitionTierIds, setSelectedCompetitionTierIds] = useState<Record<string, string>>({})
@@ -444,6 +573,17 @@ export function TeamCreator() {
   const inactivePlayers = useMemo(
     () => activeTeam?.players.filter((player) => player.playerStatus !== 'ACTIVE') ?? [],
     [activeTeam],
+  )
+  const sortedCompetitions = useMemo(
+    () =>
+      [...competitions].sort((left, right) => {
+        if (left.type !== right.type) {
+          return left.type === 'TOURNAMENT' ? -1 : 1
+        }
+
+        return left.name.localeCompare(right.name)
+      }),
+    [competitions],
   )
 
   const selectedTemplate = useMemo(
@@ -730,20 +870,32 @@ export function TeamCreator() {
       }
 
       if (editingCompetitionId) {
-        await competitionClient.updateCompetition(editingCompetitionId, sharedPayload)
+        await competitionClient.updateCompetition(editingCompetitionId, {
+          ...sharedPayload,
+          status: competitionForm.status,
+          visibility: competitionForm.visibility,
+        })
       } else {
-        await competitionClient.createCompetition(sharedPayload)
+        await competitionClient.createCompetition({
+          ...sharedPayload,
+          type: competitionForm.type,
+          format: competitionForm.format,
+          status: competitionForm.status,
+          visibility: competitionForm.visibility,
+        })
       }
+      const createdType = competitionForm.type
       await refreshCompetitionState()
-      setCompetitionForm({
-        name: '',
-        description: '',
-        maxEntrants: '8',
-        submissionDeadline: '',
-        allowUnofficialRosters: false,
-      })
+      setCompetitionForm(defaultCompetitionFormState)
       setEditingCompetitionId(null)
-      setFeedback(editingCompetitionId ? 'Competition updated.' : 'Competition created.')
+      setLibraryView('COMPETITIONS')
+      setFeedback(
+        editingCompetitionId
+          ? `${getCompetitionTypeLabel(createdType)} competition updated.`
+          : createdType === 'TOURNAMENT'
+            ? 'Resurrection / matched play competition created. Next step: move into entrants, submissions, and fixture setup.'
+            : 'League competition created. Next step: shape entrants and later league-specific administration around this shell.',
+      )
     } catch (error) {
       setFeedback(
         error instanceof Error
@@ -758,23 +910,22 @@ export function TeamCreator() {
     setCompetitionForm({
       name: competition.name,
       description: competition.description ?? '',
+      type: competition.type,
+      format: competition.format,
+      status: competition.status,
+      visibility: competition.visibility,
       maxEntrants: String(competition.maxEntrants),
       submissionDeadline: toDateTimeLocalValue(competition.submissionDeadline),
       allowUnofficialRosters: competition.allowUnofficialRosters,
     })
-    setLibraryView('COMPETITIONS')
+    setLibraryView('CREATE_COMPETITION')
     setFeedback(`Editing ${competition.name}.`)
   }
 
   function handleCancelCompetitionEdit() {
     setEditingCompetitionId(null)
-    setCompetitionForm({
-      name: '',
-      description: '',
-      maxEntrants: '8',
-      submissionDeadline: '',
-      allowUnofficialRosters: false,
-    })
+    setCompetitionForm(defaultCompetitionFormState)
+    setLibraryView('COMPETITIONS')
     setFeedback('Competition edit cancelled.')
   }
 
@@ -2046,7 +2197,9 @@ export function TeamCreator() {
                 ? 'Create New Team'
                 : libraryView === 'LOAD'
                   ? 'Load Saved Team'
-                  : 'Competitions'}
+                  : libraryView === 'CREATE_COMPETITION'
+                    ? editingCompetitionId ? 'Edit Competition' : 'Create Competition'
+                    : 'Competitions'}
             </h1>
           </div>
 
@@ -2071,6 +2224,18 @@ export function TeamCreator() {
               type="button"
             >
               Competitions
+            </button>
+            <button
+              className={libraryView === 'CREATE_COMPETITION' ? styles.libraryNavButtonActive : styles.libraryNavButton}
+              onClick={() => {
+                if (!editingCompetitionId) {
+                  setCompetitionForm(defaultCompetitionFormState)
+                }
+                setLibraryView('CREATE_COMPETITION')
+              }}
+              type="button"
+            >
+              Create Competition
             </button>
           </nav>
 
@@ -2200,20 +2365,27 @@ export function TeamCreator() {
                 ) : null}
               </div>
             </section>
-          ) : (
+          ) : libraryView === 'CREATE_COMPETITION' ? (
             <section className={styles.librarySinglePane}>
               {competitionClient ? (
-                <>
-                  <section className={styles.competitionPanel}>
-                    <div className={styles.panelHeader}>
-                      <div>
-                        <p className={styles.sectionKicker}>
-                          {editingCompetitionId ? 'Competition Settings' : 'Knockout Setup'}
-                        </p>
-                        <h2 className={styles.panelHeadline}>
-                          {editingCompetitionId ? 'Edit Competition' : 'Create Competition'}
-                        </h2>
-                      </div>
+                <section className={styles.competitionPanel}>
+                  <div className={styles.panelHeader}>
+                    <div>
+                      <p className={styles.sectionKicker}>
+                        {editingCompetitionId ? 'Competition Settings' : 'Competition Setup'}
+                      </p>
+                      <h2 className={styles.panelHeadline}>
+                        {editingCompetitionId ? 'Edit Competition' : 'Create Competition'}
+                      </h2>
+                    </div>
+                    <div className={styles.competitionActionRow}>
+                      <button
+                        className={styles.secondaryButton}
+                        onClick={() => setLibraryView('COMPETITIONS')}
+                        type="button"
+                      >
+                        Back To Competition List
+                      </button>
                       {editingCompetitionId ? (
                         <button
                           className={styles.secondaryButton}
@@ -2224,81 +2396,228 @@ export function TeamCreator() {
                         </button>
                       ) : null}
                     </div>
-                    <div className={styles.competitionFormGrid}>
-                      <label className={styles.field}>
-                        <span>Name</span>
-                        <input
-                          value={competitionForm.name}
-                          onChange={(event) =>
-                            setCompetitionForm((current) => ({ ...current, name: event.target.value }))
-                          }
-                        />
-                      </label>
-                      <label className={styles.field}>
-                        <span>Description</span>
-                        <input
-                          value={competitionForm.description}
-                          onChange={(event) =>
-                            setCompetitionForm((current) => ({ ...current, description: event.target.value }))
-                          }
-                        />
-                      </label>
-                      <label className={styles.field}>
-                        <span>Seats</span>
-                        <input
-                          type="number"
-                          min="2"
-                          value={competitionForm.maxEntrants}
-                          onChange={(event) =>
-                            setCompetitionForm((current) => ({ ...current, maxEntrants: event.target.value }))
-                          }
-                        />
-                      </label>
-                      <label className={styles.field}>
-                        <span>Submission Deadline</span>
-                        <input
-                          type="datetime-local"
-                          value={competitionForm.submissionDeadline}
-                          onChange={(event) =>
-                            setCompetitionForm((current) => ({
-                              ...current,
-                              submissionDeadline: event.target.value,
-                            }))
-                          }
-                        />
-                      </label>
-                      <label className={styles.toggleField}>
-                        <span>Allow Unofficial Rosters</span>
-                        <input
-                          type="checkbox"
-                          checked={competitionForm.allowUnofficialRosters}
-                          onChange={(event) =>
-                            setCompetitionForm((current) => ({
-                              ...current,
-                              allowUnofficialRosters: event.target.checked,
-                            }))
-                          }
-                        />
-                      </label>
+                  </div>
+
+                  <div className={styles.competitionModeGrid}>
+                    {competitionModeCards.map((card) => (
+                      <button
+                        key={card.type}
+                        type="button"
+                        className={
+                          competitionForm.type === card.type
+                            ? `${styles.competitionModeCard} ${styles.competitionModeCardActive}`
+                            : styles.competitionModeCard
+                        }
+                        onClick={() => setCompetitionForm((current) => applyCompetitionTypeDefaults(current, card.type))}
+                      >
+                        <span className={styles.sectionKicker}>{card.eyebrow}</span>
+                        <strong className={styles.subsectionTitle}>{card.title}</strong>
+                        <span className={styles.helperText}>{card.description}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className={styles.competitionWorkflowGrid}>
+                    {getCompetitionWorkflowHighlights(competitionForm.type).map((entry) => (
+                      <article key={entry} className={styles.competitionWorkflowCard}>
+                        <span className={styles.sectionKicker}>{getCompetitionTypeLabel(competitionForm.type)}</span>
+                        <p className={styles.helperText}>{entry}</p>
+                      </article>
+                    ))}
+                  </div>
+
+                  <section className={styles.modeSettingsPanel}>
+                    <div className={styles.subsectionHeader}>
+                      <p className={styles.sectionKicker}>Mode-Specific Setup</p>
+                      <h3 className={styles.subsectionTitle}>{getModeSpecificSettingsTitle(competitionForm.type)}</h3>
                     </div>
-                    <button className={styles.primaryButton} onClick={() => void handleCreateCompetition()} type="button">
-                      {editingCompetitionId ? 'Save Competition Changes' : 'Create Knockout Competition'}
-                    </button>
+                    <div className={styles.modeSettingsList}>
+                      {getModeSpecificSettingsNotes(competitionForm.type).map((entry) => (
+                        <p key={entry} className={styles.helperText}>
+                          {entry}
+                        </p>
+                      ))}
+                    </div>
                   </section>
 
+                  <div className={styles.competitionFormGrid}>
+                    <label className={styles.field}>
+                      <span>Name</span>
+                      <input
+                        value={competitionForm.name}
+                        onChange={(event) =>
+                          setCompetitionForm((current) => ({ ...current, name: event.target.value }))
+                        }
+                      />
+                    </label>
+                    <label className={styles.field}>
+                      <span>Description</span>
+                      <input
+                        value={competitionForm.description}
+                        onChange={(event) =>
+                          setCompetitionForm((current) => ({ ...current, description: event.target.value }))
+                        }
+                      />
+                    </label>
+                    <label className={styles.field}>
+                      <span>Competition Type</span>
+                      <select
+                        value={competitionForm.type}
+                        disabled={Boolean(editingCompetitionId)}
+                        onChange={(event) => {
+                          const nextType = event.target.value as CompetitionCreateFormState['type']
+                          setCompetitionForm((current) => applyCompetitionTypeDefaults(current, nextType))
+                        }}
+                      >
+                        <option value="TOURNAMENT">Resurrection / Matched Play</option>
+                        <option value="LEAGUE">League</option>
+                      </select>
+                    </label>
+                    <label className={styles.field}>
+                      <span>Format</span>
+                      <select
+                        value={competitionForm.format}
+                        disabled={Boolean(editingCompetitionId)}
+                        onChange={(event) =>
+                          setCompetitionForm((current) => ({
+                            ...current,
+                            format: event.target.value as CompetitionCreateFormState['format'],
+                          }))
+                        }
+                      >
+                        {getCompetitionFormatChoices(competitionForm.type).map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={styles.field}>
+                      <span>Visibility</span>
+                      <select
+                        value={competitionForm.visibility}
+                        onChange={(event) =>
+                          setCompetitionForm((current) => ({
+                            ...current,
+                            visibility: event.target.value as CompetitionCreateFormState['visibility'],
+                          }))
+                        }
+                      >
+                        <option value="PRIVATE">Private</option>
+                        <option value="INVITE_ONLY">Invite Only</option>
+                        <option value="OPEN">Open</option>
+                      </select>
+                    </label>
+                    <label className={styles.field}>
+                      <span>Start State</span>
+                      <select
+                        value={competitionForm.status}
+                        onChange={(event) =>
+                          setCompetitionForm((current) => ({
+                            ...current,
+                            status: event.target.value as CompetitionCreateFormState['status'],
+                          }))
+                        }
+                      >
+                        {getCompetitionStatusChoices(competitionForm.type).map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={styles.field}>
+                      <span>{getCompetitionSeatLabel(competitionForm.type)}</span>
+                      <input
+                        type="number"
+                        min="2"
+                        value={competitionForm.maxEntrants}
+                        onChange={(event) =>
+                          setCompetitionForm((current) => ({ ...current, maxEntrants: event.target.value }))
+                        }
+                      />
+                    </label>
+                    <label className={styles.field}>
+                      <span>{getCompetitionDeadlineLabel(competitionForm.type)}</span>
+                      <input
+                        type="datetime-local"
+                        value={competitionForm.submissionDeadline}
+                        onChange={(event) =>
+                          setCompetitionForm((current) => ({
+                            ...current,
+                            submissionDeadline: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className={styles.toggleField}>
+                      <span>{getUnofficialRosterLabel(competitionForm.type)}</span>
+                      <input
+                        type="checkbox"
+                        checked={competitionForm.allowUnofficialRosters}
+                        onChange={(event) =>
+                          setCompetitionForm((current) => ({
+                            ...current,
+                            allowUnofficialRosters: event.target.checked,
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+                  <p className={styles.helperText}>
+                    {getCompetitionModeSummary(competitionForm.type)}
+                  </p>
+                  <p className={styles.helperText}>
+                    {getCompetitionFormatGuidance(competitionForm.type)}
+                  </p>
+                  <button className={styles.primaryButton} onClick={() => void handleCreateCompetition()} type="button">
+                    {editingCompetitionId ? 'Save Competition Changes' : 'Create Competition'}
+                  </button>
+                </section>
+              ) : (
+                <section className={styles.competitionPanel}>
+                  <div className={styles.panelHeader}>
+                    <div>
+                      <p className={styles.sectionKicker}>Shared API Required</p>
+                      <h2 className={styles.panelHeadline}>Competition Creation</h2>
+                    </div>
+                  </div>
+                  <p className={styles.helperText}>
+                    Competition creation requires the shared API repository mode and a signed-in account.
+                  </p>
+                </section>
+              )}
+            </section>
+          ) : (
+            <section className={styles.librarySinglePane}>
+              {competitionClient ? (
+                <>
                   <section className={styles.competitionPanel}>
                     <div className={styles.panelHeader}>
                       <div>
                         <p className={styles.sectionKicker}>Shared API</p>
                         <h2 className={styles.panelHeadline}>Competition Vault</h2>
                       </div>
-                      <button
-                        className={styles.secondaryButton}
-                        onClick={() => void refreshCompetitionState()}
-                        type="button"
-                      >
-                        Refresh
-                      </button>
+                      <div className={styles.competitionActionRow}>
+                        <button
+                          className={styles.primaryButton}
+                          onClick={() => {
+                            setEditingCompetitionId(null)
+                            setCompetitionForm(defaultCompetitionFormState)
+                            setLibraryView('CREATE_COMPETITION')
+                          }}
+                          type="button"
+                        >
+                          New Competition
+                        </button>
+                        <button
+                          className={styles.secondaryButton}
+                          onClick={() => void refreshCompetitionState()}
+                          type="button"
+                        >
+                          Refresh
+                        </button>
+                      </div>
                     </div>
 
                     {isCompetitionLoading ? (
@@ -2307,7 +2626,7 @@ export function TeamCreator() {
                       <p className={styles.emptyState}>No competitions created yet.</p>
                     ) : (
                       <div className={styles.competitionList}>
-                        {competitions.map((competition) => {
+                        {sortedCompetitions.map((competition, index) => {
                           const currentEntry =
                             competition.entries.find((entry) => entry.userId === competitionUserId) ?? null
                           const submittedEntries = competition.entries.filter(
@@ -2321,36 +2640,51 @@ export function TeamCreator() {
                           const submission = competitionSubmissionDetails[competition.id] ?? null
                           const fixtures = competitionFixtures[competition.id] ?? []
                           const isOwner = competition.createdByUserId === competitionUserId
+                          const previousCompetitionType =
+                            index > 0 ? sortedCompetitions[index - 1]?.type ?? null : null
+                          const startsNewTypeGroup = index === 0 || previousCompetitionType !== competition.type
 
                           return (
-                            <article key={competition.id} className={styles.competitionCard}>
-                              <div className={styles.competitionCardHeader}>
-                                <div>
-                                  <h3 className={styles.competitionName}>{competition.name}</h3>
-                                  <p className={styles.metaLine}>
-                                    {competition.format} • {competition.status} • {competition.entrantCount}/{competition.maxEntrants} entrants
+                            <div key={competition.id} className={styles.competitionGroupStack}>
+                              {startsNewTypeGroup ? (
+                                <div className={styles.subsectionHeader}>
+                                  <p className={styles.sectionKicker}>Competition Type</p>
+                                  <h3 className={styles.subsectionTitle}>{getCompetitionTypeLabel(competition.type)}</h3>
+                                  <p className={styles.helperText}>
+                                    {competition.type === 'TOURNAMENT'
+                                      ? 'Non-destructive event competitions using the shared match-room baseline.'
+                                      : 'Progressive competitions intended for later league pre-game and post-game workflow.'}
                                   </p>
-                                  {competition.description ? (
-                                    <p className={styles.helperText}>{competition.description}</p>
-                                  ) : null}
                                 </div>
-                                <div className={styles.competitionMetaBlock}>
-                                  <span>{isOwner ? 'Owner' : 'Participant View'}</span>
-                                  <span>{competition.submissionDeadline ? `Deadline ${competition.submissionDeadline.slice(0, 16).replace('T', ' ')}` : 'No deadline set'}</span>
-                                  {isOwner ? (
-                                    <button
-                                      className={styles.secondaryButton}
-                                      onClick={() => handleStartCompetitionEdit(competition)}
-                                      type="button"
-                                    >
-                                      Edit Competition
-                                    </button>
-                                  ) : null}
+                              ) : null}
+                              <article className={styles.competitionCard}>
+                                <div className={styles.competitionCardHeader}>
+                                  <div>
+                                    <h3 className={styles.competitionName}>{competition.name}</h3>
+                                    <p className={styles.metaLine}>
+                                      {getCompetitionTypeLabel(competition.type)} • {competition.format} • {competition.status} • {competition.entrantCount}/{competition.maxEntrants} entrants
+                                    </p>
+                                    {competition.description ? (
+                                      <p className={styles.helperText}>{competition.description}</p>
+                                    ) : null}
+                                  </div>
+                                  <div className={styles.competitionMetaBlock}>
+                                    <span>{isOwner ? 'Owner' : 'Participant View'}</span>
+                                    <span>{competition.submissionDeadline ? `Deadline ${competition.submissionDeadline.slice(0, 16).replace('T', ' ')}` : 'No deadline set'}</span>
+                                    {isOwner ? (
+                                      <button
+                                        className={styles.secondaryButton}
+                                        onClick={() => handleStartCompetitionEdit(competition)}
+                                        type="button"
+                                      >
+                                        Edit Competition
+                                      </button>
+                                    ) : null}
+                                  </div>
                                 </div>
-                              </div>
 
-                              {currentEntry ? (
-                                <div className={styles.competitionEntryPanel}>
+                                {currentEntry ? (
+                                  <div className={styles.competitionEntryPanel}>
                                   <p className={styles.metaLine}>Entry status: {currentEntry.status}</p>
                                   <div className={styles.competitionSubmissionGrid}>
                                     <label className={styles.field}>
@@ -2561,6 +2895,7 @@ export function TeamCreator() {
                                 )}
                               </div>
                             </article>
+                            </div>
                           )
                         })}
                       </div>
