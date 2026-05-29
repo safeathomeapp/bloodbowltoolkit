@@ -62,6 +62,7 @@ const updateCompetitionBodySchema = z.object({
   maxEntrants: z.number().int().positive(),
   submissionDeadline: z.string().datetime({ offset: true }).nullable().optional(),
   allowUnofficialRosters: z.boolean(),
+  configJson: z.record(z.string(), z.unknown()).optional(),
 })
 
 const joinCompetitionBodySchema = z.object({
@@ -835,6 +836,11 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
               ? new Date(bodyResult.data.submissionDeadline)
               : null,
         allowUnofficialRosters: bodyResult.data.allowUnofficialRosters,
+        configJson: bodyResult.data.configJson === undefined
+          ? (existingCompetition.configJson === null
+              ? Prisma.JsonNull
+              : (existingCompetition.configJson as Prisma.InputJsonValue))
+          : (bodyResult.data.configJson as Prisma.InputJsonValue),
       },
       include: {
         createdBy: {

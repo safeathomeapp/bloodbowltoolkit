@@ -15,6 +15,11 @@ For startup canon, use:
 - competitions, submissions, fixtures, and fixture-backed match rooms are implemented
 - the current shared match room should now be treated as the baseline `MATCHED_PLAY` room model
 - league should reuse match logging but continue into a separate post-game progression flow
+- competition creation is now split from the competition vault list
+- competition creation now has mode-aware setup for:
+  - `Resurrection / Matched Play`
+  - `League`
+- competition cards now diverge by type in setup intent, but the overall competition vault UX is now too dense once many competitions exist
 - live-team progression already supports:
   - SPP
   - casualty outcomes
@@ -32,9 +37,25 @@ For startup canon, use:
 
 ## Best Next Move
 
-Update competition creation pages so the competition-type boundary is explicit before expanding the match-room model further.
+Refactor the competition vault UX before adding more competition workflow detail.
 
-After that, build the first explicit live-team `Post-Game Sequence` flow.
+Immediate UI target:
+
+- each competition should become a smaller summary card
+- the summary card should be clickable
+- detailed competition workflow should open only when a specific competition is expanded / inspected
+
+Reason:
+
+- the current all-details-at-once layout becomes messy once many competitions are saved
+- the mode split is working, but the presentation no longer scales
+
+After that:
+
+1. continue mode-specific post-create flow
+   - resurrection: entrants, submissions, fixtures, match rooms
+   - league: entrant administration and league setup shell
+2. then build the first explicit live-team `Post-Game Sequence` flow
 
 Minimum scope:
 
@@ -50,6 +71,7 @@ Minimum scope:
 
 ## What Not To Do Next
 
+- do not keep expanding the current always-open competition list layout
 - do not jump to standings first
 - do not broaden into redraft first
 - do not rewrite block dice

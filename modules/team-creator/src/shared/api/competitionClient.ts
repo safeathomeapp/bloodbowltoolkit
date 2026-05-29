@@ -70,6 +70,25 @@ export type CompetitionDetail = CompetitionSummary & {
   entries: CompetitionEntrySummary[]
 }
 
+export type CompetitionConfigJson = {
+  allowByes?: boolean
+  timerPolicy?: {
+    enabled?: boolean
+    perTurnSeconds?: number
+    bankSeconds?: number
+    bankResetsAtHalf?: boolean
+  }
+  leagueSettings?: {
+    usePreGameSequence?: boolean
+    usePostGameSequence?: boolean
+    standings?: {
+      winPoints?: number
+      drawPoints?: number
+      lossPoints?: number
+    }
+  }
+}
+
 export type CompetitionSubmissionDetail = {
   id: string
   competitionEntryId: string
@@ -252,6 +271,7 @@ export class CompetitionClient {
     maxEntrants: number
     submissionDeadline: string | null
     allowUnofficialRosters: boolean
+    configJson: CompetitionConfigJson
   }) {
     const createdByUserId = await this.getCurrentUserId()
     const response = await this.fetchImpl(`${this.baseUrl}/competitions`, {
@@ -270,15 +290,7 @@ export class CompetitionClient {
         maxEntrants: input.maxEntrants,
         submissionDeadline: input.submissionDeadline,
         allowUnofficialRosters: input.allowUnofficialRosters,
-        configJson: {
-          allowByes: true,
-          timerPolicy: {
-            enabled: true,
-            perTurnSeconds: 180,
-            bankSeconds: 300,
-            bankResetsAtHalf: true,
-          },
-        },
+        configJson: input.configJson,
       }),
     })
     const payload = await parseResponse<{ competition: CompetitionSummary }>(response)
@@ -294,6 +306,7 @@ export class CompetitionClient {
     allowUnofficialRosters: boolean
     status: CompetitionSummary['status']
     visibility: CompetitionSummary['visibility']
+    configJson: CompetitionConfigJson
   }) {
     const requestedByUserId = await this.getCurrentUserId()
     const response = await this.fetchImpl(`${this.baseUrl}/competitions/${encodeURIComponent(competitionId)}`, {
@@ -310,6 +323,7 @@ export class CompetitionClient {
         allowUnofficialRosters: input.allowUnofficialRosters,
         status: input.status,
         visibility: input.visibility,
+        configJson: input.configJson,
       }),
     })
     const payload = await parseResponse<{ competition: CompetitionSummary }>(response)

@@ -5,6 +5,7 @@ import { getSkillReference } from '../../../data/skillReferences'
 import { AuthClient, type AuthApiUser } from '../../../shared/api/authClient'
 import {
   CompetitionClient,
+  type CompetitionConfigJson,
   type CompetitionDetail,
   type CompetitionFixtureSummary,
   type CompetitionFixtureMatchSession,
@@ -60,6 +61,16 @@ type CompetitionCreateFormState = {
   maxEntrants: string
   submissionDeadline: string
   allowUnofficialRosters: boolean
+  allowByes: boolean
+  timerEnabled: boolean
+  perTurnSeconds: string
+  bankSeconds: string
+  bankResetsAtHalf: boolean
+  usePreGameSequence: boolean
+  usePostGameSequence: boolean
+  standingsWinPoints: string
+  standingsDrawPoints: string
+  standingsLossPoints: string
 }
 
 type AuthPanelMode = 'SIGN_UP' | 'PASSWORD' | 'MAGIC_LINK'
@@ -289,6 +300,16 @@ const defaultCompetitionFormState: CompetitionCreateFormState = {
   maxEntrants: '8',
   submissionDeadline: '',
   allowUnofficialRosters: false,
+  allowByes: true,
+  timerEnabled: true,
+  perTurnSeconds: '180',
+  bankSeconds: '300',
+  bankResetsAtHalf: true,
+  usePreGameSequence: true,
+  usePostGameSequence: true,
+  standingsWinPoints: '3',
+  standingsDrawPoints: '1',
+  standingsLossPoints: '0',
 }
 
 const competitionModeCards: CompetitionTypeCard[] = [
@@ -317,6 +338,65 @@ function applyCompetitionTypeDefaults(
     type: nextType,
     format: nextType === 'LEAGUE' ? 'ROUND_ROBIN' : 'KNOCKOUT',
     status: nextType === 'LEAGUE' ? 'OPEN_FOR_JOIN' : 'TEAM_SUBMISSION_OPEN',
+    allowByes: nextType === 'TOURNAMENT',
+  }
+}
+
+function toPositiveIntegerString(value: string, fallback: number) {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
+}
+
+function buildCompetitionConfigJson(form: CompetitionCreateFormState): CompetitionConfigJson {
+  return {
+    allowByes: form.type === 'TOURNAMENT' ? form.allowByes : false,
+    timerPolicy: {
+      enabled: form.timerEnabled,
+      perTurnSeconds: toPositiveIntegerString(form.perTurnSeconds, 180),
+      bankSeconds: toPositiveIntegerString(form.bankSeconds, 300),
+      bankResetsAtHalf: form.bankResetsAtHalf,
+    },
+    leagueSettings:
+      form.type === 'LEAGUE'
+        ? {
+            usePreGameSequence: form.usePreGameSequence,
+            usePostGameSequence: form.usePostGameSequence,
+            standings: {
+              winPoints: toPositiveIntegerString(form.standingsWinPoints, 3),
+              drawPoints: toPositiveIntegerString(form.standingsDrawPoints, 1),
+              lossPoints: toPositiveIntegerString(form.standingsLossPoints, 0),
+            },
+          }
+        : undefined,
+  }
+}
+
+function createCompetitionFormStateFromCompetition(competition: CompetitionDetail): CompetitionCreateFormState {
+  const config = competition.configJson as CompetitionConfigJson
+  const timerPolicy = config.timerPolicy ?? {}
+  const leagueSettings = config.leagueSettings ?? {}
+  const standings = leagueSettings.standings ?? {}
+
+  return {
+    name: competition.name,
+    description: competition.description ?? '',
+    type: competition.type,
+    format: competition.format,
+    status: competition.status,
+    visibility: competition.visibility,
+    maxEntrants: String(competition.maxEntrants),
+    submissionDeadline: toDateTimeLocalValue(competition.submissionDeadline),
+    allowUnofficialRosters: competition.allowUnofficialRosters,
+    allowByes: config.allowByes ?? competition.type === 'TOURNAMENT',
+    timerEnabled: timerPolicy.enabled === false ? false : true,
+    perTurnSeconds: String(timerPolicy.perTurnSeconds ?? 180),
+    bankSeconds: String(timerPolicy.bankSeconds ?? 300),
+    bankResetsAtHalf: timerPolicy.bankResetsAtHalf === false ? false : true,
+    usePreGameSequence: leagueSettings.usePreGameSequence === false ? false : true,
+    usePostGameSequence: leagueSettings.usePostGameSequence === false ? false : true,
+    standingsWinPoints: String(standings.winPoints ?? 3),
+    standingsDrawPoints: String(standings.drawPoints ?? 1),
+    standingsLossPoints: String(standings.lossPoints ?? 0),
   }
 }
 
@@ -867,6 +947,7 @@ export function TeamCreator() {
           ? new Date(competitionForm.submissionDeadline).toISOString()
           : null,
         allowUnofficialRosters: competitionForm.allowUnofficialRosters,
+        configJson: buildCompetitionConfigJson(competitionForm),
       }
 
       if (editingCompetitionId) {
@@ -907,17 +988,7 @@ export function TeamCreator() {
 
   function handleStartCompetitionEdit(competition: CompetitionDetail) {
     setEditingCompetitionId(competition.id)
-    setCompetitionForm({
-      name: competition.name,
-      description: competition.description ?? '',
-      type: competition.type,
-      format: competition.format,
-      status: competition.status,
-      visibility: competition.visibility,
-      maxEntrants: String(competition.maxEntrants),
-      submissionDeadline: toDateTimeLocalValue(competition.submissionDeadline),
-      allowUnofficialRosters: competition.allowUnofficialRosters,
-    })
+    setCompetitionForm(createCompetitionFormStateFromCompetition(competition))
     setLibraryView('CREATE_COMPETITION')
     setFeedback(`Editing ${competition.name}.`)
   }
@@ -2564,6 +2635,160 @@ export function TeamCreator() {
                       />
                     </label>
                   </div>
+                  {competitionForm.type === 'TOURNAMENT' ? (
+                    <section className={styles.modeSettingsPanel}>
+                      <div className={styles.subsectionHeader}>
+                        <p className={styles.sectionKicker}>Resurrection Controls</p>
+                        <h3 className={styles.subsectionTitle}>Event And Timer Settings</h3>
+                      </div>
+                      <div className={styles.competitionFormGrid}>
+                        <label className={styles.toggleField}>
+                          <span>Allow Byes In Pairings</span>
+                          <input
+                            type="checkbox"
+                            checked={competitionForm.allowByes}
+                            onChange={(event) =>
+                              setCompetitionForm((current) => ({
+                                ...current,
+                                allowByes: event.target.checked,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className={styles.toggleField}>
+                          <span>Enable Match Timer</span>
+                          <input
+                            type="checkbox"
+                            checked={competitionForm.timerEnabled}
+                            onChange={(event) =>
+                              setCompetitionForm((current) => ({
+                                ...current,
+                                timerEnabled: event.target.checked,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className={styles.field}>
+                          <span>Per-Turn Seconds</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={competitionForm.perTurnSeconds}
+                            onChange={(event) =>
+                              setCompetitionForm((current) => ({
+                                ...current,
+                                perTurnSeconds: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className={styles.field}>
+                          <span>Bank Seconds</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={competitionForm.bankSeconds}
+                            onChange={(event) =>
+                              setCompetitionForm((current) => ({
+                                ...current,
+                                bankSeconds: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className={styles.toggleField}>
+                          <span>Reset Bank At Half</span>
+                          <input
+                            type="checkbox"
+                            checked={competitionForm.bankResetsAtHalf}
+                            onChange={(event) =>
+                              setCompetitionForm((current) => ({
+                                ...current,
+                                bankResetsAtHalf: event.target.checked,
+                              }))
+                            }
+                          />
+                        </label>
+                      </div>
+                    </section>
+                  ) : (
+                    <section className={styles.modeSettingsPanel}>
+                      <div className={styles.subsectionHeader}>
+                        <p className={styles.sectionKicker}>League Controls</p>
+                        <h3 className={styles.subsectionTitle}>Workflow And Standings Defaults</h3>
+                      </div>
+                      <div className={styles.competitionFormGrid}>
+                        <label className={styles.toggleField}>
+                          <span>Use Pre-Game Sequence</span>
+                          <input
+                            type="checkbox"
+                            checked={competitionForm.usePreGameSequence}
+                            onChange={(event) =>
+                              setCompetitionForm((current) => ({
+                                ...current,
+                                usePreGameSequence: event.target.checked,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className={styles.toggleField}>
+                          <span>Use Post-Game Sequence</span>
+                          <input
+                            type="checkbox"
+                            checked={competitionForm.usePostGameSequence}
+                            onChange={(event) =>
+                              setCompetitionForm((current) => ({
+                                ...current,
+                                usePostGameSequence: event.target.checked,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className={styles.field}>
+                          <span>Win Points</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={competitionForm.standingsWinPoints}
+                            onChange={(event) =>
+                              setCompetitionForm((current) => ({
+                                ...current,
+                                standingsWinPoints: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className={styles.field}>
+                          <span>Draw Points</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={competitionForm.standingsDrawPoints}
+                            onChange={(event) =>
+                              setCompetitionForm((current) => ({
+                                ...current,
+                                standingsDrawPoints: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className={styles.field}>
+                          <span>Loss Points</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={competitionForm.standingsLossPoints}
+                            onChange={(event) =>
+                              setCompetitionForm((current) => ({
+                                ...current,
+                                standingsLossPoints: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                      </div>
+                    </section>
+                  )}
                   <p className={styles.helperText}>
                     {getCompetitionModeSummary(competitionForm.type)}
                   </p>
@@ -2640,6 +2865,10 @@ export function TeamCreator() {
                           const submission = competitionSubmissionDetails[competition.id] ?? null
                           const fixtures = competitionFixtures[competition.id] ?? []
                           const isOwner = competition.createdByUserId === competitionUserId
+                          const isResurrectionCompetition = competition.type === 'TOURNAMENT'
+                          const competitionConfig = competition.configJson as CompetitionConfigJson
+                          const leagueSettings = competitionConfig.leagueSettings ?? {}
+                          const standings = leagueSettings.standings ?? {}
                           const previousCompetitionType =
                             index > 0 ? sortedCompetitions[index - 1]?.type ?? null : null
                           const startsNewTypeGroup = index === 0 || previousCompetitionType !== competition.type
@@ -2685,215 +2914,279 @@ export function TeamCreator() {
 
                                 {currentEntry ? (
                                   <div className={styles.competitionEntryPanel}>
-                                  <p className={styles.metaLine}>Entry status: {currentEntry.status}</p>
-                                  <div className={styles.competitionSubmissionGrid}>
-                                    <label className={styles.field}>
-                                      <span>Saved Team</span>
-                                      <select
-                                        value={selectedTeamId}
-                                        onChange={(event) =>
-                                          setSelectedCompetitionTeamIds((current) => ({
-                                            ...current,
-                                            [competition.id]: event.target.value,
-                                          }))
-                                        }
-                                      >
-                                        <option value="">Choose team</option>
-                                        {teams.map((team) => (
-                                          <option key={team.id} value={team.id}>
-                                            {team.name}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </label>
-                                    <label className={styles.field}>
-                                      <span>Tier</span>
-                                      <input
-                                        value={selectedTierId}
-                                        onChange={(event) =>
-                                          setSelectedCompetitionTierIds((current) => ({
-                                            ...current,
-                                            [competition.id]: event.target.value,
-                                          }))
-                                        }
-                                        placeholder="Tier 1"
-                                      />
-                                    </label>
-                                  </div>
-                                  <div className={styles.competitionActionRow}>
-                                    <button
-                                      className={styles.primaryButton}
-                                      onClick={() => void handleSubmitCompetitionTeam(competition.id, currentEntry.id)}
-                                      type="button"
-                                      disabled={!selectedTeamId}
-                                    >
-                                      {submission ? 'Update Submission' : 'Submit Team'}
-                                    </button>
-                                    {submission && isOwner && currentEntry.status === 'TEAM_SUBMITTED' ? (
-                                      <button
-                                        className={styles.secondaryButton}
-                                        onClick={() =>
-                                          void handleApproveCompetitionSubmission(competition.id, currentEntry.id)
-                                        }
-                                        type="button"
-                                      >
-                                        Approve Submission
-                                      </button>
-                                    ) : null}
-                                  </div>
-                                  {submission ? (
-                                    <div className={styles.inlineSuccess}>
-                                      Submitted team: {submission.teamName} ({submission.players.length} players)
-                                      {submission.tierId ? ` • ${submission.tierId}` : ''}
-                                    </div>
-                                  ) : (
-                                    <p className={styles.helperText}>No team submitted for this competition yet.</p>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className={styles.competitionActionRow}>
-                                  <button
-                                    className={styles.primaryButton}
-                                    onClick={() => void handleJoinCompetition(competition.id)}
-                                    type="button"
-                                  >
-                                    Join Competition
-                                  </button>
-                                </div>
-                              )}
-
-                              {isOwner ? (
-                                <div className={styles.reviewPanel}>
-                                  <div className={styles.fixturePanelHeader}>
-                                    <strong>Submission Review</strong>
-                                  </div>
-                                  {submittedEntries.length === 0 ? (
-                                    <p className={styles.helperText}>No submitted teams are currently awaiting approval.</p>
-                                  ) : (
-                                    <div className={styles.reviewList}>
-                                      {submittedEntries.map((entry) => (
-                                        <div key={entry.id} className={styles.reviewCard}>
-                                          <div className={styles.reviewMeta}>
-                                            <strong>{entry.submission?.teamName ?? 'Unnamed submission'}</strong>
-                                            <span>{entry.user.displayName}</span>
-                                            <span>{entry.status}</span>
-                                          </div>
-                                          <div className={styles.competitionActionRow}>
-                                            <button
-                                              className={styles.secondaryButton}
-                                              onClick={() =>
-                                                void handleInspectCompetitionSubmission(
-                                                  competition.id,
-                                                  competition.name,
-                                                  entry.id,
-                                                  entry.user.displayName,
-                                                )
+                                    <p className={styles.metaLine}>Entry status: {currentEntry.status}</p>
+                                    {isResurrectionCompetition ? (
+                                      <>
+                                        <div className={styles.competitionSubmissionGrid}>
+                                          <label className={styles.field}>
+                                            <span>Saved Team</span>
+                                            <select
+                                              value={selectedTeamId}
+                                              onChange={(event) =>
+                                                setSelectedCompetitionTeamIds((current) => ({
+                                                  ...current,
+                                                  [competition.id]: event.target.value,
+                                                }))
                                               }
-                                              type="button"
                                             >
-                                              View Team
-                                            </button>
+                                              <option value="">Choose team</option>
+                                              {teams.map((team) => (
+                                                <option key={team.id} value={team.id}>
+                                                  {team.name}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </label>
+                                          <label className={styles.field}>
+                                            <span>Tier</span>
+                                            <input
+                                              value={selectedTierId}
+                                              onChange={(event) =>
+                                                setSelectedCompetitionTierIds((current) => ({
+                                                  ...current,
+                                                  [competition.id]: event.target.value,
+                                                }))
+                                              }
+                                              placeholder="Tier 1"
+                                            />
+                                          </label>
+                                        </div>
+                                        <div className={styles.competitionActionRow}>
+                                          <button
+                                            className={styles.primaryButton}
+                                            onClick={() => void handleSubmitCompetitionTeam(competition.id, currentEntry.id)}
+                                            type="button"
+                                            disabled={!selectedTeamId}
+                                          >
+                                            {submission ? 'Update Submission' : 'Submit Team'}
+                                          </button>
+                                          {submission && isOwner && currentEntry.status === 'TEAM_SUBMITTED' ? (
                                             <button
                                               className={styles.secondaryButton}
                                               onClick={() =>
-                                                void handleApproveCompetitionSubmission(competition.id, entry.id)
+                                                void handleApproveCompetitionSubmission(competition.id, currentEntry.id)
                                               }
                                               type="button"
                                             >
                                               Approve Submission
                                             </button>
-                                          </div>
+                                          ) : null}
                                         </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : null}
-
-                              <div className={styles.fixturePanel}>
-                                <div className={styles.fixturePanelHeader}>
-                                  <strong>Fixtures</strong>
-                                  {isOwner && fixtures.length === 0 ? (
+                                        {submission ? (
+                                          <div className={styles.inlineSuccess}>
+                                            Submitted team: {submission.teamName} ({submission.players.length} players)
+                                            {submission.tierId ? ` • ${submission.tierId}` : ''}
+                                          </div>
+                                        ) : (
+                                          <p className={styles.helperText}>No team submitted for this competition yet.</p>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <>
+                                        <p className={styles.helperText}>
+                                          League entrants will later route into competition-bound team copies and league administration flow instead of the resurrection submission pipeline.
+                                        </p>
+                                        <div className={styles.competitionActionRow}>
+                                          <button
+                                            className={styles.secondaryButton}
+                                            onClick={() => void handleStartCompetitionEdit(competition)}
+                                            type="button"
+                                          >
+                                            Review League Setup
+                                          </button>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className={styles.competitionActionRow}>
                                     <button
-                                      className={styles.secondaryButton}
-                                      onClick={() => void handleGenerateCompetitionFixtures(competition.id)}
+                                      className={styles.primaryButton}
+                                      onClick={() => void handleJoinCompetition(competition.id)}
                                       type="button"
                                     >
-                                      Generate Fixtures
+                                      Join Competition
                                     </button>
-                                  ) : null}
-                                </div>
-                                {fixtures.length === 0 ? (
-                                  <p className={styles.helperText}>
-                                    No fixtures generated yet. {approvedEntries.length < 2
-                                      ? 'At least two approved entries from different coaches are required before a bracket can be created.'
-                                      : 'Approved entries are required before a bracket can be created.'}
-                                  </p>
-                                ) : (
-                                  <div className={styles.fixtureList}>
-                                    {fixtures.map((fixture) => {
-                                      const fixtureMatchSession = competitionFixtureSessions[fixture.id] ?? null
-                                      const canCreateMatchRoom =
-                                        isOwner &&
-                                        fixture.status === 'READY' &&
-                                        Boolean(fixture.homeEntry?.submission && fixture.awayEntry?.submission) &&
-                                        !fixtureMatchSession
-                                      const canOpenMatchRoom =
-                                        Boolean(fixtureMatchSession) &&
-                                        (isOwner ||
-                                          fixture.homeEntry?.userId === competitionUserId ||
-                                          fixture.awayEntry?.userId === competitionUserId)
-
-                                      return (
-                                        <div key={fixture.id} className={styles.fixtureCard}>
-                                          <div className={styles.fixtureMeta}>
-                                            <span>Round {fixture.roundNumber}</span>
-                                            <span>Match {fixture.bracketPosition ?? '-'}</span>
-                                            <span>{fixture.status}</span>
-                                          </div>
-                                          <div className={styles.fixtureTeams}>
-                                            <span>{fixture.homeEntry?.submission?.teamName ?? fixture.homeEntry?.user.displayName ?? 'TBD'}</span>
-                                            <span>vs</span>
-                                            <span>{fixture.awayEntry?.submission?.teamName ?? fixture.awayEntry?.user.displayName ?? 'TBD'}</span>
-                                          </div>
-                                          {fixtureMatchSession ? (
-                                            <div className={styles.inlineSuccess}>
-                                              Match room code: {fixtureMatchSession.sessionCode} ({fixtureMatchSession.status})
-                                            </div>
-                                          ) : null}
-                                          {canOpenMatchRoom ? (
-                                            <div className={styles.competitionActionRow}>
-                                              <button
-                                                className={styles.primaryButton}
-                                                onClick={() => handleOpenBlockDiceMatchRoom(fixtureMatchSession!.sessionCode)}
-                                                type="button"
-                                              >
-                                                Open Match Room
-                                              </button>
-                                            </div>
-                                          ) : null}
-                                          {canCreateMatchRoom ? (
-                                            <div className={styles.competitionActionRow}>
-                                              <button
-                                                className={styles.secondaryButton}
-                                                onClick={() =>
-                                                  void handleCreateFixtureMatchSession(
-                                                    competition.id,
-                                                    fixture.id,
-                                                  )
-                                                }
-                                                type="button"
-                                              >
-                                                Create Match Room
-                                              </button>
-                                            </div>
-                                          ) : null}
-                                        </div>
-                                      )
-                                    })}
                                   </div>
                                 )}
-                              </div>
+
+                                {isResurrectionCompetition ? (
+                                  <>
+                                    {isOwner ? (
+                                      <div className={styles.reviewPanel}>
+                                        <div className={styles.fixturePanelHeader}>
+                                          <strong>Submission Review</strong>
+                                        </div>
+                                        {submittedEntries.length === 0 ? (
+                                          <p className={styles.helperText}>No submitted teams are currently awaiting approval.</p>
+                                        ) : (
+                                          <div className={styles.reviewList}>
+                                            {submittedEntries.map((entry) => (
+                                              <div key={entry.id} className={styles.reviewCard}>
+                                                <div className={styles.reviewMeta}>
+                                                  <strong>{entry.submission?.teamName ?? 'Unnamed submission'}</strong>
+                                                  <span>{entry.user.displayName}</span>
+                                                  <span>{entry.status}</span>
+                                                </div>
+                                                <div className={styles.competitionActionRow}>
+                                                  <button
+                                                    className={styles.secondaryButton}
+                                                    onClick={() =>
+                                                      void handleInspectCompetitionSubmission(
+                                                        competition.id,
+                                                        competition.name,
+                                                        entry.id,
+                                                        entry.user.displayName,
+                                                      )
+                                                    }
+                                                    type="button"
+                                                  >
+                                                    View Team
+                                                  </button>
+                                                  <button
+                                                    className={styles.secondaryButton}
+                                                    onClick={() =>
+                                                      void handleApproveCompetitionSubmission(competition.id, entry.id)
+                                                    }
+                                                    type="button"
+                                                  >
+                                                    Approve Submission
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : null}
+
+                                    <div className={styles.fixturePanel}>
+                                      <div className={styles.fixturePanelHeader}>
+                                        <strong>Fixtures</strong>
+                                        {isOwner && fixtures.length === 0 ? (
+                                          <button
+                                            className={styles.secondaryButton}
+                                            onClick={() => void handleGenerateCompetitionFixtures(competition.id)}
+                                            type="button"
+                                          >
+                                            Generate Fixtures
+                                          </button>
+                                        ) : null}
+                                      </div>
+                                      {fixtures.length === 0 ? (
+                                        <p className={styles.helperText}>
+                                          No fixtures generated yet. {approvedEntries.length < 2
+                                            ? 'At least two approved entries from different coaches are required before a bracket can be created.'
+                                            : 'Approved entries are required before a bracket can be created.'}
+                                        </p>
+                                      ) : (
+                                        <div className={styles.fixtureList}>
+                                          {fixtures.map((fixture) => {
+                                            const fixtureMatchSession = competitionFixtureSessions[fixture.id] ?? null
+                                            const canCreateMatchRoom =
+                                              isOwner &&
+                                              fixture.status === 'READY' &&
+                                              Boolean(fixture.homeEntry?.submission && fixture.awayEntry?.submission) &&
+                                              !fixtureMatchSession
+                                            const canOpenMatchRoom =
+                                              Boolean(fixtureMatchSession) &&
+                                              (isOwner ||
+                                                fixture.homeEntry?.userId === competitionUserId ||
+                                                fixture.awayEntry?.userId === competitionUserId)
+
+                                            return (
+                                              <div key={fixture.id} className={styles.fixtureCard}>
+                                                <div className={styles.fixtureMeta}>
+                                                  <span>Round {fixture.roundNumber}</span>
+                                                  <span>Match {fixture.bracketPosition ?? '-'}</span>
+                                                  <span>{fixture.status}</span>
+                                                </div>
+                                                <div className={styles.fixtureTeams}>
+                                                  <span>{fixture.homeEntry?.submission?.teamName ?? fixture.homeEntry?.user.displayName ?? 'TBD'}</span>
+                                                  <span>vs</span>
+                                                  <span>{fixture.awayEntry?.submission?.teamName ?? fixture.awayEntry?.user.displayName ?? 'TBD'}</span>
+                                                </div>
+                                                {fixtureMatchSession ? (
+                                                  <div className={styles.inlineSuccess}>
+                                                    Match room code: {fixtureMatchSession.sessionCode} ({fixtureMatchSession.status})
+                                                  </div>
+                                                ) : null}
+                                                {canOpenMatchRoom ? (
+                                                  <div className={styles.competitionActionRow}>
+                                                    <button
+                                                      className={styles.primaryButton}
+                                                      onClick={() => handleOpenBlockDiceMatchRoom(fixtureMatchSession!.sessionCode)}
+                                                      type="button"
+                                                    >
+                                                      Open Match Room
+                                                    </button>
+                                                  </div>
+                                                ) : null}
+                                                {canCreateMatchRoom ? (
+                                                  <div className={styles.competitionActionRow}>
+                                                    <button
+                                                      className={styles.secondaryButton}
+                                                      onClick={() =>
+                                                        void handleCreateFixtureMatchSession(
+                                                          competition.id,
+                                                          fixture.id,
+                                                        )
+                                                      }
+                                                      type="button"
+                                                    >
+                                                      Create Match Room
+                                                    </button>
+                                                  </div>
+                                                ) : null}
+                                              </div>
+                                            )
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className={styles.reviewPanel}>
+                                      <div className={styles.fixturePanelHeader}>
+                                        <strong>League Administration Shell</strong>
+                                      </div>
+                                      <div className={styles.reviewList}>
+                                        <div className={styles.reviewCard}>
+                                          <div className={styles.reviewMeta}>
+                                            <strong>Workflow</strong>
+                                            <span>Pre-game sequence: {leagueSettings.usePreGameSequence === false ? 'Off' : 'On'}</span>
+                                            <span>Post-game sequence: {leagueSettings.usePostGameSequence === false ? 'Off' : 'On'}</span>
+                                          </div>
+                                        </div>
+                                        <div className={styles.reviewCard}>
+                                          <div className={styles.reviewMeta}>
+                                            <strong>Standings Defaults</strong>
+                                            <span>Win {standings.winPoints ?? 3} • Draw {standings.drawPoints ?? 1} • Loss {standings.lossPoints ?? 0}</span>
+                                            <span>Format: {competition.format}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className={styles.fixturePanel}>
+                                      <div className={styles.fixturePanelHeader}>
+                                        <strong>Next League Steps</strong>
+                                      </div>
+                                      <p className={styles.helperText}>
+                                        League competitions should next grow into entrant administration, competition-bound team-copy handling, and later explicit pre-game/post-game workflow. The resurrection fixture generator is intentionally not reused here yet.
+                                      </p>
+                                      <div className={styles.competitionActionRow}>
+                                        <button
+                                          className={styles.secondaryButton}
+                                          onClick={() => handleStartCompetitionEdit(competition)}
+                                          type="button"
+                                        >
+                                          Refine League Settings
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
                             </article>
                             </div>
                           )
